@@ -1,16 +1,16 @@
 {
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "LiteDb.Distributed.AppHost": {
+    "LiteDb.Distributed.AspireHost": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "applicationUrl": "https://localhost:17288;http://localhost:15073",
+      "applicationUrl": "https://localhost:17154;http://localhost:15136",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
-        "DOTNET_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21064",
-        "DOTNET_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22028"
+        "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21154",
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22076"
       }
     }
   }
