@@ -14,7 +14,7 @@ This MVP supports multiple logical databases selected from HTTP headers.
 
 Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
-- `Password` or `ApiKey` (required): used as LiteDB password.
+- `Password` or `ApiKey` (required): validated against the logical database catalog.
 
 Rules:
 - Database names are normalized to lowercase (`TestApp` -> `testapp`).
@@ -100,4 +100,4 @@ Then register peers per logical database using `POST /api/cluster/peers` with `D
 
 - This is not SQL and does not replicate raw LiteDB files.
 - Conflict resolution is pluggable (default includes LWW with optional conflict recording for critical collections).
-- Credential storage in the DB catalog is currently MVP-level and should be hardened for production.
+- Credentials are catalog-based (MVP) and independent of LiteDB file encryption, so resetting a DB credential does not require re-encrypting data files.

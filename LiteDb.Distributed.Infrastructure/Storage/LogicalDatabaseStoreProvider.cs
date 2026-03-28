@@ -58,7 +58,6 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
                 {
                     NodeId = _options.NodeId,
                     DatabaseName = registration.DatabaseName,
-                    DatabasePassword = registration.Credential,
                     BusinessDatabasePath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db"),
                     MetadataDatabasePath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata"),
                     SeedPeers = _options.SeedPeers

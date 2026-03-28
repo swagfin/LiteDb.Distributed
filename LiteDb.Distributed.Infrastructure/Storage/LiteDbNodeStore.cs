@@ -62,11 +62,6 @@ public sealed class LiteDbNodeStore :
             throw new ArgumentException("MetadataDatabasePath is required.", nameof(options));
         }
 
-        if (string.IsNullOrWhiteSpace(options.DatabasePassword))
-        {
-            throw new ArgumentException("DatabasePassword is required.", nameof(options));
-        }
-
         _nodeId = options.NodeId.Trim();
         var businessFullPath = Path.GetFullPath(options.BusinessDatabasePath);
         var metadataFullPath = Path.GetFullPath(options.MetadataDatabasePath);
@@ -74,8 +69,8 @@ public sealed class LiteDbNodeStore :
         EnsureParentDirectory(businessFullPath);
         EnsureParentDirectory(metadataFullPath);
 
-        _businessDatabase = OpenEncryptedDatabase(businessFullPath, options.DatabasePassword);
-        _metadataDatabase = OpenEncryptedDatabase(metadataFullPath, options.DatabasePassword);
+        _businessDatabase = OpenDatabase(businessFullPath);
+        _metadataDatabase = OpenDatabase(metadataFullPath);
 
         EnsureSystemIndexes();
         SeedPeers(options.SeedPeers);
@@ -699,12 +694,11 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    private static LiteDatabase OpenEncryptedDatabase(string fullPath, string password)
+    private static LiteDatabase OpenDatabase(string fullPath)
     {
         var connectionString = new ConnectionString
         {
-            Filename = fullPath,
-            Password = password
+            Filename = fullPath
         };
 
         return new LiteDatabase(connectionString);

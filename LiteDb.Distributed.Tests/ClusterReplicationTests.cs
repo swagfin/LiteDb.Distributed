@@ -179,7 +179,6 @@ public sealed class ClusterReplicationTests
             {
                 NodeId = nodeId,
                 DatabaseName = "testdb",
-                DatabasePassword = "test-password",
                 BusinessDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db"),
                 MetadataDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db.metadata")
             });
