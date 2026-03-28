@@ -21,10 +21,10 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var dataDirectory = Path.GetFullPath(options.DataDirectory);
-        Directory.CreateDirectory(dataDirectory);
+        var nodeDataDirectory = Path.GetFullPath(Path.Combine(options.DataDirectory, options.NodeId));
+        Directory.CreateDirectory(nodeDataDirectory);
 
-        _catalogPath = Path.Combine(dataDirectory, "_logical_databases.catalog.json");
+        _catalogPath = Path.Combine(nodeDataDirectory, "_logical_databases.catalog.json");
     }
 
     public async Task<LogicalDatabaseRegistration> GetOrCreateAsync(

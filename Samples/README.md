@@ -1,13 +1,16 @@
 # Samples
 
-`SaveFewRecordsSample` is a minimal client that targets the default server URL:
+`SaveFewRecordsSample` is a minimal client.
 
-- `http://localhost:1446`
+It reads configuration from:
 
-The sample sends required headers:
+- `Samples/SaveFewRecordsSample/sample-settings.json`
 
-- `Database`
-- `ApiKey`
+Default config:
+
+- `ServerUrl`: `http://localhost:17001`
+- `Database`: `testapp`
+- `ApiKey`: `sample-local-key`
 
 Run it with:
 
@@ -15,15 +18,4 @@ Run it with:
 dotnet run --project .\Samples\SaveFewRecordsSample\SaveFewRecordsSample.csproj
 ```
 
-Override the server URL with:
-
-```powershell
-$env:DLITEDB_SERVER_URL = "http://localhost:1446"
-```
-
-You can also override logical database and key:
-
-```powershell
-$env:DLITEDB_DATABASE = "testapp"
-$env:DLITEDB_API_KEY = "sample-local-key"
-```
+To point to a different node or database, edit `sample-settings.json`.

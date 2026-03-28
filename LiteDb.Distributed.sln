@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiteDb.Distributed.Server",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiteDb.Distributed.Tests", "LiteDb.Distributed.Tests\LiteDb.Distributed.Tests.csproj", "{4F1875B5-1FC7-4E3D-9636-AF51DF1D2623}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiteDb.Distributed.AppHost", "LiteDb.Distributed.AppHost\LiteDb.Distributed.AppHost.csproj", "{44D43165-6793-4C2D-BC12-CD72F7435B2E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -85,6 +87,18 @@ Global
 		{4F1875B5-1FC7-4E3D-9636-AF51DF1D2623}.Release|x64.Build.0 = Release|Any CPU
 		{4F1875B5-1FC7-4E3D-9636-AF51DF1D2623}.Release|x86.ActiveCfg = Release|Any CPU
 		{4F1875B5-1FC7-4E3D-9636-AF51DF1D2623}.Release|x86.Build.0 = Release|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Debug|x64.Build.0 = Debug|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Debug|x86.Build.0 = Debug|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Release|x64.ActiveCfg = Release|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Release|x64.Build.0 = Release|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Release|x86.ActiveCfg = Release|Any CPU
+		{44D43165-6793-4C2D-BC12-CD72F7435B2E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

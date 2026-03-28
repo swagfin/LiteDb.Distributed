@@ -1,0 +1,5 @@
+{
+  "ServerUrl": "http://localhost:17001",
+  "Database": "testapp",
+  "ApiKey": "sample-local-key"
+}

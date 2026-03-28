@@ -22,8 +22,8 @@ Rules:
 - If it exists, credentials must match.
 
 Per logical database files:
-- Business data: `Data/{dbName}.db`
-- System/replication metadata: `Data/{dbName}.db.metadata`
+- Business data: `Data/{nodeId}/{dbName}.db`
+- System/replication metadata: `Data/{nodeId}/{dbName}.db.metadata`
 
 Metadata includes operation logs, checkpoints, node metadata, conflicts, sync state, and peer state.
 
@@ -48,6 +48,7 @@ Replication/cluster API:
 - `LiteDb.Distributed.Core`: domain models and abstractions.
 - `LiteDb.Distributed.Infrastructure`: storage, replication, conflict handling, DB context resolution.
 - `LiteDb.Distributed.Server`: ASP.NET Core node host.
+- `LiteDb.Distributed.AppHost`: .NET Aspire host that runs a local 3-node cluster.
 - `LiteDb.Distributed.Tests`: replication tests.
 - `Samples/SaveFewRecordsSample`: small write/read demo client.
 
@@ -71,6 +72,19 @@ dotnet run --project .\Samples\SaveFewRecordsSample\SaveFewRecordsSample.csproj
 ```powershell
 dotnet test .\LiteDb.Distributed.Tests\LiteDb.Distributed.Tests.csproj
 ```
+
+## Run 3 Nodes With Aspire
+
+Run all three nodes with one command:
+
+```powershell
+dotnet run --project .\LiteDb.Distributed.AppHost\LiteDb.Distributed.AppHost.csproj
+```
+
+Configured node URLs:
+- `node-1`: `http://localhost:17001`
+- `node-2`: `http://localhost:17002`
+- `node-3`: `http://localhost:17003`
 
 ## Multi-Node Example
 

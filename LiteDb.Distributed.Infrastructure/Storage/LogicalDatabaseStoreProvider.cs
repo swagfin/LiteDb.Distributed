@@ -51,16 +51,16 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
             registration.DatabaseName,
             _ =>
             {
-                var dataDirectory = Path.GetFullPath(_options.DataDirectory);
-                Directory.CreateDirectory(dataDirectory);
+                var nodeDataDirectory = Path.GetFullPath(Path.Combine(_options.DataDirectory, _options.NodeId));
+                Directory.CreateDirectory(nodeDataDirectory);
 
                 return new LiteDbNodeStore(new LiteDbNodeStoreOptions
                 {
                     NodeId = _options.NodeId,
                     DatabaseName = registration.DatabaseName,
                     DatabasePassword = registration.Credential,
-                    BusinessDatabasePath = Path.Combine(dataDirectory, $"{registration.DatabaseName}.db"),
-                    MetadataDatabasePath = Path.Combine(dataDirectory, $"{registration.DatabaseName}.db.metadata"),
+                    BusinessDatabasePath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db"),
+                    MetadataDatabasePath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata"),
                     SeedPeers = _options.SeedPeers
                 });
             });
