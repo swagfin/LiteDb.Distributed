@@ -2,6 +2,7 @@ using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
@@ -10,6 +11,7 @@ public sealed class PeerReplicationService : IClusterReplicationService
 {
     private readonly string _localNodeId;
     private readonly int _batchSize;
+    private readonly int _peerConcurrency;
     private readonly IOperationLogStore _operationLogStore;
     private readonly IPeerCheckpointStore _peerCheckpointStore;
     private readonly IClusterPeerRegistry _clusterPeerRegistry;
@@ -29,6 +31,7 @@ public sealed class PeerReplicationService : IClusterReplicationService
         ArgumentNullException.ThrowIfNull(options);
         _localNodeId = options.NodeId;
         _batchSize = Math.Clamp(options.ReplicationBatchSize, 1, 10_000);
+        _peerConcurrency = Math.Clamp(options.ReplicationPeerConcurrency, 1, 32);
 
         _operationLogStore = operationLogStore ?? throw new ArgumentNullException(nameof(operationLogStore));
         _peerCheckpointStore = peerCheckpointStore ?? throw new ArgumentNullException(nameof(peerCheckpointStore));
@@ -46,30 +49,53 @@ public sealed class PeerReplicationService : IClusterReplicationService
             .Where(x => x.IsActive && !string.Equals(x.NodeId, _localNodeId, StringComparison.Ordinal))
             .ToList();
 
-        _logger.LogDebug("Replication cycle started. LocalNodeId={LocalNodeId} RegisteredPeers={RegisteredPeers} ActivePeers={ActivePeers}", _localNodeId, peers.Count, activePeers.Count);
-        var failedPeers = new List<string>();
+        var maxConcurrency = Math.Min(_peerConcurrency, Math.Max(1, activePeers.Count));
+        _logger.LogDebug("Replication cycle started. LocalNodeId={LocalNodeId} RegisteredPeers={RegisteredPeers} ActivePeers={ActivePeers} PeerConcurrency={PeerConcurrency}", _localNodeId, peers.Count, activePeers.Count, maxConcurrency);
 
-        foreach (var peer in activePeers)
+        if (activePeers.Count == 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await ReplicatePeerAsync(peer, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Peer replication failed for {PeerNodeId} ({BaseUrl})", peer.NodeId, peer.BaseUrl);
-                failedPeers.Add(peer.NodeId);
-            }
+            cycleStopwatch.Stop();
+            _logger.LogDebug("Replication cycle completed. LocalNodeId={LocalNodeId} ActivePeers={ActivePeers} DurationMs={DurationMs}", _localNodeId, activePeers.Count, cycleStopwatch.Elapsed.TotalMilliseconds);
+            return;
         }
+
+        var failedPeers = new ConcurrentBag<string>();
+        using var throttler = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+        var tasks = activePeers
+            .Select(peer => ReplicatePeerWithThrottleAsync(peer, throttler, failedPeers, cancellationToken))
+            .ToList();
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
 
         cycleStopwatch.Stop();
         _logger.LogDebug("Replication cycle completed. LocalNodeId={LocalNodeId} ActivePeers={ActivePeers} DurationMs={DurationMs}", _localNodeId, activePeers.Count, cycleStopwatch.Elapsed.TotalMilliseconds);
 
-        if (failedPeers.Count > 0)
+        var failedPeerList = failedPeers
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToList();
+
+        if (failedPeerList.Count > 0)
         {
-            throw new InvalidOperationException($"Peer replication failed for {failedPeers.Count} peer(s): {string.Join(", ", failedPeers)}.");
+            throw new InvalidOperationException($"Peer replication failed for {failedPeerList.Count} peer(s): {string.Join(", ", failedPeerList)}.");
+        }
+    }
+
+    private async Task ReplicatePeerWithThrottleAsync(ClusterPeer peer, SemaphoreSlim throttler, ConcurrentBag<string> failedPeers, CancellationToken cancellationToken)
+    {
+        await throttler.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ReplicatePeerAsync(peer, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Peer replication failed for {PeerNodeId} ({BaseUrl})", peer.NodeId, peer.BaseUrl);
+            failedPeers.Add(peer.NodeId);
+        }
+        finally
+        {
+            throttler.Release();
         }
     }
 
