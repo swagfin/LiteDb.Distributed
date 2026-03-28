@@ -14,10 +14,7 @@ public sealed class ClusterController : ControllerBase
     private readonly IClusterPeerRegistry _peerRegistry;
     private readonly ILogger<ClusterController> _logger;
 
-    public ClusterController(
-        ClusterNodeOptions nodeOptions,
-        IClusterPeerRegistry peerRegistry,
-        ILogger<ClusterController> logger)
+    public ClusterController(ClusterNodeOptions nodeOptions, IClusterPeerRegistry peerRegistry, ILogger<ClusterController> logger)
     {
         _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
         _peerRegistry = peerRegistry ?? throw new ArgumentNullException(nameof(peerRegistry));
@@ -32,22 +29,14 @@ public sealed class ClusterController : ControllerBase
         if (string.Equals(peer.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal))
         {
             stopwatch.Stop();
-            _logger.LogWarning(
-                "Rejected peer registration for local node id. NodeId={NodeId} DurationMs={DurationMs}",
-                _nodeOptions.NodeId,
-                stopwatch.Elapsed.TotalMilliseconds);
+            _logger.LogWarning("Rejected peer registration for local node id. NodeId={NodeId} DurationMs={DurationMs}", _nodeOptions.NodeId, stopwatch.Elapsed.TotalMilliseconds);
             return BadRequest(new { Error = "Cannot register local node as a peer." });
         }
 
         await _peerRegistry.UpsertPeerAsync(peer with { UpdatedUtc = DateTime.UtcNow }, cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
-        _logger.LogInformation(
-            "Peer upserted. NodeId={NodeId} PeerNodeId={PeerNodeId} BaseUrl={BaseUrl} DurationMs={DurationMs}",
-            _nodeOptions.NodeId,
-            peer.NodeId,
-            peer.BaseUrl,
-            stopwatch.Elapsed.TotalMilliseconds);
+        _logger.LogInformation("Peer upserted. NodeId={NodeId} PeerNodeId={PeerNodeId} BaseUrl={BaseUrl} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, peer.BaseUrl, stopwatch.Elapsed.TotalMilliseconds);
 
         return Ok();
     }
@@ -59,11 +48,7 @@ public sealed class ClusterController : ControllerBase
         var peers = await _peerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
-        _logger.LogDebug(
-            "Peer list requested. NodeId={NodeId} PeerCount={PeerCount} DurationMs={DurationMs}",
-            _nodeOptions.NodeId,
-            peers.Count,
-            stopwatch.Elapsed.TotalMilliseconds);
+        _logger.LogDebug("Peer list requested. NodeId={NodeId} PeerCount={PeerCount} DurationMs={DurationMs}", _nodeOptions.NodeId, peers.Count, stopwatch.Elapsed.TotalMilliseconds);
 
         return Ok(peers);
     }

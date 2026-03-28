@@ -13,10 +13,7 @@ public sealed class NodeController : ControllerBase
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
     private readonly ILogger<NodeController> _logger;
 
-    public NodeController(
-        ClusterNodeOptions nodeOptions,
-        ILogicalDatabaseCatalog logicalDatabaseCatalog,
-        ILogger<NodeController> logger)
+    public NodeController(ClusterNodeOptions nodeOptions, ILogicalDatabaseCatalog logicalDatabaseCatalog, ILogger<NodeController> logger)
     {
         _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
         _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
@@ -30,11 +27,7 @@ public sealed class NodeController : ControllerBase
         var databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
-        _logger.LogDebug(
-            "Node info requested. NodeId={NodeId} LogicalDatabaseCount={LogicalDatabaseCount} DurationMs={DurationMs}",
-            _nodeOptions.NodeId,
-            databases.Count,
-            stopwatch.Elapsed.TotalMilliseconds);
+        _logger.LogDebug("Node info requested. NodeId={NodeId} LogicalDatabaseCount={LogicalDatabaseCount} DurationMs={DurationMs}", _nodeOptions.NodeId, databases.Count, stopwatch.Elapsed.TotalMilliseconds);
 
         return Ok(new
         {

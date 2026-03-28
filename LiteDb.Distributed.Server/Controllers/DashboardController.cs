@@ -16,12 +16,7 @@ public sealed class DashboardController : ControllerBase
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DashboardController> _logger;
 
-    public DashboardController(
-        ClusterNodeOptions nodeOptions,
-        ILogicalDatabaseCatalog logicalDatabaseCatalog,
-        ILogicalDatabaseStoreProvider logicalDatabaseStoreProvider,
-        IHttpClientFactory httpClientFactory,
-        ILogger<DashboardController> logger)
+    public DashboardController(ClusterNodeOptions nodeOptions, ILogicalDatabaseCatalog logicalDatabaseCatalog, ILogicalDatabaseStoreProvider logicalDatabaseStoreProvider, IHttpClientFactory httpClientFactory, ILogger<DashboardController> logger)
     {
         _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
         _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
@@ -82,11 +77,7 @@ public sealed class DashboardController : ControllerBase
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
-                    ex,
-                    "Dashboard could not inspect logical database. Database={Database} NodeId={NodeId}",
-                    registration.DatabaseName,
-                    _nodeOptions.NodeId);
+                _logger.LogWarning(ex, "Dashboard could not inspect logical database. Database={Database} NodeId={NodeId}", registration.DatabaseName, _nodeOptions.NodeId);
 
                 databaseStatuses.Add(new DashboardDatabaseStatusDto
                 {
@@ -136,10 +127,7 @@ public sealed class DashboardController : ControllerBase
         });
     }
 
-    private async Task<DashboardNodeStatusDto> ProbePeerAsync(
-        string peerNodeId,
-        string peerBaseUrl,
-        CancellationToken cancellationToken)
+    private async Task<DashboardNodeStatusDto> ProbePeerAsync(string peerNodeId, string peerBaseUrl, CancellationToken cancellationToken)
     {
         var checkedAt = DateTime.UtcNow;
         var normalizedBaseUrl = NormalizeBaseUrl(peerBaseUrl);

@@ -46,11 +46,7 @@ public sealed class PeerReplicationService : IClusterReplicationService
             .Where(x => x.IsActive && !string.Equals(x.NodeId, _localNodeId, StringComparison.Ordinal))
             .ToList();
 
-        _logger.LogDebug(
-            "Replication cycle started. LocalNodeId={LocalNodeId} RegisteredPeers={RegisteredPeers} ActivePeers={ActivePeers}",
-            _localNodeId,
-            peers.Count,
-            activePeers.Count);
+        _logger.LogDebug("Replication cycle started. LocalNodeId={LocalNodeId} RegisteredPeers={RegisteredPeers} ActivePeers={ActivePeers}", _localNodeId, peers.Count, activePeers.Count);
 
         foreach (var peer in activePeers)
         {
@@ -68,21 +64,13 @@ public sealed class PeerReplicationService : IClusterReplicationService
         }
 
         cycleStopwatch.Stop();
-        _logger.LogDebug(
-            "Replication cycle completed. LocalNodeId={LocalNodeId} ActivePeers={ActivePeers} DurationMs={DurationMs}",
-            _localNodeId,
-            activePeers.Count,
-            cycleStopwatch.Elapsed.TotalMilliseconds);
+        _logger.LogDebug("Replication cycle completed. LocalNodeId={LocalNodeId} ActivePeers={ActivePeers} DurationMs={DurationMs}", _localNodeId, activePeers.Count, cycleStopwatch.Elapsed.TotalMilliseconds);
     }
 
     private async Task ReplicatePeerAsync(ClusterPeer peer, CancellationToken cancellationToken)
     {
         var peerStopwatch = Stopwatch.StartNew();
-        _logger.LogDebug(
-            "Peer replication started. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} PeerBaseUrl={PeerBaseUrl}",
-            _localNodeId,
-            peer.NodeId,
-            peer.BaseUrl);
+        _logger.LogDebug("Peer replication started. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} PeerBaseUrl={PeerBaseUrl}", _localNodeId, peer.NodeId, peer.BaseUrl);
 
         var checkpoint = await _peerCheckpointStore
             .GetOrCreatePeerCheckpointAsync(_localNodeId, peer.NodeId, cancellationToken)
@@ -164,19 +152,7 @@ public sealed class PeerReplicationService : IClusterReplicationService
             ? LogLevel.Information
             : LogLevel.Debug;
 
-        _logger.Log(
-            logLevel,
-            "Peer replication completed. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Pushed={Pushed} PushAccepted={PushAccepted} Pulled={Pulled} PullAccepted={PullAccepted} PullConflicts={PullConflicts} CheckpointPush={CheckpointPush} CheckpointPull={CheckpointPull} DurationMs={DurationMs}",
-            _localNodeId,
-            peer.NodeId,
-            pushedCount,
-            pushAcceptedCount,
-            pulledCount,
-            pulledAcceptedCount,
-            pulledConflictCount,
-            checkpoint.LastPushedLocalLogSequence,
-            checkpoint.LastPulledPeerLogSequence,
-            peerStopwatch.Elapsed.TotalMilliseconds);
+        _logger.Log(logLevel, "Peer replication completed. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Pushed={Pushed} PushAccepted={PushAccepted} Pulled={Pulled} PullAccepted={PullAccepted} PullConflicts={PullConflicts} CheckpointPush={CheckpointPush} CheckpointPull={CheckpointPull} DurationMs={DurationMs}", _localNodeId, peer.NodeId, pushedCount, pushAcceptedCount, pulledCount, pulledAcceptedCount, pulledConflictCount, checkpoint.LastPushedLocalLogSequence, checkpoint.LastPulledPeerLogSequence, peerStopwatch.Elapsed.TotalMilliseconds);
     }
 }
 

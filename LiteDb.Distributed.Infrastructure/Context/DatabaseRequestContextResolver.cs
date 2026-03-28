@@ -13,17 +13,13 @@ public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextReso
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
     private readonly ILogger<DatabaseRequestContextResolver> _logger;
 
-    public DatabaseRequestContextResolver(
-        ILogicalDatabaseCatalog logicalDatabaseCatalog,
-        ILogger<DatabaseRequestContextResolver> logger)
+    public DatabaseRequestContextResolver(ILogicalDatabaseCatalog logicalDatabaseCatalog, ILogger<DatabaseRequestContextResolver> logger)
     {
         _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<DatabaseRequestContext> ResolveAsync(
-        IHeaderDictionary headers,
-        CancellationToken cancellationToken = default)
+    public async Task<DatabaseRequestContext> ResolveAsync(IHeaderDictionary headers, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(headers);
 
@@ -51,9 +47,7 @@ public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextReso
             .GetOrCreateAsync(normalizedDatabaseName, credential, cancellationToken)
             .ConfigureAwait(false);
 
-        _logger.LogDebug(
-            "Database request context resolved. Database={Database}",
-            registration.DatabaseName);
+        _logger.LogDebug("Database request context resolved. Database={Database}", registration.DatabaseName);
 
         return new DatabaseRequestContext
         {

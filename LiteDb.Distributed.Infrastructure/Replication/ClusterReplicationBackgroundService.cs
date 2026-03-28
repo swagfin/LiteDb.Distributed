@@ -16,12 +16,7 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
     private readonly ILogger<ClusterReplicationBackgroundService> _logger;
     private readonly TimeSpan _interval;
 
-    public ClusterReplicationBackgroundService(
-        ClusterNodeOptions options,
-        IClusterReplicationService clusterReplicationService,
-        ILogicalDatabaseCatalog logicalDatabaseCatalog,
-        IDatabaseContextAccessor databaseContextAccessor,
-        ILogger<ClusterReplicationBackgroundService> logger)
+    public ClusterReplicationBackgroundService(ClusterNodeOptions options, IClusterReplicationService clusterReplicationService, ILogicalDatabaseCatalog logicalDatabaseCatalog, IDatabaseContextAccessor databaseContextAccessor, ILogger<ClusterReplicationBackgroundService> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
         _clusterReplicationService = clusterReplicationService ?? throw new ArgumentNullException(nameof(clusterReplicationService));
@@ -45,9 +40,7 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
             {
                 var databases = await _logicalDatabaseCatalog.GetAllAsync(stoppingToken).ConfigureAwait(false);
 
-                _logger.LogDebug(
-                    "Cluster replication iteration started. DatabaseCount={DatabaseCount}",
-                    databases.Count);
+                _logger.LogDebug("Cluster replication iteration started. DatabaseCount={DatabaseCount}", databases.Count);
 
                 foreach (var database in databases)
                 {
@@ -62,10 +55,7 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
                     await _clusterReplicationService.ReplicateOnceAsync(stoppingToken).ConfigureAwait(false);
                     databaseStopwatch.Stop();
 
-                    _logger.LogDebug(
-                        "Database replication iteration completed. Database={Database} DurationMs={DurationMs}",
-                        database.DatabaseName,
-                        databaseStopwatch.Elapsed.TotalMilliseconds);
+                    _logger.LogDebug("Database replication iteration completed. Database={Database} DurationMs={DurationMs}", database.DatabaseName, databaseStopwatch.Elapsed.TotalMilliseconds);
                 }
             }
             catch (Exception ex)
@@ -75,9 +65,7 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
             finally
             {
                 iterationStopwatch.Stop();
-                _logger.LogDebug(
-                    "Cluster replication iteration finished. DurationMs={DurationMs}",
-                    iterationStopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Cluster replication iteration finished. DurationMs={DurationMs}", iterationStopwatch.Elapsed.TotalMilliseconds);
             }
 
             await Task.Delay(_interval, stoppingToken).ConfigureAwait(false);
