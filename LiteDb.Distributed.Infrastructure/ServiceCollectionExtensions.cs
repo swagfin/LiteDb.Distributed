@@ -18,10 +18,12 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton(options);
 
+        var databasePath = Path.Combine("Data", $"node.{options.NodeId}.db");
+
         services.AddSingleton(sp => new LiteDbNodeStore(new LiteDbNodeStoreOptions
         {
             NodeId = options.NodeId,
-            DatabasePath = options.DatabasePath,
+            DatabasePath = databasePath,
             SeedPeers = options.SeedPeers
         }));
 

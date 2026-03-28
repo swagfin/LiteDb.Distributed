@@ -16,7 +16,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 var nodeOptions = new ClusterNodeOptions
 {
     NodeId = builder.Configuration["Node:NodeId"] ?? "node-1",
-    DatabasePath = builder.Configuration["Node:DatabasePath"] ?? Path.Combine("Data", "node-1.db"),
     ReplicationIntervalSeconds = builder.Configuration.GetValue<int?>("Node:ReplicationIntervalSeconds") ?? 5,
     ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 200,
     CriticalCollections = builder.Configuration.GetSection("Node:CriticalCollections").Get<string[]>() ?? Array.Empty<string>(),

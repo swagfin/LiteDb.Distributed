@@ -78,12 +78,14 @@ dotnet test .\LiteDb.Distributed.Tests\LiteDb.Distributed.Tests.csproj
 Start three nodes on different ports:
 
 ```powershell
-dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7001 --Node:NodeId=node-1 --Node:DatabasePath=Data/node-1.db
-dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7002 --Node:NodeId=node-2 --Node:DatabasePath=Data/node-2.db
-dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7003 --Node:NodeId=node-3 --Node:DatabasePath=Data/node-3.db
+dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7001 --Node:NodeId=node-1
+dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7002 --Node:NodeId=node-2
+dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7003 --Node:NodeId=node-3
 ```
 
 Then register peers (`POST /api/cluster/peers`) on each node, and replication will converge via background sync (or `POST /api/replication/trigger`).
+
+Each node always stores LiteDB at `Data/node.{nodeId}.db` (derived from `NodeId`).
 
 ## Current Consistency Model
 

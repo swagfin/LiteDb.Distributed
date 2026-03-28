@@ -198,7 +198,6 @@ public sealed class ClusterReplicationTests
                 new ClusterNodeOptions
                 {
                     NodeId = nodeId,
-                    DatabasePath = Path.Combine(rootPath, $"{nodeId}.db"),
                     ReplicationBatchSize = 500,
                     ReplicationIntervalSeconds = 1
                 },
