@@ -1,15 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <ItemGroup>
-    <ProjectReference Include="..\LiteDb.Distributed.Core\LiteDb.Distributed.Core.csproj" />
-    <ProjectReference Include="..\LiteDb.Distributed.Infrastructure\LiteDb.Distributed.Infrastructure.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\LiteDb.Distributed.Core\LiteDb.Distributed.Core.csproj" />
+		<ProjectReference Include="..\LiteDb.Distributed.Infrastructure\LiteDb.Distributed.Infrastructure.csproj" />
+	</ItemGroup>
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+	</PropertyGroup>
 
 </Project>
 

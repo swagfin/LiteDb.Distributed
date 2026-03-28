@@ -9,20 +9,11 @@
     }
   },
   "profiles": {
-    "http": {
+    "LiteDb.Distributed.Server": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
       "applicationUrl": "http://localhost:1446",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "https": {
-      "commandName": "Project",
-      "dotnetRunMessages": true,
-      "launchBrowser": true,
-      "applicationUrl": "https://localhost:7446;http://localhost:1446",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

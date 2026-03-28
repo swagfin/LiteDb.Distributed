@@ -1,7 +1,7 @@
 using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Conflict;
+using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Replication;
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,9 +10,7 @@ namespace LiteDb.Distributed.Infrastructure;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddLiteDbDistributedNode(
-        this IServiceCollection services,
-        ClusterNodeOptions options)
+    public static IServiceCollection AddLiteDbDistributedNode(this IServiceCollection services, ClusterNodeOptions options)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
@@ -36,10 +34,7 @@ public static class ServiceCollectionExtensions
 
         services.AddHttpClient<IPeerReplicationClient, HttpPeerReplicationClient>();
 
-        services.AddSingleton<IConflictResolver>(sp =>
-            new CriticalCollectionConflictResolver(
-                new LastWriteWinsConflictResolver(),
-                options.CriticalCollections));
+        services.AddSingleton<IConflictResolver>(sp => new CriticalCollectionConflictResolver(new LastWriteWinsConflictResolver(), options.CriticalCollections));
 
         services.AddSingleton<IOperationIngestionService, OperationIngestionService>();
         services.AddSingleton<IClusterReplicationService, PeerReplicationService>();

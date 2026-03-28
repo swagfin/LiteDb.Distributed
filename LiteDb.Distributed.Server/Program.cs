@@ -1,14 +1,16 @@
-using System.Text.Json;
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
-using LiteDb.Distributed.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:1446");
+
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+    });
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -51,254 +53,19 @@ app.Use(async (httpContext, next) =>
     catch (DatabaseAuthenticationException ex)
     {
         httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await httpContext.Response.WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
+        await httpContext.Response
+            .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted)
+            .ConfigureAwait(false);
     }
     catch (ArgumentException ex)
     {
         httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-        await httpContext.Response.WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
-    }
-});
-
-app.MapGet("/", async (
-    ILogicalDatabaseCatalog databaseCatalog,
-    CancellationToken cancellationToken) =>
-{
-    var databases = await databaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
-
-    return Results.Ok(new
-    {
-        NodeId = nodeOptions.NodeId,
-        TimestampUtc = DateTime.UtcNow,
-        LogicalDatabaseCount = databases.Count
-    });
-});
-
-app.MapGet("/api/{documentName}", async (
-    string documentName,
-    int skip,
-    int take,
-    ILocalDocumentReader reader,
-    CancellationToken cancellationToken) =>
-{
-    var safeTake = take <= 0 ? 100 : take;
-
-    var documents = await reader
-        .ListAsync<Dictionary<string, object?>>(documentName, skip, safeTake, cancellationToken)
-        .ConfigureAwait(false);
-
-    return Results.Ok(documents);
-});
-
-app.MapGet("/api/{documentName}/{id}", async (
-    string documentName,
-    string id,
-    ILocalDocumentReader reader,
-    CancellationToken cancellationToken) =>
-{
-    var document = await reader
-        .GetByIdAsync<Dictionary<string, object?>>(documentName, id, cancellationToken)
-        .ConfigureAwait(false);
-
-    return document is null
-        ? Results.NotFound()
-        : Results.Ok(document);
-});
-
-app.MapPost("/api/{documentName}", async (
-    string documentName,
-    JsonElement payload,
-    string? parentVersion,
-    ILocalDocumentWriter writer,
-    CancellationToken cancellationToken) =>
-{
-    if (!TryExtractEntityId(payload, out var entityId))
-    {
-        return Results.BadRequest(new { Error = "POST body must include an 'Id' string field." });
-    }
-
-    try
-    {
-        var result = await writer
-            .UpsertAsync(documentName, entityId, payload, parentVersion, cancellationToken)
+        await httpContext.Response
+            .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted)
             .ConfigureAwait(false);
-
-        return Results.Ok(result);
-    }
-    catch (VersionMismatchException ex)
-    {
-        return Results.Conflict(new { Error = ex.Message });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { Error = ex.Message });
     }
 });
 
-app.MapPut("/api/{documentName}/{id}", async (
-    string documentName,
-    string id,
-    JsonElement payload,
-    string? parentVersion,
-    ILocalDocumentWriter writer,
-    CancellationToken cancellationToken) =>
-{
-    try
-    {
-        var result = await writer
-            .UpsertAsync(documentName, id, payload, parentVersion, cancellationToken)
-            .ConfigureAwait(false);
-
-        return Results.Ok(result);
-    }
-    catch (VersionMismatchException ex)
-    {
-        return Results.Conflict(new { Error = ex.Message });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { Error = ex.Message });
-    }
-});
-
-app.MapDelete("/api/{documentName}/{id}", async (
-    string documentName,
-    string id,
-    string? parentVersion,
-    ILocalDocumentWriter writer,
-    CancellationToken cancellationToken) =>
-{
-    try
-    {
-        var result = await writer
-            .DeleteAsync(documentName, id, parentVersion, cancellationToken)
-            .ConfigureAwait(false);
-
-        return Results.Ok(result);
-    }
-    catch (VersionMismatchException ex)
-    {
-        return Results.Conflict(new { Error = ex.Message });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { Error = ex.Message });
-    }
-});
-
-app.MapPost("/api/replication/push", async (
-    ReplicationPushRequest request,
-    IOperationIngestionService ingestionService,
-    CancellationToken cancellationToken) =>
-{
-    try
-    {
-        var result = await ingestionService
-            .IngestAsync(nodeOptions.NodeId, request.Operations, cancellationToken)
-            .ConfigureAwait(false);
-
-        return Results.Ok(new ReplicationPushResponse
-        {
-            AcceptedCount = result.AcceptedCount
-        });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { Error = ex.Message });
-    }
-});
-
-app.MapPost("/api/replication/pull", async (
-    ReplicationPullRequest request,
-    IOperationLogStore operationLogStore,
-    CancellationToken cancellationToken) =>
-{
-    if (request.BatchSize <= 0)
-    {
-        return Results.BadRequest(new { Error = "BatchSize must be greater than zero." });
-    }
-
-    var operations = await operationLogStore
-        .GetOperationsAfterLogSequenceAsync(request.AfterLogSequence, request.BatchSize, cancellationToken)
-        .ConfigureAwait(false);
-
-    return Results.Ok(new ReplicationPullResponse
-    {
-        Operations = operations
-    });
-});
-
-app.MapPost("/api/cluster/peers", async (
-    ClusterPeer peer,
-    IClusterPeerRegistry peerRegistry,
-    CancellationToken cancellationToken) =>
-{
-    if (string.Equals(peer.NodeId, nodeOptions.NodeId, StringComparison.Ordinal))
-    {
-        return Results.BadRequest(new { Error = "Cannot register local node as a peer." });
-    }
-
-    await peerRegistry.UpsertPeerAsync(peer with { UpdatedUtc = DateTime.UtcNow }, cancellationToken)
-        .ConfigureAwait(false);
-
-    return Results.Ok();
-});
-
-app.MapGet("/api/cluster/peers", async (
-    IClusterPeerRegistry peerRegistry,
-    CancellationToken cancellationToken) =>
-{
-    var peers = await peerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
-    return Results.Ok(peers);
-});
-
-app.MapPost("/api/replication/trigger", async (
-    IClusterReplicationService replicationService,
-    CancellationToken cancellationToken) =>
-{
-    await replicationService.ReplicateOnceAsync(cancellationToken).ConfigureAwait(false);
-    return Results.Accepted();
-});
+app.MapControllers();
 
 app.Run();
-
-static bool TryExtractEntityId(JsonElement payload, out string entityId)
-{
-    entityId = string.Empty;
-
-    if (payload.ValueKind != JsonValueKind.Object)
-    {
-        return false;
-    }
-
-    if (TryReadPropertyAsString(payload, "Id", out entityId))
-    {
-        return true;
-    }
-
-    if (TryReadPropertyAsString(payload, "id", out entityId))
-    {
-        return true;
-    }
-
-    return false;
-}
-
-static bool TryReadPropertyAsString(JsonElement payload, string propertyName, out string value)
-{
-    value = string.Empty;
-
-    if (!payload.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
-    {
-        return false;
-    }
-
-    var candidate = property.GetString();
-    if (string.IsNullOrWhiteSpace(candidate))
-    {
-        return false;
-    }
-
-    value = candidate;
-    return true;
-}
