@@ -153,6 +153,12 @@ Configured node URLs:
 
 Then register peers per logical database using `POST /api/cluster/peers` with `Database` and `ApiKey` headers.
 
+## Dashboard
+
+Node dashboard snapshot (Online: 4):
+
+![Node Dashboard - Online 4](./screenshots/node-dashboard.JPG)
+
 ## Notes
 
 - Replication is event-driven: local writes schedule immediate source-node replication with retry/backoff, WebSocket peer signals are hints for faster convergence, and a fixed 1-minute safety sweep handles anti-entropy catch-up.

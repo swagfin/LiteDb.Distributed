@@ -87,6 +87,13 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
             if (!IsValidSyncRequest(message))
             {
+                if (IsHealthCheck(message))
+                {
+                    _logger.LogDebug("Replication websocket health-check received. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId}", _nodeOptions.NodeId, message!.SourceNodeId);
+                    await TrySendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
                 _logger.LogWarning("Replication websocket payload rejected due to invalid content. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
                 await TrySendAckAsync(webSocket, accepted: false, error: "invalid-payload", cancellationToken).ConfigureAwait(false);
                 continue;
@@ -319,6 +326,11 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
                && !string.IsNullOrWhiteSpace(message.Database)
                && !string.IsNullOrWhiteSpace(message.Credential)
                && !string.Equals(message.SourceNodeId, _nodeOptions.NodeId, StringComparison.Ordinal);
+    }
+
+    private static bool IsHealthCheck(ReplicationSignalMessage? message)
+    {
+        return message is not null && string.Equals(message.Type, "health-check", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<string?> ReceiveTextMessageAsync(WebSocket webSocket, CancellationToken cancellationToken)
