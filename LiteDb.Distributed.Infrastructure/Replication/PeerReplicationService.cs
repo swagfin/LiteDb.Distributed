@@ -47,6 +47,7 @@ public sealed class PeerReplicationService : IClusterReplicationService
             .ToList();
 
         _logger.LogDebug("Replication cycle started. LocalNodeId={LocalNodeId} RegisteredPeers={RegisteredPeers} ActivePeers={ActivePeers}", _localNodeId, peers.Count, activePeers.Count);
+        var failedPeers = new List<string>();
 
         foreach (var peer in activePeers)
         {
@@ -58,13 +59,18 @@ public sealed class PeerReplicationService : IClusterReplicationService
             }
             catch (Exception ex)
             {
-                // TODO: Add circuit-breaker/backoff per peer for noisy network partitions.
                 _logger.LogWarning(ex, "Peer replication failed for {PeerNodeId} ({BaseUrl})", peer.NodeId, peer.BaseUrl);
+                failedPeers.Add(peer.NodeId);
             }
         }
 
         cycleStopwatch.Stop();
         _logger.LogDebug("Replication cycle completed. LocalNodeId={LocalNodeId} ActivePeers={ActivePeers} DurationMs={DurationMs}", _localNodeId, activePeers.Count, cycleStopwatch.Elapsed.TotalMilliseconds);
+
+        if (failedPeers.Count > 0)
+        {
+            throw new InvalidOperationException($"Peer replication failed for {failedPeers.Count} peer(s): {string.Join(", ", failedPeers)}.");
+        }
     }
 
     private async Task ReplicatePeerAsync(ClusterPeer peer, CancellationToken cancellationToken)

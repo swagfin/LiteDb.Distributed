@@ -38,6 +38,11 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IOperationIngestionService, OperationIngestionService>();
         services.AddSingleton<IClusterReplicationService, PeerReplicationService>();
+        services.AddSingleton<IReplicationOrchestrator, ReplicationOrchestrator>();
+        services.AddSingleton<PeerReplicationSignalService>();
+        services.AddSingleton<IReplicationSignalPublisher>(sp => sp.GetRequiredService<PeerReplicationSignalService>());
+        services.AddSingleton<IReplicationWebSocketHandler>(sp => sp.GetRequiredService<PeerReplicationSignalService>());
+        services.AddHostedService(sp => sp.GetRequiredService<PeerReplicationSignalService>());
         services.AddHostedService<ClusterReplicationBackgroundService>();
 
         return services;

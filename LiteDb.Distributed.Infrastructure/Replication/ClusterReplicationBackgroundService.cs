@@ -1,7 +1,3 @@
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Infrastructure.Context;
-using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
@@ -10,22 +6,16 @@ namespace LiteDb.Distributed.Infrastructure.Replication;
 
 public sealed class ClusterReplicationBackgroundService : BackgroundService
 {
-    private readonly IClusterReplicationService _clusterReplicationService;
-    private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
-    private readonly IDatabaseContextAccessor _databaseContextAccessor;
+    private static readonly TimeSpan CatchUpInterval = TimeSpan.FromMinutes(1);
+    private readonly IReplicationOrchestrator _replicationOrchestrator;
     private readonly ILogger<ClusterReplicationBackgroundService> _logger;
     private readonly TimeSpan _interval;
 
-    public ClusterReplicationBackgroundService(ClusterNodeOptions options, IClusterReplicationService clusterReplicationService, ILogicalDatabaseCatalog logicalDatabaseCatalog, IDatabaseContextAccessor databaseContextAccessor, ILogger<ClusterReplicationBackgroundService> logger)
+    public ClusterReplicationBackgroundService(IReplicationOrchestrator replicationOrchestrator, ILogger<ClusterReplicationBackgroundService> logger)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        _clusterReplicationService = clusterReplicationService ?? throw new ArgumentNullException(nameof(clusterReplicationService));
-        _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
-        _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
+        _replicationOrchestrator = replicationOrchestrator ?? throw new ArgumentNullException(nameof(replicationOrchestrator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-
-        var milliseconds = Math.Max(1, options.ReplicationIntervalMilliseconds);
-        _interval = TimeSpan.FromMilliseconds(milliseconds);
+        _interval = CatchUpInterval;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -38,25 +28,7 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
 
             try
             {
-                var databases = await _logicalDatabaseCatalog.GetAllAsync(stoppingToken).ConfigureAwait(false);
-
-                _logger.LogDebug("Cluster replication iteration started. DatabaseCount={DatabaseCount}", databases.Count);
-
-                foreach (var database in databases)
-                {
-                    var databaseStopwatch = Stopwatch.StartNew();
-
-                    using var scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
-                    {
-                        DatabaseName = database.DatabaseName,
-                        Credential = database.Credential
-                    });
-
-                    await _clusterReplicationService.ReplicateOnceAsync(stoppingToken).ConfigureAwait(false);
-                    databaseStopwatch.Stop();
-
-                    _logger.LogDebug("Database replication iteration completed. Database={Database} DurationMs={DurationMs}", database.DatabaseName, databaseStopwatch.Elapsed.TotalMilliseconds);
-                }
+                await _replicationOrchestrator.ReplicateAllDatabasesAsync("safety-sweep", stoppingToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

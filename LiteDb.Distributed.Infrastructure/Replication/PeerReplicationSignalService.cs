@@ -1,0 +1,404 @@
+using System.Buffers;
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Models;
+using LiteDb.Distributed.Infrastructure.Configuration;
+using LiteDb.Distributed.Infrastructure.Context;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
+namespace LiteDb.Distributed.Infrastructure.Replication;
+
+public sealed class PeerReplicationSignalService : BackgroundService, IReplicationSignalPublisher, IReplicationWebSocketHandler
+{
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly TimeSpan SchedulerTick = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan WebSocketAckTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan RetryMaxDelay = TimeSpan.FromSeconds(30);
+
+    private readonly ClusterNodeOptions _nodeOptions;
+    private readonly IDatabaseContextAccessor _databaseContextAccessor;
+    private readonly IClusterPeerRegistry _clusterPeerRegistry;
+    private readonly IReplicationOrchestrator _replicationOrchestrator;
+    private readonly ILogger<PeerReplicationSignalService> _logger;
+    private readonly ConcurrentDictionary<string, ScheduledDispatch> _scheduledDispatches = new(StringComparer.Ordinal);
+
+    public PeerReplicationSignalService(ClusterNodeOptions nodeOptions, IDatabaseContextAccessor databaseContextAccessor, IClusterPeerRegistry clusterPeerRegistry, IReplicationOrchestrator replicationOrchestrator, ILogger<PeerReplicationSignalService> logger)
+    {
+        _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
+        _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
+        _clusterPeerRegistry = clusterPeerRegistry ?? throw new ArgumentNullException(nameof(clusterPeerRegistry));
+        _replicationOrchestrator = replicationOrchestrator ?? throw new ArgumentNullException(nameof(replicationOrchestrator));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public void NotifyLocalChange(string reason)
+    {
+        var context = _databaseContextAccessor.Current;
+        if (context is null)
+        {
+            _logger.LogDebug("Replication signal enqueue skipped because no active database context. Reason={Reason}", reason);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            reason = "local-change";
+        }
+
+        var now = DateTime.UtcNow;
+        var scheduled = _scheduledDispatches.AddOrUpdate(
+            context.DatabaseName,
+            _ => new ScheduledDispatch(context.DatabaseName, context.Credential, reason, 0, now, now),
+            (_, existing) => existing with { Credential = context.Credential, Reason = reason, Attempt = 0, DueUtc = now, UpdatedUtc = now });
+
+        _logger.LogDebug("Replication dispatch scheduled. Database={Database} Reason={Reason} DueUtc={DueUtc}", scheduled.DatabaseName, scheduled.Reason, scheduled.DueUtc);
+    }
+
+    public async Task HandleConnectionAsync(WebSocket webSocket, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(webSocket);
+        _logger.LogDebug("Replication websocket connection accepted. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
+
+        while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+        {
+            var payload = await ReceiveTextMessageAsync(webSocket, cancellationToken).ConfigureAwait(false);
+            if (payload is null)
+            {
+                break;
+            }
+
+            ReplicationSignalMessage? message;
+            try
+            {
+                message = JsonSerializer.Deserialize<ReplicationSignalMessage>(payload, JsonOptions);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Replication websocket payload rejected due to invalid JSON. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
+                await TrySendAckAsync(webSocket, accepted: false, error: "invalid-json", cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            if (!IsValidSyncRequest(message))
+            {
+                _logger.LogWarning("Replication websocket payload rejected due to invalid content. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
+                await TrySendAckAsync(webSocket, accepted: false, error: "invalid-payload", cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            var applyStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            _logger.LogDebug("Replication websocket signal received. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Database={Database} Reason={Reason}", _nodeOptions.NodeId, message!.SourceNodeId, message.Database, message.Reason);
+
+            try
+            {
+                await _replicationOrchestrator.ReplicateDatabaseAsync(message.Database, message.Credential, $"websocket:{message.SourceNodeId}", cancellationToken).ConfigureAwait(false);
+                applyStopwatch.Stop();
+
+                _logger.LogDebug("Replication websocket signal applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, message.SourceNodeId, message.Database, applyStopwatch.Elapsed.TotalMilliseconds);
+
+                await TrySendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                applyStopwatch.Stop();
+                _logger.LogWarning(ex, "Replication websocket signal failed. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, message.SourceNodeId, message.Database, applyStopwatch.Elapsed.TotalMilliseconds);
+                await TrySendAckAsync(webSocket, accepted: false, error: "apply-failed", cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Peer replication signal worker started. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var now = DateTime.UtcNow;
+            var dueDispatches = _scheduledDispatches
+                .Where(x => x.Value.DueUtc <= now)
+                .Select(x => x.Key)
+                .ToList();
+
+            foreach (var key in dueDispatches)
+            {
+                if (!_scheduledDispatches.TryRemove(key, out var dispatch))
+                {
+                    continue;
+                }
+
+                await ProcessDispatchAsync(dispatch, stoppingToken).ConfigureAwait(false);
+            }
+
+            try
+            {
+                await Task.Delay(SchedulerTick, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task ProcessDispatchAsync(ScheduledDispatch dispatch, CancellationToken cancellationToken)
+    {
+        var dispatchStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            await _replicationOrchestrator.ReplicateDatabaseAsync(dispatch.DatabaseName, dispatch.Credential, $"local-dispatch:{dispatch.Reason}", cancellationToken).ConfigureAwait(false);
+            dispatchStopwatch.Stop();
+
+            _logger.LogDebug("Replication dispatch applied. Database={Database} Attempt={Attempt} DurationMs={DurationMs}", dispatch.DatabaseName, dispatch.Attempt, dispatchStopwatch.Elapsed.TotalMilliseconds);
+
+            await BroadcastSignalToPeersAsync(dispatch, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            dispatchStopwatch.Stop();
+
+            var nextAttempt = dispatch.Attempt + 1;
+            var retryDelay = ComputeRetryDelay(nextAttempt);
+            var retryDueUtc = DateTime.UtcNow.Add(retryDelay);
+            var retryDispatch = dispatch with { Attempt = nextAttempt, DueUtc = retryDueUtc, UpdatedUtc = DateTime.UtcNow };
+
+            _scheduledDispatches.AddOrUpdate(
+                dispatch.DatabaseName,
+                _ => retryDispatch,
+                (_, existing) => MergeRetry(existing, retryDispatch));
+
+            _logger.LogWarning(ex, "Replication dispatch failed; retry scheduled. Database={Database} Attempt={Attempt} RetryInMs={RetryInMs} DurationMs={DurationMs}", dispatch.DatabaseName, nextAttempt, retryDelay.TotalMilliseconds, dispatchStopwatch.Elapsed.TotalMilliseconds);
+        }
+    }
+
+    private async Task BroadcastSignalToPeersAsync(ScheduledDispatch dispatch, CancellationToken cancellationToken)
+    {
+        using var scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+        {
+            DatabaseName = dispatch.DatabaseName,
+            Credential = dispatch.Credential
+        });
+
+        var peers = await _clusterPeerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
+        var targets = peers.Where(x => x.IsActive && !string.Equals(x.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal)).ToList();
+
+        if (targets.Count == 0)
+        {
+            _logger.LogDebug("Replication websocket broadcast skipped because there are no active peers. Database={Database}", dispatch.DatabaseName);
+            return;
+        }
+
+        var message = new ReplicationSignalMessage
+        {
+            Type = "sync-request",
+            SourceNodeId = _nodeOptions.NodeId,
+            Database = dispatch.DatabaseName,
+            Credential = dispatch.Credential,
+            Reason = dispatch.Reason,
+            TimestampUtc = DateTime.UtcNow
+        };
+
+        var payload = JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions);
+        var acknowledged = 0;
+
+        foreach (var peer in targets)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await SendSignalToPeerAsync(peer, dispatch.DatabaseName, payload, cancellationToken).ConfigureAwait(false))
+            {
+                acknowledged++;
+            }
+        }
+
+        _logger.LogDebug("Replication websocket broadcast completed. Database={Database} Peers={Peers} Acked={Acked}", dispatch.DatabaseName, targets.Count, acknowledged);
+    }
+
+    private async Task<bool> SendSignalToPeerAsync(ClusterPeer peer, string databaseName, byte[] payload, CancellationToken cancellationToken)
+    {
+        var endpoint = BuildWebSocketEndpoint(peer.BaseUrl);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            using var webSocket = new ClientWebSocket();
+            webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+
+            using var ackTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            ackTimeout.CancelAfter(WebSocketAckTimeout);
+
+            await webSocket.ConnectAsync(endpoint, ackTimeout.Token).ConfigureAwait(false);
+            await webSocket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, ackTimeout.Token).ConfigureAwait(false);
+
+            var ackPayload = await ReceiveTextMessageAsync(webSocket, ackTimeout.Token).ConfigureAwait(false);
+            if (ackPayload is null)
+            {
+                stopwatch.Stop();
+                _logger.LogWarning("Replication websocket signal was not acknowledged. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, databaseName, stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            var ack = JsonSerializer.Deserialize<ReplicationSignalAck>(ackPayload, JsonOptions);
+            if (ack is null || !ack.Accepted)
+            {
+                stopwatch.Stop();
+                _logger.LogWarning("Replication websocket signal was rejected by peer. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Database={Database} Error={Error} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, databaseName, ack?.Error, stopwatch.Elapsed.TotalMilliseconds);
+                return false;
+            }
+
+            if (webSocket.State == WebSocketState.Open || webSocket.State == WebSocketState.CloseReceived)
+            {
+                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "acknowledged", cancellationToken).ConfigureAwait(false);
+            }
+
+            stopwatch.Stop();
+            _logger.LogDebug("Replication signal sent. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, databaseName, stopwatch.Elapsed.TotalMilliseconds);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            stopwatch.Stop();
+            _logger.LogWarning(ex, "Replication signal send failed. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Database={Database} Endpoint={Endpoint} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, databaseName, endpoint, stopwatch.Elapsed.TotalMilliseconds);
+            return false;
+        }
+    }
+
+    private static Uri BuildWebSocketEndpoint(string baseUrl)
+    {
+        var baseUri = new Uri(baseUrl, UriKind.Absolute);
+        var scheme = string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
+
+        return new UriBuilder(baseUri)
+        {
+            Scheme = scheme,
+            Path = "/ws/replication",
+            Query = string.Empty
+        }.Uri;
+    }
+
+    private bool IsValidSyncRequest(ReplicationSignalMessage? message)
+    {
+        return message is not null
+               && string.Equals(message.Type, "sync-request", StringComparison.OrdinalIgnoreCase)
+               && !string.IsNullOrWhiteSpace(message.SourceNodeId)
+               && !string.IsNullOrWhiteSpace(message.Database)
+               && !string.IsNullOrWhiteSpace(message.Credential)
+               && !string.Equals(message.SourceNodeId, _nodeOptions.NodeId, StringComparison.Ordinal);
+    }
+
+    private static async Task<string?> ReceiveTextMessageAsync(WebSocket webSocket, CancellationToken cancellationToken)
+    {
+        var rented = ArrayPool<byte>.Shared.Rent(8 * 1024);
+
+        try
+        {
+            using var stream = new MemoryStream();
+
+            while (true)
+            {
+                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(rented), cancellationToken).ConfigureAwait(false);
+
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    if (webSocket.State == WebSocketState.CloseReceived)
+                    {
+                        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closing", cancellationToken).ConfigureAwait(false);
+                    }
+
+                    return null;
+                }
+
+                if (result.MessageType != WebSocketMessageType.Text)
+                {
+                    continue;
+                }
+
+                stream.Write(rented, 0, result.Count);
+
+                if (result.EndOfMessage)
+                {
+                    break;
+                }
+            }
+
+            return Encoding.UTF8.GetString(stream.ToArray());
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    private static async Task TrySendAckAsync(WebSocket webSocket, bool accepted, string? error, CancellationToken cancellationToken)
+    {
+        if (webSocket.State != WebSocketState.Open)
+        {
+            return;
+        }
+
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new ReplicationSignalAck { Accepted = accepted, Error = error }, JsonOptions);
+
+        try
+        {
+            await webSocket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Intentionally ignored: peer may close immediately after sending signal.
+        }
+    }
+
+    private static TimeSpan ComputeRetryDelay(int attempt)
+    {
+        var boundedAttempt = Math.Clamp(attempt, 1, 10);
+        var exponent = Math.Pow(2, boundedAttempt - 1);
+        var delayMs = Math.Min(RetryBaseDelay.TotalMilliseconds * exponent, RetryMaxDelay.TotalMilliseconds);
+        var jitterMs = Random.Shared.Next(0, 250);
+        return TimeSpan.FromMilliseconds(delayMs + jitterMs);
+    }
+
+    private static ScheduledDispatch MergeRetry(ScheduledDispatch existing, ScheduledDispatch retry)
+    {
+        if (existing.Attempt == 0 && existing.DueUtc <= DateTime.UtcNow)
+        {
+            return existing;
+        }
+
+        var dueUtc = existing.DueUtc <= retry.DueUtc ? existing.DueUtc : retry.DueUtc;
+        var attempt = existing.Attempt == 0 ? 0 : Math.Max(existing.Attempt, retry.Attempt);
+        var credential = string.IsNullOrWhiteSpace(existing.Credential) ? retry.Credential : existing.Credential;
+        var reason = string.IsNullOrWhiteSpace(existing.Reason) ? retry.Reason : existing.Reason;
+
+        return existing with { Credential = credential, Reason = reason, Attempt = attempt, DueUtc = dueUtc, UpdatedUtc = DateTime.UtcNow };
+    }
+
+    private sealed record ScheduledDispatch(string DatabaseName, string Credential, string Reason, int Attempt, DateTime DueUtc, DateTime UpdatedUtc);
+
+    private sealed record ReplicationSignalMessage
+    {
+        public string Type { get; init; } = string.Empty;
+        public string SourceNodeId { get; init; } = string.Empty;
+        public string Database { get; init; } = string.Empty;
+        public string Credential { get; init; } = string.Empty;
+        public string Reason { get; init; } = string.Empty;
+        public DateTime TimestampUtc { get; init; }
+    }
+
+    private sealed record ReplicationSignalAck
+    {
+        public bool Accepted { get; init; }
+        public string? Error { get; init; }
+    }
+}

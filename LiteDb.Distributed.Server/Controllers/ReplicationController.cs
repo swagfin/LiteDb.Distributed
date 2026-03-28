@@ -13,15 +13,13 @@ public sealed class ReplicationController : ControllerBase
     private readonly ClusterNodeOptions _nodeOptions;
     private readonly IOperationIngestionService _ingestionService;
     private readonly IOperationLogStore _operationLogStore;
-    private readonly IClusterReplicationService _clusterReplicationService;
     private readonly ILogger<ReplicationController> _logger;
 
-    public ReplicationController(ClusterNodeOptions nodeOptions, IOperationIngestionService ingestionService, IOperationLogStore operationLogStore, IClusterReplicationService clusterReplicationService, ILogger<ReplicationController> logger)
+    public ReplicationController(ClusterNodeOptions nodeOptions, IOperationIngestionService ingestionService, IOperationLogStore operationLogStore, ILogger<ReplicationController> logger)
     {
         _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
         _ingestionService = ingestionService ?? throw new ArgumentNullException(nameof(ingestionService));
         _operationLogStore = operationLogStore ?? throw new ArgumentNullException(nameof(operationLogStore));
-        _clusterReplicationService = clusterReplicationService ?? throw new ArgumentNullException(nameof(clusterReplicationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -92,19 +90,5 @@ public sealed class ReplicationController : ControllerBase
         {
             Operations = operations
         });
-    }
-
-    [HttpPost("trigger")]
-    public async Task<IActionResult> TriggerAsync(CancellationToken cancellationToken)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        _logger.LogInformation("Replication trigger requested. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
-
-        await _clusterReplicationService.ReplicateOnceAsync(cancellationToken).ConfigureAwait(false);
-        stopwatch.Stop();
-
-        _logger.LogInformation("Replication trigger completed. LocalNodeId={LocalNodeId} DurationMs={DurationMs}", _nodeOptions.NodeId, stopwatch.Elapsed.TotalMilliseconds);
-
-        return Accepted();
     }
 }

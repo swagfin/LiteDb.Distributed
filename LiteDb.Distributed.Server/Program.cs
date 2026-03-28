@@ -20,7 +20,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 var nodeOptions = new ClusterNodeOptions
 {
     NodeId = builder.Configuration["Node:NodeId"] ?? "node-1",
-    ReplicationIntervalMilliseconds = builder.Configuration.GetValue<int?>("Node:ReplicationIntervalMilliseconds") ?? 100,
     ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 1000,
     CriticalCollections = builder.Configuration.GetSection("Node:CriticalCollections").Get<string[]>() ?? Array.Empty<string>(),
     SeedPeers = builder.Configuration.GetSection("Node:SeedPeers").Get<ClusterPeer[]>() ?? Array.Empty<ClusterPeer>()
@@ -30,6 +29,11 @@ builder.Services.AddLiteDbDistributedNode(nodeOptions);
 
 var app = builder.Build();
 var logger = app.Logger;
+
+app.UseWebSockets(new WebSocketOptions
+{
+    KeepAliveInterval = TimeSpan.FromSeconds(30)
+});
 
 app.UseDefaultFiles();
 app.UseStaticFiles();

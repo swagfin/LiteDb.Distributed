@@ -44,8 +44,7 @@ public sealed class LogicalDatabaseCatalogTests
             {
                 NodeId = "node-test",
                 DataDirectory = _rootPath,
-                ReplicationBatchSize = 100,
-                ReplicationIntervalMilliseconds = 100
+                ReplicationBatchSize = 100
             });
         }
 

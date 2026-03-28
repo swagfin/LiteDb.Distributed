@@ -1,5 +1,6 @@
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
+using LiteDb.Distributed.Infrastructure.Replication;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using System.Text.Json;
@@ -12,12 +13,14 @@ public sealed class DocumentsController : ControllerBase
 {
     private readonly ILocalDocumentWriter _writer;
     private readonly ILocalDocumentReader _reader;
+    private readonly IReplicationSignalPublisher _replicationSignalPublisher;
     private readonly ILogger<DocumentsController> _logger;
 
-    public DocumentsController(ILocalDocumentWriter writer, ILocalDocumentReader reader, ILogger<DocumentsController> logger)
+    public DocumentsController(ILocalDocumentWriter writer, ILocalDocumentReader reader, IReplicationSignalPublisher replicationSignalPublisher, ILogger<DocumentsController> logger)
     {
         _writer = writer ?? throw new ArgumentNullException(nameof(writer));
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
+        _replicationSignalPublisher = replicationSignalPublisher ?? throw new ArgumentNullException(nameof(replicationSignalPublisher));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -66,6 +69,7 @@ public sealed class DocumentsController : ControllerBase
         try
         {
             var result = await _writer.UpsertAsync(documentName, entityId, payload, parentVersion, cancellationToken).ConfigureAwait(false);
+            _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
             stopwatch.Stop();
 
             _logger.LogInformation("Document post applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, entityId, result.Version, stopwatch.Elapsed.TotalMilliseconds);
@@ -95,6 +99,7 @@ public sealed class DocumentsController : ControllerBase
         try
         {
             var result = await _writer.UpsertAsync(documentName, id, payload, parentVersion, cancellationToken).ConfigureAwait(false);
+            _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
             stopwatch.Stop();
 
             _logger.LogInformation("Document put applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, id, result.Version, stopwatch.Elapsed.TotalMilliseconds);
@@ -126,6 +131,7 @@ public sealed class DocumentsController : ControllerBase
             var result = await _writer
                 .DeleteAsync(documentName, id, parentVersion, cancellationToken)
                 .ConfigureAwait(false);
+            _replicationSignalPublisher.NotifyLocalChange($"document-delete:{documentName}");
             stopwatch.Stop();
 
             _logger.LogInformation("Document delete applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, id, result.Version, stopwatch.Elapsed.TotalMilliseconds);

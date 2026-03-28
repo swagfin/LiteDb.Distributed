@@ -39,7 +39,7 @@ Document API:
 Replication/cluster API:
 - `POST /api/replication/push`
 - `POST /api/replication/pull`
-- `POST /api/replication/trigger`
+- `GET /ws/replication` (WebSocket signal endpoint for peer sync notifications)
 - `POST /api/cluster/peers`
 - `GET /api/cluster/peers`
 
@@ -112,5 +112,6 @@ Then register peers per logical database using `POST /api/cluster/peers` with `D
 ## Notes
 
 - This is not SQL and does not replicate raw LiteDB files.
+- Replication is event-driven: local writes schedule immediate source-node replication with retry/backoff, WebSocket peer signals are hints for faster convergence, and a fixed 1-minute safety sweep handles anti-entropy catch-up.
 - Conflict resolution is pluggable (default includes LWW with optional conflict recording for critical collections).
 - Credentials are catalog-based (MVP) and independent of LiteDB file encryption, so resetting a DB credential does not require re-encrypting data files.
