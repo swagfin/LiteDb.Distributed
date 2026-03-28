@@ -35,7 +35,7 @@ public sealed class OperationIngestionService : IOperationIngestionService
         var conflictCount = 0;
         var batchStopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Starting operation ingestion. LocalNodeId={LocalNodeId} IncomingOperationCount={IncomingOperationCount}", localNodeId, operations.Count);
+        _logger.LogDebug("Starting operation ingestion. LocalNodeId={LocalNodeId} IncomingOperationCount={IncomingOperationCount}", localNodeId, operations.Count);
 
         foreach (var operation in operations.OrderBy(x => x.LogSequence))
         {

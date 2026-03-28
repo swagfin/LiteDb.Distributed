@@ -31,7 +31,7 @@ public sealed class ReplicationController : ControllerBase
         var operationCount = request.Operations?.Count ?? 0;
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Replication push received. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationCount={OperationCount}", _nodeOptions.NodeId, request.SourceNodeId, operationCount);
+        _logger.LogDebug("Replication push received. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationCount={OperationCount}", _nodeOptions.NodeId, request.SourceNodeId, operationCount);
 
         if (request.Operations is null)
         {
@@ -86,7 +86,7 @@ public sealed class ReplicationController : ControllerBase
         var operations = await _operationLogStore.GetOperationsAfterLogSequenceAsync(request.AfterLogSequence, request.BatchSize, cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
-        _logger.LogInformation("Replication pull served. LocalNodeId={LocalNodeId} RequestingNodeId={RequestingNodeId} ReturnedCount={ReturnedCount} DurationMs={DurationMs}", _nodeOptions.NodeId, request.RequestingNodeId, operations.Count, stopwatch.Elapsed.TotalMilliseconds);
+        _logger.LogDebug("Replication pull served. LocalNodeId={LocalNodeId} RequestingNodeId={RequestingNodeId} ReturnedCount={ReturnedCount} DurationMs={DurationMs}", _nodeOptions.NodeId, request.RequestingNodeId, operations.Count, stopwatch.Elapsed.TotalMilliseconds);
 
         return Ok(new ReplicationPullResponse
         {
