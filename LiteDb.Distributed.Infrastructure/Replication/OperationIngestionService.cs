@@ -27,13 +27,13 @@ public sealed class OperationIngestionService : IOperationIngestionService
     }
 
     public async Task<OperationIngestionResult> IngestAsync(
-        string sourceNodeId,
+        string localNodeId,
         IReadOnlyList<OperationRecord> operations,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(sourceNodeId))
+        if (string.IsNullOrWhiteSpace(localNodeId))
         {
-            throw new ArgumentException("Source node id is required.", nameof(sourceNodeId));
+            throw new ArgumentException("Local node id is required.", nameof(localNodeId));
         }
 
         ArgumentNullException.ThrowIfNull(operations);
@@ -53,7 +53,7 @@ public sealed class OperationIngestionService : IOperationIngestionService
                 .ResolveAsync(
                     new ConflictResolutionContext
                     {
-                        LocalNodeId = sourceNodeId,
+                        LocalNodeId = localNodeId,
                         IncomingOperation = operation,
                         LocalDocumentState = localState
                     },
@@ -82,7 +82,7 @@ public sealed class OperationIngestionService : IOperationIngestionService
                         new ConflictRecord
                         {
                             Id = Guid.NewGuid().ToString("N"),
-                            NodeId = sourceNodeId,
+                            NodeId = localNodeId,
                             Collection = operation.Collection,
                             EntityId = operation.EntityId,
                             IncomingOperationId = operation.Id,

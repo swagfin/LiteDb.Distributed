@@ -178,7 +178,10 @@ public sealed class ClusterReplicationTests
             Store = new LiteDbNodeStore(new LiteDbNodeStoreOptions
             {
                 NodeId = nodeId,
-                DatabasePath = Path.Combine(rootPath, $"{nodeId}.db")
+                DatabaseName = "testdb",
+                DatabasePassword = "test-password",
+                BusinessDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db"),
+                MetadataDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db.metadata")
             });
 
             IConflictResolver conflictResolver = new CriticalCollectionConflictResolver(

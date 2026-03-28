@@ -1,7 +1,14 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
 var serverUrl = Environment.GetEnvironmentVariable("DLITEDB_SERVER_URL") ?? "http://localhost:1446";
+var databaseName = (Environment.GetEnvironmentVariable("DLITEDB_DATABASE") ?? "testapp").Trim();
+var apiKey = (Environment.GetEnvironmentVariable("DLITEDB_API_KEY") ?? "sample-local-key").Trim();
+
 using var httpClient = new HttpClient { BaseAddress = new Uri(serverUrl) };
+httpClient.DefaultRequestHeaders.Add("Database", databaseName);
+httpClient.DefaultRequestHeaders.Add("ApiKey", apiKey);
+httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
 var now = DateTime.UtcNow;
 
@@ -41,21 +48,22 @@ var records = new List<(string Collection, string Id, object Body)>
 };
 
 Console.WriteLine($"Server: {serverUrl}");
+Console.WriteLine($"Database: {databaseName.ToLowerInvariant()}");
 
 foreach (var record in records)
 {
-    var endpoint = $"/api/documents/{record.Collection}/{record.Id}";
+    var endpoint = $"/api/{record.Collection}/{record.Id}";
     using var response = await httpClient.PutAsJsonAsync(endpoint, record.Body).ConfigureAwait(false);
     response.EnsureSuccessStatusCode();
     Console.WriteLine($"Saved {record.Collection}/{record.Id}");
 }
 
 var customers = await httpClient
-    .GetFromJsonAsync<List<Dictionary<string, object>>>("/api/documents/Customers?skip=0&take=50")
+    .GetFromJsonAsync<List<Dictionary<string, object>>>("/api/Customers?skip=0&take=50")
     .ConfigureAwait(false);
 
 var items = await httpClient
-    .GetFromJsonAsync<List<Dictionary<string, object>>>("/api/documents/Items?skip=0&take=50")
+    .GetFromJsonAsync<List<Dictionary<string, object>>>("/api/Items?skip=0&take=50")
     .ConfigureAwait(false);
 
 Console.WriteLine($"Customers visible on node: {customers?.Count ?? 0}");

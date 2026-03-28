@@ -4,6 +4,8 @@ using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure;
 using LiteDb.Distributed.Infrastructure.Configuration;
+using LiteDb.Distributed.Infrastructure.Context;
+using LiteDb.Distributed.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:1446");
@@ -16,6 +18,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 var nodeOptions = new ClusterNodeOptions
 {
     NodeId = builder.Configuration["Node:NodeId"] ?? "node-1",
+    DataDirectory = builder.Configuration["Node:DataDirectory"] ?? "Data",
     ReplicationIntervalSeconds = builder.Configuration.GetValue<int?>("Node:ReplicationIntervalSeconds") ?? 5,
     ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 200,
     CriticalCollections = builder.Configuration.GetSection("Node:CriticalCollections").Get<string[]>() ?? Array.Empty<string>(),
@@ -26,22 +29,115 @@ builder.Services.AddLiteDbDistributedNode(nodeOptions);
 
 var app = builder.Build();
 
+app.Use(async (httpContext, next) =>
+{
+    if (!httpContext.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+    {
+        await next().ConfigureAwait(false);
+        return;
+    }
+
+    var contextResolver = httpContext.RequestServices.GetRequiredService<IDatabaseRequestContextResolver>();
+    var contextAccessor = httpContext.RequestServices.GetRequiredService<IDatabaseContextAccessor>();
+
+    try
+    {
+        var databaseContext = await contextResolver
+            .ResolveAsync(httpContext.Request.Headers, httpContext.RequestAborted)
+            .ConfigureAwait(false);
+
+        using var scope = contextAccessor.BeginScope(databaseContext);
+        await next().ConfigureAwait(false);
+    }
+    catch (DatabaseAuthenticationException ex)
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await httpContext.Response.WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
+    }
+    catch (ArgumentException ex)
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await httpContext.Response.WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
+    }
+});
+
 app.MapGet("/", async (
-    IClusterPeerRegistry peerRegistry,
+    ILogicalDatabaseCatalog databaseCatalog,
     CancellationToken cancellationToken) =>
 {
-    var peers = await peerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
+    var databases = await databaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
 
     return Results.Ok(new
     {
         NodeId = nodeOptions.NodeId,
         TimestampUtc = DateTime.UtcNow,
-        PeerCount = peers.Count
+        LogicalDatabaseCount = databases.Count
     });
 });
 
-app.MapPut("/api/documents/{collection}/{id}", async (
-    string collection,
+app.MapGet("/api/{documentName}", async (
+    string documentName,
+    int skip,
+    int take,
+    ILocalDocumentReader reader,
+    CancellationToken cancellationToken) =>
+{
+    var safeTake = take <= 0 ? 100 : take;
+
+    var documents = await reader
+        .ListAsync<Dictionary<string, object?>>(documentName, skip, safeTake, cancellationToken)
+        .ConfigureAwait(false);
+
+    return Results.Ok(documents);
+});
+
+app.MapGet("/api/{documentName}/{id}", async (
+    string documentName,
+    string id,
+    ILocalDocumentReader reader,
+    CancellationToken cancellationToken) =>
+{
+    var document = await reader
+        .GetByIdAsync<Dictionary<string, object?>>(documentName, id, cancellationToken)
+        .ConfigureAwait(false);
+
+    return document is null
+        ? Results.NotFound()
+        : Results.Ok(document);
+});
+
+app.MapPost("/api/{documentName}", async (
+    string documentName,
+    JsonElement payload,
+    string? parentVersion,
+    ILocalDocumentWriter writer,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryExtractEntityId(payload, out var entityId))
+    {
+        return Results.BadRequest(new { Error = "POST body must include an 'Id' string field." });
+    }
+
+    try
+    {
+        var result = await writer
+            .UpsertAsync(documentName, entityId, payload, parentVersion, cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Ok(result);
+    }
+    catch (VersionMismatchException ex)
+    {
+        return Results.Conflict(new { Error = ex.Message });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { Error = ex.Message });
+    }
+});
+
+app.MapPut("/api/{documentName}/{id}", async (
+    string documentName,
     string id,
     JsonElement payload,
     string? parentVersion,
@@ -51,7 +147,7 @@ app.MapPut("/api/documents/{collection}/{id}", async (
     try
     {
         var result = await writer
-            .UpsertAsync(collection, id, payload, parentVersion, cancellationToken)
+            .UpsertAsync(documentName, id, payload, parentVersion, cancellationToken)
             .ConfigureAwait(false);
 
         return Results.Ok(result);
@@ -66,8 +162,8 @@ app.MapPut("/api/documents/{collection}/{id}", async (
     }
 });
 
-app.MapDelete("/api/documents/{collection}/{id}", async (
-    string collection,
+app.MapDelete("/api/{documentName}/{id}", async (
+    string documentName,
     string id,
     string? parentVersion,
     ILocalDocumentWriter writer,
@@ -76,7 +172,7 @@ app.MapDelete("/api/documents/{collection}/{id}", async (
     try
     {
         var result = await writer
-            .DeleteAsync(collection, id, parentVersion, cancellationToken)
+            .DeleteAsync(documentName, id, parentVersion, cancellationToken)
             .ConfigureAwait(false);
 
         return Results.Ok(result);
@@ -89,36 +185,6 @@ app.MapDelete("/api/documents/{collection}/{id}", async (
     {
         return Results.BadRequest(new { Error = ex.Message });
     }
-});
-
-app.MapGet("/api/documents/{collection}/{id}", async (
-    string collection,
-    string id,
-    ILocalDocumentReader reader,
-    CancellationToken cancellationToken) =>
-{
-    var document = await reader
-        .GetByIdAsync<Dictionary<string, object?>>(collection, id, cancellationToken)
-        .ConfigureAwait(false);
-
-    return document is null
-        ? Results.NotFound()
-        : Results.Ok(document);
-});
-
-app.MapGet("/api/documents/{collection}", async (
-    string collection,
-    int skip,
-    int take,
-    ILocalDocumentReader reader,
-    CancellationToken cancellationToken) =>
-{
-    var safeTake = take <= 0 ? 100 : take;
-    var documents = await reader
-        .ListAsync<Dictionary<string, object?>>(collection, skip, safeTake, cancellationToken)
-        .ConfigureAwait(false);
-
-    return Results.Ok(documents);
 });
 
 app.MapPost("/api/replication/push", async (
@@ -175,6 +241,7 @@ app.MapPost("/api/cluster/peers", async (
 
     await peerRegistry.UpsertPeerAsync(peer with { UpdatedUtc = DateTime.UtcNow }, cancellationToken)
         .ConfigureAwait(false);
+
     return Results.Ok();
 });
 
@@ -196,3 +263,43 @@ app.MapPost("/api/replication/trigger", async (
 
 app.Run();
 
+static bool TryExtractEntityId(JsonElement payload, out string entityId)
+{
+    entityId = string.Empty;
+
+    if (payload.ValueKind != JsonValueKind.Object)
+    {
+        return false;
+    }
+
+    if (TryReadPropertyAsString(payload, "Id", out entityId))
+    {
+        return true;
+    }
+
+    if (TryReadPropertyAsString(payload, "id", out entityId))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+static bool TryReadPropertyAsString(JsonElement payload, string propertyName, out string value)
+{
+    value = string.Empty;
+
+    if (!payload.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
+    {
+        return false;
+    }
+
+    var candidate = property.GetString();
+    if (string.IsNullOrWhiteSpace(candidate))
+    {
+        return false;
+    }
+
+    value = candidate;
+    return true;
+}

@@ -1,4 +1,5 @@
 using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Conflict;
 using LiteDb.Distributed.Infrastructure.Replication;
@@ -18,23 +19,20 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton(options);
 
-        var databasePath = Path.Combine("Data", $"node.{options.NodeId}.db");
+        services.AddSingleton<IDatabaseContextAccessor, DatabaseContextAccessor>();
+        services.AddSingleton<ILogicalDatabaseCatalog, FileLogicalDatabaseCatalog>();
+        services.AddSingleton<IDatabaseRequestContextResolver, DatabaseRequestContextResolver>();
+        services.AddSingleton<ILogicalDatabaseStoreProvider, LogicalDatabaseStoreProvider>();
 
-        services.AddSingleton(sp => new LiteDbNodeStore(new LiteDbNodeStoreOptions
-        {
-            NodeId = options.NodeId,
-            DatabasePath = databasePath,
-            SeedPeers = options.SeedPeers
-        }));
-
-        services.AddSingleton<ILocalDocumentWriter>(sp => sp.GetRequiredService<LiteDbNodeStore>());
-        services.AddSingleton<ILocalDocumentReader>(sp => sp.GetRequiredService<LiteDbNodeStore>());
-        services.AddSingleton<IDocumentStateReader>(sp => sp.GetRequiredService<LiteDbNodeStore>());
-        services.AddSingleton<IOperationLogStore>(sp => sp.GetRequiredService<LiteDbNodeStore>());
-        services.AddSingleton<IRemoteOperationApplier>(sp => sp.GetRequiredService<LiteDbNodeStore>());
-        services.AddSingleton<IConflictStore>(sp => sp.GetRequiredService<LiteDbNodeStore>());
-        services.AddSingleton<IPeerCheckpointStore>(sp => sp.GetRequiredService<LiteDbNodeStore>());
-        services.AddSingleton<IClusterPeerRegistry>(sp => sp.GetRequiredService<LiteDbNodeStore>());
+        services.AddSingleton<DatabaseScopedNodeStoreAdapter>();
+        services.AddSingleton<ILocalDocumentWriter>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
+        services.AddSingleton<ILocalDocumentReader>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
+        services.AddSingleton<IDocumentStateReader>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
+        services.AddSingleton<IOperationLogStore>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
+        services.AddSingleton<IRemoteOperationApplier>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
+        services.AddSingleton<IConflictStore>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
+        services.AddSingleton<IPeerCheckpointStore>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
+        services.AddSingleton<IClusterPeerRegistry>(sp => sp.GetRequiredService<DatabaseScopedNodeStoreAdapter>());
 
         services.AddHttpClient<IPeerReplicationClient, HttpPeerReplicationClient>();
 

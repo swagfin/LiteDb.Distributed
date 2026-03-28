@@ -5,7 +5,7 @@ namespace LiteDb.Distributed.Core.Abstractions;
 public interface IOperationIngestionService
 {
     Task<OperationIngestionResult> IngestAsync(
-        string sourceNodeId,
+        string localNodeId,
         IReadOnlyList<OperationRecord> operations,
         CancellationToken cancellationToken = default);
 }

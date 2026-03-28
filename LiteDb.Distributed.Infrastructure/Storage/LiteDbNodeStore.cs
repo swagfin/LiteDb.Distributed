@@ -33,7 +33,8 @@ public sealed class LiteDbNodeStore :
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly LiteDatabase _database;
+    private readonly LiteDatabase _businessDatabase;
+    private readonly LiteDatabase _metadataDatabase;
     private readonly string _nodeId;
     private readonly object _gate = new();
 
@@ -46,21 +47,36 @@ public sealed class LiteDbNodeStore :
             throw new ArgumentException("NodeId is required.", nameof(options));
         }
 
-        if (string.IsNullOrWhiteSpace(options.DatabasePath))
+        if (string.IsNullOrWhiteSpace(options.DatabaseName))
         {
-            throw new ArgumentException("DatabasePath is required.", nameof(options));
+            throw new ArgumentException("DatabaseName is required.", nameof(options));
+        }
+
+        if (string.IsNullOrWhiteSpace(options.BusinessDatabasePath))
+        {
+            throw new ArgumentException("BusinessDatabasePath is required.", nameof(options));
+        }
+
+        if (string.IsNullOrWhiteSpace(options.MetadataDatabasePath))
+        {
+            throw new ArgumentException("MetadataDatabasePath is required.", nameof(options));
+        }
+
+        if (string.IsNullOrWhiteSpace(options.DatabasePassword))
+        {
+            throw new ArgumentException("DatabasePassword is required.", nameof(options));
         }
 
         _nodeId = options.NodeId.Trim();
-        var fullPath = Path.GetFullPath(options.DatabasePath);
-        var directory = Path.GetDirectoryName(fullPath);
+        var businessFullPath = Path.GetFullPath(options.BusinessDatabasePath);
+        var metadataFullPath = Path.GetFullPath(options.MetadataDatabasePath);
 
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        EnsureParentDirectory(businessFullPath);
+        EnsureParentDirectory(metadataFullPath);
 
-        _database = new LiteDatabase(fullPath);
+        _businessDatabase = OpenEncryptedDatabase(businessFullPath, options.DatabasePassword);
+        _metadataDatabase = OpenEncryptedDatabase(metadataFullPath, options.DatabasePassword);
+
         EnsureSystemIndexes();
         SeedPeers(options.SeedPeers);
     }
@@ -92,7 +108,7 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            _database.BeginTrans();
+            BeginCombinedTransaction();
 
             try
             {
@@ -136,7 +152,7 @@ public sealed class LiteDbNodeStore :
                 };
 
                 InsertOperationInternal(operation);
-                _database.Commit();
+                CommitCombinedTransaction();
 
                 return Task.FromResult(new WriteResult
                 {
@@ -150,7 +166,7 @@ public sealed class LiteDbNodeStore :
             }
             catch
             {
-                _database.Rollback();
+                RollbackCombinedTransaction();
                 throw;
             }
         }
@@ -175,7 +191,7 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            _database.BeginTrans();
+            BeginCombinedTransaction();
 
             try
             {
@@ -220,7 +236,7 @@ public sealed class LiteDbNodeStore :
                 };
 
                 InsertOperationInternal(operation);
-                _database.Commit();
+                CommitCombinedTransaction();
 
                 return Task.FromResult(new WriteResult
                 {
@@ -234,7 +250,7 @@ public sealed class LiteDbNodeStore :
             }
             catch
             {
-                _database.Rollback();
+                RollbackCombinedTransaction();
                 throw;
             }
         }
@@ -360,7 +376,7 @@ public sealed class LiteDbNodeStore :
                 return Task.CompletedTask;
             }
 
-            _database.BeginTrans();
+            BeginCombinedTransaction();
 
             try
             {
@@ -369,12 +385,12 @@ public sealed class LiteDbNodeStore :
                     : ReserveNextLocalSequence(DateTime.UtcNow);
 
                 InsertOperationInternal(operation with { LogSequence = logSequence });
-                _database.Commit();
+                CommitCombinedTransaction();
                 return Task.CompletedTask;
             }
             catch
             {
-                _database.Rollback();
+                RollbackCombinedTransaction();
                 throw;
             }
         }
@@ -610,7 +626,7 @@ public sealed class LiteDbNodeStore :
                 return Task.FromResult(false);
             }
 
-            _database.BeginTrans();
+            BeginCombinedTransaction();
 
             try
             {
@@ -656,13 +672,13 @@ public sealed class LiteDbNodeStore :
                     LogSequence = localLogSequence,
                     IsSynced = true
                 });
-                _database.Commit();
+                CommitCombinedTransaction();
 
                 return Task.FromResult(true);
             }
             catch
             {
-                _database.Rollback();
+                RollbackCombinedTransaction();
                 throw;
             }
         }
@@ -670,7 +686,59 @@ public sealed class LiteDbNodeStore :
 
     public void Dispose()
     {
-        _database.Dispose();
+        _businessDatabase.Dispose();
+        _metadataDatabase.Dispose();
+    }
+
+    private static void EnsureParentDirectory(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+    }
+
+    private static LiteDatabase OpenEncryptedDatabase(string fullPath, string password)
+    {
+        var connectionString = new ConnectionString
+        {
+            Filename = fullPath,
+            Password = password
+        };
+
+        return new LiteDatabase(connectionString);
+    }
+
+    private void BeginCombinedTransaction()
+    {
+        _metadataDatabase.BeginTrans();
+        _businessDatabase.BeginTrans();
+    }
+
+    private void CommitCombinedTransaction()
+    {
+        // TODO: Harden with compensation/recovery for crash windows between metadata and business commits.
+        _metadataDatabase.Commit();
+        _businessDatabase.Commit();
+    }
+
+    private void RollbackCombinedTransaction()
+    {
+        TryRollback(_businessDatabase);
+        TryRollback(_metadataDatabase);
+    }
+
+    private static void TryRollback(LiteDatabase database)
+    {
+        try
+        {
+            database.Rollback();
+        }
+        catch
+        {
+            // Best effort rollback.
+        }
     }
 
     private void EnsureSystemIndexes()
@@ -689,32 +757,32 @@ public sealed class LiteDbNodeStore :
 
     private ILiteCollection<BsonDocument> BusinessCollection(string collectionName)
     {
-        return _database.GetCollection<BsonDocument>(collectionName);
+        return _businessDatabase.GetCollection<BsonDocument>(collectionName);
     }
 
     private ILiteCollection<OperationEntity> OperationsCollection()
     {
-        return _database.GetCollection<OperationEntity>(SystemCollections.Operations);
+        return _metadataDatabase.GetCollection<OperationEntity>(SystemCollections.Operations);
     }
 
     private ILiteCollection<NodeMetadataEntity> NodeMetadataCollection()
     {
-        return _database.GetCollection<NodeMetadataEntity>(SystemCollections.NodeMetadata);
+        return _metadataDatabase.GetCollection<NodeMetadataEntity>(SystemCollections.NodeMetadata);
     }
 
     private ILiteCollection<ConflictEntity> ConflictsCollection()
     {
-        return _database.GetCollection<ConflictEntity>(SystemCollections.Conflicts);
+        return _metadataDatabase.GetCollection<ConflictEntity>(SystemCollections.Conflicts);
     }
 
     private ILiteCollection<PeerCheckpointEntity> PeerCheckpointsCollection()
     {
-        return _database.GetCollection<PeerCheckpointEntity>(PeerCheckpointsCollectionName);
+        return _metadataDatabase.GetCollection<PeerCheckpointEntity>(PeerCheckpointsCollectionName);
     }
 
     private ILiteCollection<ClusterPeerEntity> ClusterPeersCollection()
     {
-        return _database.GetCollection<ClusterPeerEntity>(ClusterPeersCollectionName);
+        return _metadataDatabase.GetCollection<ClusterPeerEntity>(ClusterPeersCollectionName);
     }
 
     private long ReserveNextLocalSequence(DateTime writeUtc)
