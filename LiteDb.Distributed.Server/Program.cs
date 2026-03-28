@@ -30,6 +30,9 @@ builder.Services.AddLiteDbDistributedNode(nodeOptions);
 
 var app = builder.Build();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.Use(async (httpContext, next) =>
 {
     if (!httpContext.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))

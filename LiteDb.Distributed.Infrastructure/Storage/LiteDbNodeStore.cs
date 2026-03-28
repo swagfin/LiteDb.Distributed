@@ -687,6 +687,38 @@ public sealed class LiteDbNodeStore :
         }
     }
 
+    public Task<IReadOnlyList<string>> GetBusinessCollectionNamesAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_gate)
+        {
+            var names = _businessDatabase
+                .GetCollectionNames()
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<string>>(names);
+        }
+    }
+
+    public Task<IReadOnlyList<string>> GetMetadataCollectionNamesAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_gate)
+        {
+            var names = _metadataDatabase
+                .GetCollectionNames()
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<string>>(names);
+        }
+    }
+
     public void Dispose()
     {
         _businessDatabase.Dispose();

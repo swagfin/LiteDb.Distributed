@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LiteDb.Distributed Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4f6f4;
+      --panel: #ffffff;
+      --ink: #1f2a22;
+      --muted: #5b655f;
+      --accent: #0f6c5f;
+      --ok: #1f8f4f;
+      --bad: #ba3521;
+      --line: #d6ddd8;
+      --chip: #ecf2ee;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Trebuchet MS", "Verdana", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 0%, #deefe8 0%, transparent 40%),
+        radial-gradient(circle at 100% 0%, #e8ecef 0%, transparent 35%),
+        var(--bg);
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    .top {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      letter-spacing: 0.3px;
+      font-size: clamp(1.2rem, 2vw, 1.8rem);
+    }
+
+    .hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .btn {
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 8px 16px rgba(13, 35, 22, 0.05);
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+
+    .section {
+      margin-top: 16px;
+    }
+
+    .section > h2 {
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f8faf9;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--bad);
+      display: inline-block;
+    }
+
+    .dot.ok { background: var(--ok); }
+    .dot.warn { background: #cc8a00; }
+
+    .kv {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      word-break: break-word;
+    }
+
+    .chip-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .chip {
+      background: var(--chip);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 0.8rem;
+      color: #35443c;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      font-size: 0.9rem;
+      margin: 6px 0 0;
+    }
+
+    .small {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .error {
+      color: var(--bad);
+      font-size: 0.9rem;
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>LiteDb.Distributed Server Dashboard</h1>
+        <p class="hint" id="summary">Loading status...</p>
+      </div>
+      <button id="refreshBtn" class="btn" type="button">Refresh Now</button>
+    </div>
+
+    <div class="card">
+      <div class="small" id="metaLine">No data yet.</div>
+      <div class="small" id="pathsLine"></div>
+      <div class="error" id="errorLine" hidden></div>
+    </div>
+
+    <section class="section">
+      <h2>Connected Nodes</h2>
+      <div id="nodesGrid" class="grid"></div>
+    </section>
+
+    <section class="section">
+      <h2>Databases</h2>
+      <div id="databasesGrid" class="grid"></div>
+    </section>
+  </div>
+
+  <script>
+    const nodesGrid = document.getElementById("nodesGrid");
+    const databasesGrid = document.getElementById("databasesGrid");
+    const summary = document.getElementById("summary");
+    const metaLine = document.getElementById("metaLine");
+    const pathsLine = document.getElementById("pathsLine");
+    const errorLine = document.getElementById("errorLine");
+    const refreshBtn = document.getElementById("refreshBtn");
+
+    async function refreshDashboard() {
+      refreshBtn.disabled = true;
+      errorLine.hidden = true;
+      errorLine.textContent = "";
+
+      try {
+        const response = await fetch("/dashboard/api/overview", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        renderDashboard(data);
+      } catch (error) {
+        errorLine.hidden = false;
+        errorLine.textContent = `Failed to load dashboard data: ${error.message}`;
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    }
+
+    function renderDashboard(data) {
+      const ts = toUtcText(data.TimestampUtc);
+      summary.textContent = `Node ${data.NodeId} · ${data.Nodes.length} nodes tracked · ${data.Databases.length} logical DBs`;
+      metaLine.textContent = `Last updated: ${ts}`;
+      pathsLine.textContent = `Data root: ${data.DataRootPath} · Node path: ${data.NodeDataPath}`;
+
+      renderNodes(data.Nodes || []);
+      renderDatabases(data.Databases || []);
+    }
+
+    function renderNodes(nodes) {
+      nodesGrid.innerHTML = "";
+
+      if (nodes.length === 0) {
+        nodesGrid.innerHTML = `<div class="card"><p class="empty">No nodes discovered yet.</p></div>`;
+        return;
+      }
+
+      for (const node of nodes) {
+        const dotClass = node.IsOnline ? "dot ok" : "dot";
+        const statusLabel = node.IsOnline ? "Online" : "Offline";
+        const checked = toUtcText(node.LastCheckedUtc);
+        const error = node.Error ? `<div class="error">${escapeHtml(node.Error)}</div>` : "";
+
+        const html = `
+          <div class="card">
+            <div class="status"><span class="${dotClass}"></span>${statusLabel}</div>
+            <div><strong>${escapeHtml(node.NodeId)}</strong></div>
+            <div class="kv">URL: ${escapeHtml(node.BaseUrl || "(not set)")}</div>
+            <div class="kv">Checked: ${escapeHtml(checked)}</div>
+            ${error}
+          </div>`;
+
+        nodesGrid.insertAdjacentHTML("beforeend", html);
+      }
+    }
+
+    function renderDatabases(databases) {
+      databasesGrid.innerHTML = "";
+
+      if (databases.length === 0) {
+        databasesGrid.innerHTML = `<div class="card"><p class="empty">No logical databases registered yet.</p></div>`;
+        return;
+      }
+
+      for (const db of databases) {
+        const isHealthy = db.Status === "Healthy";
+        const dotClass = isHealthy ? "dot ok" : "dot";
+        const status = escapeHtml(db.Status || "Unknown");
+        const error = db.Error ? `<div class="error">${escapeHtml(db.Error)}</div>` : "";
+
+        const businessCollections = renderChips(db.BusinessCollections, "No business tables yet.");
+        const metadataCollections = renderChips(db.MetadataCollections, "No metadata tables yet.");
+
+        const html = `
+          <div class="card">
+            <div class="status"><span class="${dotClass}"></span>${status}</div>
+            <div><strong>${escapeHtml(db.Name)}</strong></div>
+            <div class="kv">Peers: ${db.PeerCount}</div>
+            <div class="kv">Business file: ${formatFile(db.BusinessFile)}</div>
+            <div class="kv">Metadata file: ${formatFile(db.MetadataFile)}</div>
+            <div class="kv">Business tables:</div>
+            ${businessCollections}
+            <div class="kv">Metadata tables:</div>
+            ${metadataCollections}
+            ${error}
+          </div>`;
+
+        databasesGrid.insertAdjacentHTML("beforeend", html);
+      }
+    }
+
+    function renderChips(values, emptyText) {
+      if (!values || values.length === 0) {
+        return `<p class="empty">${escapeHtml(emptyText)}</p>`;
+      }
+
+      const chips = values
+        .map(v => `<span class="chip">${escapeHtml(v)}</span>`)
+        .join("");
+      return `<div class="chip-wrap">${chips}</div>`;
+    }
+
+    function formatFile(file) {
+      if (!file || !file.Exists) {
+        return "missing";
+      }
+
+      const kb = Math.max(1, Math.round((file.SizeBytes || 0) / 1024));
+      const time = file.LastWriteUtc ? toUtcText(file.LastWriteUtc) : "n/a";
+      return `${kb} KB · ${time}`;
+    }
+
+    function toUtcText(value) {
+      const d = value ? new Date(value) : null;
+      if (!d || Number.isNaN(d.getTime())) {
+        return "n/a";
+      }
+      return d.toISOString().replace("T", " ").replace(".000Z", " UTC").replace("Z", " UTC");
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    refreshBtn.addEventListener("click", refreshDashboard);
+    refreshDashboard();
+    setInterval(refreshDashboard, 10000);
+  </script>
+</body>
+</html>

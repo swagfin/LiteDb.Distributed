@@ -43,6 +43,13 @@ Replication/cluster API:
 - `POST /api/cluster/peers`
 - `GET /api/cluster/peers`
 
+Dashboard:
+- `GET /` (single-page visibility dashboard)
+- `GET /dashboard/api/overview` (dashboard data feed)
+
+Node info:
+- `GET /node`
+
 ## Solution Layout
 
 - `LiteDb.Distributed.Core`: domain models and abstractions.

@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
-[Route("")]
+[Route("node")]
 public sealed class NodeController : ControllerBase
 {
     private readonly ClusterNodeOptions _nodeOptions;
