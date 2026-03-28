@@ -456,6 +456,34 @@
       stroke-linecap: round;
     }
 
+    .spark-point {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 130ms ease;
+    }
+
+    .spark-svg:hover .spark-point {
+      opacity: 1;
+    }
+
+    .spark-point-http {
+      fill: #ffffff;
+      stroke: var(--spark-http);
+      stroke-width: 2;
+    }
+
+    .spark-point-ws {
+      fill: #ffffff;
+      stroke: var(--spark-ws);
+      stroke-width: 2;
+    }
+
+    .spark-hitpoint {
+      fill: transparent;
+      pointer-events: all;
+      cursor: crosshair;
+    }
+
     .spark-legend {
       margin-top: 6px;
       display: flex;
@@ -748,22 +776,29 @@
 
       const width = 240;
       const height = 58;
-      const pointsHttp = buildSparklinePoints(history.http, width, height);
-      const pointsWs = buildSparklinePoints(history.ws, width, height);
+      const httpSeries = buildSparklineSeries(history.http, width, height);
+      const wsSeries = buildSparklineSeries(history.ws, width, height);
 
-      if (!pointsHttp && !pointsWs) {
+      if (!httpSeries && !wsSeries) {
         return `<p class="note">Latency trend has no samples yet.</p>`;
       }
 
+      const sampleCount = Math.max(httpSeries?.count ?? 0, wsSeries?.count ?? 0);
+      const markers = [
+        ...(httpSeries ? buildSparkMarkers(httpSeries, "http") : []),
+        ...(wsSeries ? buildSparkMarkers(wsSeries, "ws") : [])
+      ].join("");
+
       return `
         <div class="spark-wrap">
-          <p class="spark-head">Latency Trend (latest ${Math.max(history.http.length, history.ws.length)} probes)</p>
+          <p class="spark-head">Latency Trend (latest ${sampleCount} probes)</p>
           <svg class="spark-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Latency trend for HTTP and WebSocket probes">
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.2)}" x2="${width}" y2="${Math.round(height * 0.2)}"></line>
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.5)}" x2="${width}" y2="${Math.round(height * 0.5)}"></line>
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.8)}" x2="${width}" y2="${Math.round(height * 0.8)}"></line>
-            ${pointsHttp ? `<polyline class="spark-http" points="${pointsHttp}"></polyline>` : ""}
-            ${pointsWs ? `<polyline class="spark-ws" points="${pointsWs}"></polyline>` : ""}
+            ${httpSeries ? `<polyline class="spark-http" points="${httpSeries.points}"></polyline>` : ""}
+            ${wsSeries ? `<polyline class="spark-ws" points="${wsSeries.points}"></polyline>` : ""}
+            ${markers}
           </svg>
           <div class="spark-legend">
             <span class="legend http">HTTP</span>
@@ -772,15 +807,15 @@
         </div>`;
     }
 
-    function buildSparklinePoints(samples, width, height) {
+    function buildSparklineSeries(samples, width, height) {
       const values = normalizeSeries(samples);
       if (values.length < 2) {
-        return "";
+        return null;
       }
 
       const max = Math.max(...values);
       if (!Number.isFinite(max) || max <= 0) {
-        return "";
+        return null;
       }
 
       const topPad = 4;
@@ -788,15 +823,32 @@
       const usableHeight = height - topPad - bottomPad;
       const step = values.length <= 1 ? width : width / (values.length - 1);
       const points = [];
+      const markers = [];
 
       for (let i = 0; i < values.length; i++) {
         const v = values[i];
         const x = step * i;
         const y = topPad + (1 - (v / max)) * usableHeight;
         points.push(`${round2(x)},${round2(y)}`);
+        markers.push({ x: round2(x), y: round2(y), value: v, index: i + 1 });
       }
 
-      return points.join(" ");
+      return {
+        points: points.join(" "),
+        markers,
+        count: values.length
+      };
+    }
+
+    function buildSparkMarkers(series, kind) {
+      const label = kind === "http" ? "HTTP" : "WebSocket";
+      const pointClass = kind === "http" ? "spark-point spark-point-http" : "spark-point spark-point-ws";
+
+      return series.markers.map(marker => `
+        <circle class="spark-hitpoint" cx="${marker.x}" cy="${marker.y}" r="8">
+          <title>${label} probe #${marker.index}: ${round2(marker.value)} ms</title>
+        </circle>
+        <circle class="${pointClass}" cx="${marker.x}" cy="${marker.y}" r="2.8"></circle>`);
     }
 
     function normalizeSeries(samples) {
