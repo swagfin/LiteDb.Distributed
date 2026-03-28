@@ -16,40 +16,6 @@ Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
 - `Password` or `ApiKey` (required): validated against the logical database catalog.
 
-Rules:
-- Database names are normalized to lowercase (`TestApp` -> `testapp`).
-- If a logical database does not exist, it is created automatically.
-- If it exists, credentials must match.
-
-Per logical database files:
-- Business data: `{AppBaseDirectory}/Data/{nodeId}/{dbName}.db`
-- System/replication metadata: `{AppBaseDirectory}/Data/{nodeId}/{dbName}.db.metadata`
-
-Metadata includes operation logs, checkpoints, node metadata, conflicts, sync state, and peer state.
-
-## API (Current)
-
-Document API:
-- `GET /api/{documentName}?skip=0&take=50`
-- `GET /api/{documentName}/{id}`
-- `POST /api/{documentName}`
-- `PUT /api/{documentName}/{id}`
-- `DELETE /api/{documentName}/{id}`
-
-Replication/cluster API:
-- `POST /api/replication/push`
-- `POST /api/replication/pull`
-- `GET /ws/replication` (WebSocket signal endpoint for peer sync notifications)
-- `POST /api/cluster/peers`
-- `GET /api/cluster/peers`
-
-Dashboard:
-- `GET /` (single-page visibility dashboard)
-- `GET /dashboard/api/overview` (dashboard data feed)
-
-Node info:
-- `GET /node`
-
 ## Replication Visual Guide
 
 ```text
@@ -146,16 +112,6 @@ sequenceDiagram
 - Reported latency includes probe polling interval; keep `PollIntervalMilliseconds` low for finer granularity.
 - Current sample default is `25 ms` polling.
 
-## Solution Layout
-
-- `LiteDb.Distributed.Core`: domain models and abstractions.
-- `LiteDb.Distributed.Infrastructure`: storage, replication, conflict handling, DB context resolution.
-- `LiteDb.Distributed.Server`: ASP.NET Core node host.
-- `LiteDb.Distributed.AppHost`: .NET Aspire host that runs a local 3-node cluster.
-- `LiteDb.Distributed.Tests`: replication tests.
-- `Samples/SaveFewRecordsSample`: background `OrderTransaction` generator.
-- `Samples/DistributedCacheProbe`: replication visibility/latency probe for cache-like keys.
-
 ## Default Port
 
 - `http://localhost:1446`
@@ -195,19 +151,10 @@ Configured node URLs:
 - `node-2`: `http://localhost:17002`
 - `node-3`: `http://localhost:17003`
 
-## Multi-Node Example
-
-```powershell
-dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7001 --Node:NodeId=node-1
-dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7002 --Node:NodeId=node-2
-dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj --urls http://localhost:7003 --Node:NodeId=node-3
-```
-
 Then register peers per logical database using `POST /api/cluster/peers` with `Database` and `ApiKey` headers.
 
 ## Notes
 
-- This is not SQL and does not replicate raw LiteDB files.
 - Replication is event-driven: local writes schedule immediate source-node replication with retry/backoff, WebSocket peer signals are hints for faster convergence, and a fixed 1-minute safety sweep handles anti-entropy catch-up.
 - Peer replication is bounded-parallel per cycle (`Node:ReplicationPeerConcurrency`, default `4`) for better multi-peer latency.
 - Conflict resolution is pluggable (default includes LWW with optional conflict recording for critical collections).
