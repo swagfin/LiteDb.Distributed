@@ -7,7 +7,7 @@
   "Database": "testapp",
   "ApiKey": "sample-local-key",
   "CollectionName": "CacheEntries",
-  "PollIntervalMilliseconds": 250,
+  "PollIntervalMilliseconds": 25,
   "VisibilityTimeoutSeconds": 20,
   "MinPauseMilliseconds": 500,
   "MaxPauseMilliseconds": 1500

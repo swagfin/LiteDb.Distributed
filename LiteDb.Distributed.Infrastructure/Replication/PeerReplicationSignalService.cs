@@ -15,7 +15,6 @@ namespace LiteDb.Distributed.Infrastructure.Replication;
 public sealed class PeerReplicationSignalService : BackgroundService, IReplicationSignalPublisher, IReplicationWebSocketHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-    private static readonly TimeSpan SchedulerTick = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan WebSocketAckTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan RetryMaxDelay = TimeSpan.FromSeconds(30);
@@ -26,6 +25,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
     private readonly IReplicationOrchestrator _replicationOrchestrator;
     private readonly ILogger<PeerReplicationSignalService> _logger;
     private readonly ConcurrentDictionary<string, ScheduledDispatch> _scheduledDispatches = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _dispatchSignal = new(0, int.MaxValue);
 
     public PeerReplicationSignalService(ClusterNodeOptions nodeOptions, IDatabaseContextAccessor databaseContextAccessor, IClusterPeerRegistry clusterPeerRegistry, IReplicationOrchestrator replicationOrchestrator, ILogger<PeerReplicationSignalService> logger)
     {
@@ -56,6 +56,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
             _ => new ScheduledDispatch(context.DatabaseName, context.Credential, reason, 0, now, now),
             (_, existing) => existing with { Credential = context.Credential, Reason = reason, Attempt = 0, DueUtc = now, UpdatedUtc = now });
 
+        _dispatchSignal.Release();
         _logger.LogDebug("Replication dispatch scheduled. Database={Database} Reason={Reason} DueUtc={DueUtc}", scheduled.DatabaseName, scheduled.Reason, scheduled.DueUtc);
     }
 
@@ -122,6 +123,8 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            await WaitForDueDispatchWindowAsync(stoppingToken).ConfigureAwait(false);
+
             var now = DateTime.UtcNow;
             var dueDispatches = _scheduledDispatches
                 .Where(x => x.Value.DueUtc <= now)
@@ -137,15 +140,35 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
                 await ProcessDispatchAsync(dispatch, stoppingToken).ConfigureAwait(false);
             }
+        }
+    }
 
-            try
+    private async Task WaitForDueDispatchWindowAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (_scheduledDispatches.IsEmpty)
             {
-                await Task.Delay(SchedulerTick, stoppingToken).ConfigureAwait(false);
+                await _dispatchSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+                DrainDispatchSignal();
+                return;
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+
+            var now = DateTime.UtcNow;
+            var nextDueUtc = _scheduledDispatches.Values.Min(x => x.DueUtc);
+            if (nextDueUtc <= now)
             {
-                break;
+                return;
             }
+
+            var wait = nextDueUtc - now;
+            var signaled = await _dispatchSignal.WaitAsync(wait, cancellationToken).ConfigureAwait(false);
+            if (!signaled)
+            {
+                return;
+            }
+
+            DrainDispatchSignal();
         }
     }
 
@@ -367,6 +390,14 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
         var delayMs = Math.Min(RetryBaseDelay.TotalMilliseconds * exponent, RetryMaxDelay.TotalMilliseconds);
         var jitterMs = Random.Shared.Next(0, 250);
         return TimeSpan.FromMilliseconds(delayMs + jitterMs);
+    }
+
+    private void DrainDispatchSignal()
+    {
+        while (_dispatchSignal.CurrentCount > 0)
+        {
+            _dispatchSignal.Wait(0);
+        }
     }
 
     private static ScheduledDispatch MergeRetry(ScheduledDispatch existing, ScheduledDispatch retry)

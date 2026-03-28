@@ -23,6 +23,7 @@ Console.WriteLine("Distributed Cache Probe");
 Console.WriteLine($"Database: {settings.Database}");
 Console.WriteLine($"Collection: {settings.CollectionName}");
 Console.WriteLine($"Nodes: {string.Join(", ", nodes.Select(x => $"{x.Name}@{x.BaseUrl}"))}");
+Console.WriteLine($"Poll interval: {settings.PollIntervalMilliseconds} ms (measurement floor is approximately this value)");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 var iteration = 0L;
@@ -206,7 +207,7 @@ public sealed record CacheProbeSettings
     public string Database { get; init; } = "testapp";
     public string ApiKey { get; init; } = "sample-local-key";
     public string CollectionName { get; init; } = "CacheEntries";
-    public int PollIntervalMilliseconds { get; init; } = 250;
+    public int PollIntervalMilliseconds { get; init; } = 25;
     public int VisibilityTimeoutSeconds { get; init; } = 20;
     public int MinPauseMilliseconds { get; init; } = 500;
     public int MaxPauseMilliseconds { get; init; } = 1500;
@@ -242,7 +243,7 @@ public sealed record CacheProbeSettings
             throw new InvalidOperationException("sample-settings.json must define at least 3 unique node URLs.");
         }
 
-        var pollMs = Math.Max(100, settings.PollIntervalMilliseconds);
+        var pollMs = Math.Max(10, settings.PollIntervalMilliseconds);
         var timeoutSeconds = Math.Max(2, settings.VisibilityTimeoutSeconds);
         var minPauseMs = Math.Max(100, settings.MinPauseMilliseconds);
         var maxPauseMs = Math.Max(minPauseMs, settings.MaxPauseMilliseconds);
