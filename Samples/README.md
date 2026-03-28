@@ -25,7 +25,9 @@ Stop it with `Ctrl+C`.
 
 ## 2) DistributedCacheProbe (Replication Visibility Probe)
 
-This sample writes random cache-like keys to random nodes and measures how long those keys take to appear on the other nodes.
+This sample writes random cache keys to random nodes through `/api/cache/{key}` and measures how long those keys take to appear on the other nodes.
+
+Each write uses a random cache `ttl` between `1m` and `3m`.
 
 It reads configuration from:
 

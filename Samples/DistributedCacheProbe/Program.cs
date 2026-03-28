@@ -3,6 +3,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+const int MinRandomTtlMinutes = 1;
+const int MaxRandomTtlMinutes = 3;
+
 var settings = CacheProbeSettings.Load();
 var cancellation = new CancellationTokenSource();
 
@@ -21,9 +24,9 @@ var nodes = settings.Nodes
 
 Console.WriteLine("Distributed Cache Probe");
 Console.WriteLine($"Database: {settings.Database}");
-Console.WriteLine($"Collection: {settings.CollectionName}");
 Console.WriteLine($"Nodes: {string.Join(", ", nodes.Select(x => $"{x.Name}@{x.BaseUrl}"))}");
 Console.WriteLine($"Poll interval: {settings.PollIntervalMilliseconds} ms (measurement floor is approximately this value)");
+Console.WriteLine($"TTL range: {MinRandomTtlMinutes}-{MaxRandomTtlMinutes} minutes (random per key)");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 var iteration = 0L;
@@ -34,15 +37,17 @@ while (!cancellation.Token.IsCancellationRequested)
     var writer = nodes[Random.Shared.Next(0, nodes.Count)];
     var key = $"cache-{Guid.NewGuid():N}";
     var value = Convert.ToHexString(Guid.NewGuid().ToByteArray());
-    var payload = new CacheEntry
+    var ttlMinutes = Random.Shared.Next(MinRandomTtlMinutes, MaxRandomTtlMinutes + 1);
+    var ttl = $"{ttlMinutes}m";
+    var payload = new CacheValue
     {
-        Id = key,
         Value = value,
         OriginNode = writer.Name,
-        WrittenUtc = DateTime.UtcNow
+        WrittenUtc = DateTime.UtcNow,
+        Ttl = ttl
     };
 
-    var writeOk = await TryWriteAsync(writer, settings.CollectionName, payload, cancellation.Token).ConfigureAwait(false);
+    var writeOk = await TryWriteAsync(writer, key, payload, ttl, cancellation.Token).ConfigureAwait(false);
     if (!writeOk)
     {
         await SafeDelayAsync(TimeSpan.FromMilliseconds(500), cancellation.Token).ConfigureAwait(false);
@@ -51,12 +56,12 @@ while (!cancellation.Token.IsCancellationRequested)
 
     var readers = nodes.Where(node => !ReferenceEquals(node, writer)).ToList();
     var measureTasks = readers
-        .Select(node => WaitForReplicationAsync(node, settings.CollectionName, key, settings, cancellation.Token))
+        .Select(node => WaitForReplicationAsync(node, key, settings, cancellation.Token))
         .ToList();
 
     var results = await Task.WhenAll(measureTasks).ConfigureAwait(false);
 
-    Console.WriteLine($"[{iteration:D4}] Wrote key {key} on {writer.Name} ({writer.BaseUrl})");
+    Console.WriteLine($"[{iteration:D4}] Wrote key {key} ttl={ttl} on {writer.Name} ({writer.BaseUrl})");
 
     foreach (var result in results.OrderBy(x => x.NodeName, StringComparer.Ordinal))
     {
@@ -97,11 +102,12 @@ static HttpClient CreateNodeClient(string baseUrl, CacheProbeSettings settings)
 
 static async Task<bool> TryWriteAsync(
     CacheProbeNode node,
-    string collectionName,
-    CacheEntry payload,
+    string key,
+    CacheValue payload,
+    string ttl,
     CancellationToken cancellationToken)
 {
-    var endpoint = $"/api/{collectionName}/{payload.Id}";
+    var endpoint = $"/api/cache/{Uri.EscapeDataString(key)}?ttl={Uri.EscapeDataString(ttl)}";
 
     try
     {
@@ -115,20 +121,18 @@ static async Task<bool> TryWriteAsync(
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        Console.WriteLine(
-            $"Write failed on {node.Name} ({node.BaseUrl}). Status={(int)response.StatusCode} Key={payload.Id} Body={body}");
+        Console.WriteLine($"Write failed on {node.Name} ({node.BaseUrl}). Status={(int)response.StatusCode} Key={key} Body={body}");
         return false;
     }
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
     {
-        Console.WriteLine($"Write failed on {node.Name} ({node.BaseUrl}) Key={payload.Id}. Error={ex.Message}");
+        Console.WriteLine($"Write failed on {node.Name} ({node.BaseUrl}) Key={key}. Error={ex.Message}");
         return false;
     }
 }
 
 static async Task<ReplicationProbeResult> WaitForReplicationAsync(
     CacheProbeNode node,
-    string collectionName,
     string key,
     CacheProbeSettings settings,
     CancellationToken cancellationToken)
@@ -140,7 +144,7 @@ static async Task<ReplicationProbeResult> WaitForReplicationAsync(
 
     while (!cancellationToken.IsCancellationRequested && DateTime.UtcNow < deadline)
     {
-        var exists = await CheckKeyExistsAsync(node, collectionName, key, cancellationToken).ConfigureAwait(false);
+        var exists = await CheckKeyExistsAsync(node, key, cancellationToken).ConfigureAwait(false);
         if (exists)
         {
             return new ReplicationProbeResult(node.Name, Found: true, stopwatch.Elapsed);
@@ -154,11 +158,10 @@ static async Task<ReplicationProbeResult> WaitForReplicationAsync(
 
 static async Task<bool> CheckKeyExistsAsync(
     CacheProbeNode node,
-    string collectionName,
     string key,
     CancellationToken cancellationToken)
 {
-    var endpoint = $"/api/{collectionName}/{key}";
+    var endpoint = $"/api/cache/{Uri.EscapeDataString(key)}";
 
     try
     {
@@ -206,7 +209,6 @@ public sealed record CacheProbeSettings
 
     public string Database { get; init; } = "testapp";
     public string ApiKey { get; init; } = "sample-local-key";
-    public string CollectionName { get; init; } = "CacheEntries";
     public int PollIntervalMilliseconds { get; init; } = 25;
     public int VisibilityTimeoutSeconds { get; init; } = 20;
     public int MinPauseMilliseconds { get; init; } = 500;
@@ -253,7 +255,6 @@ public sealed record CacheProbeSettings
             Nodes = normalizedNodes,
             Database = settings.Database.Trim(),
             ApiKey = settings.ApiKey.Trim(),
-            CollectionName = string.IsNullOrWhiteSpace(settings.CollectionName) ? "CacheEntries" : settings.CollectionName.Trim(),
             PollIntervalMilliseconds = pollMs,
             VisibilityTimeoutSeconds = timeoutSeconds,
             MinPauseMilliseconds = minPauseMs,
@@ -262,12 +263,12 @@ public sealed record CacheProbeSettings
     }
 }
 
-public sealed record CacheEntry
+public sealed record CacheValue
 {
-    public required string Id { get; init; }
     public required string Value { get; init; }
     public required string OriginNode { get; init; }
     public required DateTime WrittenUtc { get; init; }
+    public required string Ttl { get; init; }
 }
 
 public sealed record CacheProbeNode(
