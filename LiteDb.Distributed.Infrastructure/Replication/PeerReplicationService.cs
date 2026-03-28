@@ -2,6 +2,7 @@ using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
 
@@ -39,9 +40,19 @@ public sealed class PeerReplicationService : IClusterReplicationService
 
     public async Task ReplicateOnceAsync(CancellationToken cancellationToken = default)
     {
+        var cycleStopwatch = Stopwatch.StartNew();
         var peers = await _clusterPeerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
+        var activePeers = peers
+            .Where(x => x.IsActive && !string.Equals(x.NodeId, _localNodeId, StringComparison.Ordinal))
+            .ToList();
 
-        foreach (var peer in peers.Where(x => x.IsActive && !string.Equals(x.NodeId, _localNodeId, StringComparison.Ordinal)))
+        _logger.LogDebug(
+            "Replication cycle started. LocalNodeId={LocalNodeId} RegisteredPeers={RegisteredPeers} ActivePeers={ActivePeers}",
+            _localNodeId,
+            peers.Count,
+            activePeers.Count);
+
+        foreach (var peer in activePeers)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -55,10 +66,24 @@ public sealed class PeerReplicationService : IClusterReplicationService
                 _logger.LogWarning(ex, "Peer replication failed for {PeerNodeId} ({BaseUrl})", peer.NodeId, peer.BaseUrl);
             }
         }
+
+        cycleStopwatch.Stop();
+        _logger.LogDebug(
+            "Replication cycle completed. LocalNodeId={LocalNodeId} ActivePeers={ActivePeers} DurationMs={DurationMs}",
+            _localNodeId,
+            activePeers.Count,
+            cycleStopwatch.Elapsed.TotalMilliseconds);
     }
 
     private async Task ReplicatePeerAsync(ClusterPeer peer, CancellationToken cancellationToken)
     {
+        var peerStopwatch = Stopwatch.StartNew();
+        _logger.LogDebug(
+            "Peer replication started. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} PeerBaseUrl={PeerBaseUrl}",
+            _localNodeId,
+            peer.NodeId,
+            peer.BaseUrl);
+
         var checkpoint = await _peerCheckpointStore
             .GetOrCreatePeerCheckpointAsync(_localNodeId, peer.NodeId, cancellationToken)
             .ConfigureAwait(false);
@@ -70,9 +95,13 @@ public sealed class PeerReplicationService : IClusterReplicationService
                 cancellationToken)
             .ConfigureAwait(false);
 
+        var pushedCount = 0;
+        var pushAcceptedCount = 0;
+
         if (pendingForPush.Count > 0)
         {
-            await _peerClient
+            pushedCount = pendingForPush.Count;
+            var pushResponse = await _peerClient
                 .PushAsync(
                     peer,
                     new ReplicationPushRequest
@@ -82,6 +111,7 @@ public sealed class PeerReplicationService : IClusterReplicationService
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
+            pushAcceptedCount = pushResponse.AcceptedCount;
 
             checkpoint = checkpoint with
             {
@@ -89,6 +119,10 @@ public sealed class PeerReplicationService : IClusterReplicationService
                 UpdatedUtc = DateTime.UtcNow
             };
         }
+
+        var pulledCount = 0;
+        var pulledAcceptedCount = 0;
+        var pulledConflictCount = 0;
 
         var pulled = await _peerClient
             .PullAsync(
@@ -102,11 +136,16 @@ public sealed class PeerReplicationService : IClusterReplicationService
                 cancellationToken)
             .ConfigureAwait(false);
 
+        pulledCount = pulled.Operations.Count;
+
         if (pulled.Operations.Count > 0)
         {
-            await _operationIngestionService
+            var ingestionResult = await _operationIngestionService
                 .IngestAsync(_localNodeId, pulled.Operations, cancellationToken)
                 .ConfigureAwait(false);
+
+            pulledAcceptedCount = ingestionResult.AcceptedCount;
+            pulledConflictCount = ingestionResult.ConflictCount;
 
             checkpoint = checkpoint with
             {
@@ -118,6 +157,26 @@ public sealed class PeerReplicationService : IClusterReplicationService
         }
 
         await _peerCheckpointStore.SavePeerCheckpointAsync(checkpoint, cancellationToken).ConfigureAwait(false);
+
+        peerStopwatch.Stop();
+
+        var logLevel = pushedCount > 0 || pulledCount > 0 || pulledConflictCount > 0
+            ? LogLevel.Information
+            : LogLevel.Debug;
+
+        _logger.Log(
+            logLevel,
+            "Peer replication completed. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Pushed={Pushed} PushAccepted={PushAccepted} Pulled={Pulled} PullAccepted={PullAccepted} PullConflicts={PullConflicts} CheckpointPush={CheckpointPush} CheckpointPull={CheckpointPull} DurationMs={DurationMs}",
+            _localNodeId,
+            peer.NodeId,
+            pushedCount,
+            pushAcceptedCount,
+            pulledCount,
+            pulledAcceptedCount,
+            pulledConflictCount,
+            checkpoint.LastPushedLocalLogSequence,
+            checkpoint.LastPulledPeerLogSequence,
+            peerStopwatch.Elapsed.TotalMilliseconds);
     }
 }
 

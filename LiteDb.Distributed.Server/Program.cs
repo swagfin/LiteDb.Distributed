@@ -29,6 +29,7 @@ var nodeOptions = new ClusterNodeOptions
 builder.Services.AddLiteDbDistributedNode(nodeOptions);
 
 var app = builder.Build();
+var logger = app.Logger;
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -46,15 +47,32 @@ app.Use(async (httpContext, next) =>
 
     try
     {
+        logger.LogDebug(
+            "Resolving database context for request. Method={Method} Path={Path}",
+            httpContext.Request.Method,
+            httpContext.Request.Path.Value);
+
         var databaseContext = await contextResolver
             .ResolveAsync(httpContext.Request.Headers, httpContext.RequestAborted)
             .ConfigureAwait(false);
+
+        logger.LogDebug(
+            "Database context resolved. Method={Method} Path={Path} Database={Database}",
+            httpContext.Request.Method,
+            httpContext.Request.Path.Value,
+            databaseContext.DatabaseName);
 
         using var scope = contextAccessor.BeginScope(databaseContext);
         await next().ConfigureAwait(false);
     }
     catch (DatabaseAuthenticationException ex)
     {
+        logger.LogWarning(
+            ex,
+            "Database authentication failed. Method={Method} Path={Path}",
+            httpContext.Request.Method,
+            httpContext.Request.Path.Value);
+
         httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
         await httpContext.Response
             .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted)
@@ -62,6 +80,12 @@ app.Use(async (httpContext, next) =>
     }
     catch (ArgumentException ex)
     {
+        logger.LogWarning(
+            ex,
+            "Database context resolution rejected request. Method={Method} Path={Path}",
+            httpContext.Request.Method,
+            httpContext.Request.Path.Value);
+
         httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
         await httpContext.Response
             .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted)

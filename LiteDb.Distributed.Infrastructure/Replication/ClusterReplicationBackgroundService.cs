@@ -4,6 +4,7 @@ using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
 
@@ -38,12 +39,20 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var iterationStopwatch = Stopwatch.StartNew();
+
             try
             {
                 var databases = await _logicalDatabaseCatalog.GetAllAsync(stoppingToken).ConfigureAwait(false);
 
+                _logger.LogDebug(
+                    "Cluster replication iteration started. DatabaseCount={DatabaseCount}",
+                    databases.Count);
+
                 foreach (var database in databases)
                 {
+                    var databaseStopwatch = Stopwatch.StartNew();
+
                     using var scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
                     {
                         DatabaseName = database.DatabaseName,
@@ -51,11 +60,24 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
                     });
 
                     await _clusterReplicationService.ReplicateOnceAsync(stoppingToken).ConfigureAwait(false);
+                    databaseStopwatch.Stop();
+
+                    _logger.LogDebug(
+                        "Database replication iteration completed. Database={Database} DurationMs={DurationMs}",
+                        database.DatabaseName,
+                        databaseStopwatch.Elapsed.TotalMilliseconds);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Cluster replication iteration failed.");
+            }
+            finally
+            {
+                iterationStopwatch.Stop();
+                _logger.LogDebug(
+                    "Cluster replication iteration finished. DurationMs={DurationMs}",
+                    iterationStopwatch.Elapsed.TotalMilliseconds);
             }
 
             await Task.Delay(_interval, stoppingToken).ConfigureAwait(false);

@@ -2,6 +2,7 @@ using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LiteDb.Distributed.Tests;
 
@@ -54,7 +55,9 @@ public sealed class DatabaseRequestContextResolverTests
                 DataDirectory = _rootPath
             });
 
-            Resolver = new DatabaseRequestContextResolver(catalog);
+            Resolver = new DatabaseRequestContextResolver(
+                catalog,
+                NullLogger<DatabaseRequestContextResolver>.Instance);
         }
 
         public DatabaseRequestContextResolver Resolver { get; }

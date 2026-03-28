@@ -2,6 +2,7 @@ using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 
 namespace LiteDb.Distributed.Server.Controllers;
 
@@ -13,27 +14,65 @@ public sealed class ReplicationController : ControllerBase
     private readonly IOperationIngestionService _ingestionService;
     private readonly IOperationLogStore _operationLogStore;
     private readonly IClusterReplicationService _clusterReplicationService;
+    private readonly ILogger<ReplicationController> _logger;
 
     public ReplicationController(
         ClusterNodeOptions nodeOptions,
         IOperationIngestionService ingestionService,
         IOperationLogStore operationLogStore,
-        IClusterReplicationService clusterReplicationService)
+        IClusterReplicationService clusterReplicationService,
+        ILogger<ReplicationController> logger)
     {
         _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
         _ingestionService = ingestionService ?? throw new ArgumentNullException(nameof(ingestionService));
         _operationLogStore = operationLogStore ?? throw new ArgumentNullException(nameof(operationLogStore));
         _clusterReplicationService = clusterReplicationService ?? throw new ArgumentNullException(nameof(clusterReplicationService));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     [HttpPost("push")]
     public async Task<IActionResult> PushAsync([FromBody] ReplicationPushRequest request, CancellationToken cancellationToken)
     {
+        var operationCount = request.Operations?.Count ?? 0;
+        var stopwatch = Stopwatch.StartNew();
+
+        _logger.LogInformation(
+            "Replication push received. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationCount={OperationCount}",
+            _nodeOptions.NodeId,
+            request.SourceNodeId,
+            operationCount);
+
+        if (request.Operations is null)
+        {
+            stopwatch.Stop();
+
+            _logger.LogWarning(
+                "Replication push rejected because operations payload was null. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} DurationMs={DurationMs}",
+                _nodeOptions.NodeId,
+                request.SourceNodeId,
+                stopwatch.Elapsed.TotalMilliseconds);
+
+            return BadRequest(new { Error = "Operations payload is required." });
+        }
+
         try
         {
             var result = await _ingestionService
                 .IngestAsync(_nodeOptions.NodeId, request.Operations, cancellationToken)
                 .ConfigureAwait(false);
+            stopwatch.Stop();
+
+            var notAppliedCount = Math.Max(0, operationCount - result.AcceptedCount);
+
+            _logger.LogInformation(
+                "Replication push applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Received={Received} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} ApplyDurationMs={ApplyDurationMs}",
+                _nodeOptions.NodeId,
+                request.SourceNodeId,
+                operationCount,
+                result.AcceptedCount,
+                result.ConflictCount,
+                notAppliedCount,
+                stopwatch.Elapsed.TotalMilliseconds);
 
             return Ok(new ReplicationPushResponse
             {
@@ -42,6 +81,16 @@ public sealed class ReplicationController : ControllerBase
         }
         catch (ArgumentException ex)
         {
+            stopwatch.Stop();
+
+            _logger.LogWarning(
+                ex,
+                "Replication push rejected. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationCount={OperationCount} DurationMs={DurationMs}",
+                _nodeOptions.NodeId,
+                request.SourceNodeId,
+                operationCount,
+                stopwatch.Elapsed.TotalMilliseconds);
+
             return BadRequest(new { Error = ex.Message });
         }
     }
@@ -49,12 +98,37 @@ public sealed class ReplicationController : ControllerBase
     [HttpPost("pull")]
     public async Task<IActionResult> PullAsync([FromBody] ReplicationPullRequest request, CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+
         if (request.BatchSize <= 0)
         {
+            stopwatch.Stop();
+            _logger.LogWarning(
+                "Replication pull rejected due to invalid batch size. LocalNodeId={LocalNodeId} RequestingNodeId={RequestingNodeId} BatchSize={BatchSize} DurationMs={DurationMs}",
+                _nodeOptions.NodeId,
+                request.RequestingNodeId,
+                request.BatchSize,
+                stopwatch.Elapsed.TotalMilliseconds);
+
             return BadRequest(new { Error = "BatchSize must be greater than zero." });
         }
 
+        _logger.LogDebug(
+            "Replication pull received. LocalNodeId={LocalNodeId} RequestingNodeId={RequestingNodeId} AfterLogSequence={AfterLogSequence} BatchSize={BatchSize}",
+            _nodeOptions.NodeId,
+            request.RequestingNodeId,
+            request.AfterLogSequence,
+            request.BatchSize);
+
         var operations = await _operationLogStore.GetOperationsAfterLogSequenceAsync(request.AfterLogSequence, request.BatchSize, cancellationToken).ConfigureAwait(false);
+        stopwatch.Stop();
+
+        _logger.LogInformation(
+            "Replication pull served. LocalNodeId={LocalNodeId} RequestingNodeId={RequestingNodeId} ReturnedCount={ReturnedCount} DurationMs={DurationMs}",
+            _nodeOptions.NodeId,
+            request.RequestingNodeId,
+            operations.Count,
+            stopwatch.Elapsed.TotalMilliseconds);
 
         return Ok(new ReplicationPullResponse
         {
@@ -65,7 +139,17 @@ public sealed class ReplicationController : ControllerBase
     [HttpPost("trigger")]
     public async Task<IActionResult> TriggerAsync(CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        _logger.LogInformation("Replication trigger requested. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
+
         await _clusterReplicationService.ReplicateOnceAsync(cancellationToken).ConfigureAwait(false);
+        stopwatch.Stop();
+
+        _logger.LogInformation(
+            "Replication trigger completed. LocalNodeId={LocalNodeId} DurationMs={DurationMs}",
+            _nodeOptions.NodeId,
+            stopwatch.Elapsed.TotalMilliseconds);
+
         return Accepted();
     }
 }

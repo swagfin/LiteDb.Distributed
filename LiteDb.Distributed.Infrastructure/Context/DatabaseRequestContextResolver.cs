@@ -1,5 +1,6 @@
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace LiteDb.Distributed.Infrastructure.Context;
 
@@ -10,10 +11,14 @@ public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextReso
     private const string ApiKeyHeader = "ApiKey";
 
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
+    private readonly ILogger<DatabaseRequestContextResolver> _logger;
 
-    public DatabaseRequestContextResolver(ILogicalDatabaseCatalog logicalDatabaseCatalog)
+    public DatabaseRequestContextResolver(
+        ILogicalDatabaseCatalog logicalDatabaseCatalog,
+        ILogger<DatabaseRequestContextResolver> logger)
     {
         _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<DatabaseRequestContext> ResolveAsync(
@@ -45,6 +50,10 @@ public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextReso
         var registration = await _logicalDatabaseCatalog
             .GetOrCreateAsync(normalizedDatabaseName, credential, cancellationToken)
             .ConfigureAwait(false);
+
+        _logger.LogDebug(
+            "Database request context resolved. Database={Database}",
+            registration.DatabaseName);
 
         return new DatabaseRequestContext
         {

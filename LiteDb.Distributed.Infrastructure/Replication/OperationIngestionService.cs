@@ -1,6 +1,7 @@
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
 
@@ -40,6 +41,12 @@ public sealed class OperationIngestionService : IOperationIngestionService
 
         var acceptedCount = 0;
         var conflictCount = 0;
+        var batchStopwatch = Stopwatch.StartNew();
+
+        _logger.LogInformation(
+            "Starting operation ingestion. LocalNodeId={LocalNodeId} IncomingOperationCount={IncomingOperationCount}",
+            localNodeId,
+            operations.Count);
 
         foreach (var operation in operations.OrderBy(x => x.LogSequence))
         {
@@ -62,14 +69,28 @@ public sealed class OperationIngestionService : IOperationIngestionService
 
             if (decision.Action == ConflictResolutionAction.ApplyIncoming)
             {
+                var applyStopwatch = Stopwatch.StartNew();
+
                 var applied = await _remoteOperationApplier
                     .ApplyRemoteOperationAsync(operation with { IsSynced = true }, cancellationToken)
                     .ConfigureAwait(false);
+
+                applyStopwatch.Stop();
 
                 if (applied)
                 {
                     acceptedCount += 1;
                 }
+
+                _logger.LogInformation(
+                    "Processed incoming operation. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationId={OperationId} Collection={Collection} EntityId={EntityId} Applied={Applied} ApplyDurationMs={ApplyDurationMs}",
+                    localNodeId,
+                    operation.NodeId,
+                    operation.Id,
+                    operation.Collection,
+                    operation.EntityId,
+                    applied,
+                    applyStopwatch.Elapsed.TotalMilliseconds);
 
                 continue;
             }
@@ -97,12 +118,36 @@ public sealed class OperationIngestionService : IOperationIngestionService
                     .ConfigureAwait(false);
 
                 _logger.LogWarning(
-                    "Conflict recorded for {Collection}/{EntityId} from operation {OperationId}",
+                    "Conflict recorded for {Collection}/{EntityId} from operation {OperationId}. Reason={Reason}",
                     operation.Collection,
                     operation.EntityId,
-                    operation.Id);
+                    operation.Id,
+                    decision.Reason);
+
+                continue;
             }
+
+            _logger.LogInformation(
+                "Skipped incoming operation after conflict resolution. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationId={OperationId} Collection={Collection} EntityId={EntityId} Reason={Reason}",
+                localNodeId,
+                operation.NodeId,
+                operation.Id,
+                operation.Collection,
+                operation.EntityId,
+                decision.Reason);
         }
+
+        batchStopwatch.Stop();
+        var notAppliedCount = Math.Max(0, operations.Count - acceptedCount);
+
+        _logger.LogInformation(
+            "Operation ingestion completed. LocalNodeId={LocalNodeId} Incoming={Incoming} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} DurationMs={DurationMs}",
+            localNodeId,
+            operations.Count,
+            acceptedCount,
+            conflictCount,
+            notAppliedCount,
+            batchStopwatch.Elapsed.TotalMilliseconds);
 
         return new OperationIngestionResult
         {
