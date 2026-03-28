@@ -1,8 +1,8 @@
 # Samples
 
-`SaveFewRecordsSample` is a minimal client.
+## 1) SaveFewRecordsSample (OrderTransaction Generator)
 
-It reads configuration from:
+This sample now runs as a continuous background generator that inserts random `OrderTransaction` records every random second.
 
 - `Samples/SaveFewRecordsSample/sample-settings.json`
 
@@ -11,6 +11,9 @@ Default config:
 - `ServerUrl`: `http://localhost:17001`
 - `Database`: `testapp`
 - `ApiKey`: `sample-local-key`
+- `CollectionName`: `OrderTransactions`
+- `MinIntervalSeconds`: `1`
+- `MaxIntervalSeconds`: `3`
 
 Run it with:
 
@@ -18,4 +21,26 @@ Run it with:
 dotnet run --project .\Samples\SaveFewRecordsSample\SaveFewRecordsSample.csproj
 ```
 
-To point to a different node or database, edit `sample-settings.json`.
+Stop it with `Ctrl+C`.
+
+## 2) DistributedCacheProbe (Replication Visibility Probe)
+
+This sample writes random cache-like keys to random nodes and measures how long those keys take to appear on the other nodes.
+
+It reads configuration from:
+
+- `Samples/DistributedCacheProbe/sample-settings.json`
+
+Default config includes:
+
+- 3 node URLs (`17001`, `17002`, `17003`)
+- `Database` and `ApiKey`
+- polling and timeout settings for replication visibility checks
+
+Run it with:
+
+```powershell
+dotnet run --project .\Samples\DistributedCacheProbe\DistributedCacheProbe.csproj
+```
+
+Stop it with `Ctrl+C`.

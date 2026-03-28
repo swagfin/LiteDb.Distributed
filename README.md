@@ -57,7 +57,8 @@ Node info:
 - `LiteDb.Distributed.Server`: ASP.NET Core node host.
 - `LiteDb.Distributed.AppHost`: .NET Aspire host that runs a local 3-node cluster.
 - `LiteDb.Distributed.Tests`: replication tests.
-- `Samples/SaveFewRecordsSample`: small write/read demo client.
+- `Samples/SaveFewRecordsSample`: background `OrderTransaction` generator.
+- `Samples/DistributedCacheProbe`: replication visibility/latency probe for cache-like keys.
 
 ## Default Port
 
@@ -73,6 +74,11 @@ dotnet run --project .\LiteDb.Distributed.Server\LiteDb.Distributed.Server.cspro
 2. Run the sample:
 ```powershell
 dotnet run --project .\Samples\SaveFewRecordsSample\SaveFewRecordsSample.csproj
+```
+
+Optional: run cache replication visibility probe:
+```powershell
+dotnet run --project .\Samples\DistributedCacheProbe\DistributedCacheProbe.csproj
 ```
 
 3. Run tests:

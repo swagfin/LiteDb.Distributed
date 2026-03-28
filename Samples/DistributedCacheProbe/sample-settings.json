@@ -1,0 +1,14 @@
+{
+  "Nodes": [
+    "http://localhost:17001",
+    "http://localhost:17002",
+    "http://localhost:17003"
+  ],
+  "Database": "testapp",
+  "ApiKey": "sample-local-key",
+  "CollectionName": "CacheEntries",
+  "PollIntervalMilliseconds": 250,
+  "VisibilityTimeoutSeconds": 20,
+  "MinPauseMilliseconds": 500,
+  "MaxPauseMilliseconds": 1500
+}
