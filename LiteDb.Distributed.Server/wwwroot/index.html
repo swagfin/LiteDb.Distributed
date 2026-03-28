@@ -484,6 +484,22 @@
       cursor: crosshair;
     }
 
+    .spark-tooltip {
+      position: fixed;
+      z-index: 1200;
+      max-width: 240px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(15, 34, 64, 0.96);
+      border: 1px solid rgba(173, 202, 248, 0.45);
+      color: #e9f2ff;
+      font-size: 0.8rem;
+      line-height: 1.35;
+      box-shadow: 0 14px 32px rgba(8, 24, 51, 0.35);
+      pointer-events: none;
+      white-space: normal;
+    }
+
     .spark-legend {
       margin-top: 6px;
       display: flex;
@@ -622,6 +638,7 @@
       <div id="databasesGrid" class="grid"></div>
     </section>
   </main>
+  <div id="sparkTooltip" class="spark-tooltip" hidden></div>
 
   <script>
     const peerConnectivityGrid = document.getElementById("peerConnectivityGrid");
@@ -631,6 +648,7 @@
     const errorLine = document.getElementById("errorLine");
     const refreshBtn = document.getElementById("refreshBtn");
     const refreshIntervalSelect = document.getElementById("refreshIntervalSelect");
+    const sparkTooltip = document.getElementById("sparkTooltip");
     const kpiCurrentNode = document.getElementById("kpiCurrentNode");
     const kpiNodeCount = document.getElementById("kpiNodeCount");
     const kpiDbCount = document.getElementById("kpiDbCount");
@@ -679,6 +697,7 @@
     }
 
     function renderPeerConnections(peers) {
+      hideSparkTooltip();
       peerConnectivityGrid.innerHTML = "";
 
       if (!peers || peers.length === 0) {
@@ -845,10 +864,63 @@
       const pointClass = kind === "http" ? "spark-point spark-point-http" : "spark-point spark-point-ws";
 
       return series.markers.map(marker => `
-        <circle class="spark-hitpoint" cx="${marker.x}" cy="${marker.y}" r="8">
-          <title>${label} probe #${marker.index}: ${round2(marker.value)} ms</title>
-        </circle>
+        <circle class="spark-hitpoint" cx="${marker.x}" cy="${marker.y}" r="8" data-tooltip="${escapeHtml(`${label}: ${round2(marker.value)} ms`)}"></circle>
         <circle class="${pointClass}" cx="${marker.x}" cy="${marker.y}" r="2.8"></circle>`);
+    }
+
+    function handleSparkTooltipPointerMove(event) {
+      const hitPoint = event.target.closest(".spark-hitpoint");
+      if (!hitPoint || !peerConnectivityGrid.contains(hitPoint)) {
+        hideSparkTooltip();
+        return;
+      }
+
+      const tooltipText = hitPoint.getAttribute("data-tooltip");
+      if (!tooltipText) {
+        hideSparkTooltip();
+        return;
+      }
+
+      showSparkTooltip(tooltipText, event.clientX, event.clientY);
+    }
+
+    function showSparkTooltip(text, clientX, clientY) {
+      sparkTooltip.textContent = text;
+      sparkTooltip.hidden = false;
+      positionSparkTooltip(clientX, clientY);
+    }
+
+    function positionSparkTooltip(clientX, clientY) {
+      const offset = 14;
+      const margin = 8;
+      const rect = sparkTooltip.getBoundingClientRect();
+
+      let left = clientX + offset;
+      let top = clientY + offset;
+
+      if (left + rect.width > window.innerWidth - margin) {
+        left = clientX - rect.width - offset;
+      }
+
+      if (top + rect.height > window.innerHeight - margin) {
+        top = clientY - rect.height - offset;
+      }
+
+      if (left < margin) {
+        left = margin;
+      }
+
+      if (top < margin) {
+        top = margin;
+      }
+
+      sparkTooltip.style.left = `${left}px`;
+      sparkTooltip.style.top = `${top}px`;
+    }
+
+    function hideSparkTooltip() {
+      sparkTooltip.hidden = true;
+      sparkTooltip.textContent = "";
     }
 
     function normalizeSeries(samples) {
@@ -960,6 +1032,9 @@
     refreshIntervalSelect.addEventListener("change", () => {
       scheduleAutoRefresh(readRefreshIntervalMs());
     });
+    peerConnectivityGrid.addEventListener("pointermove", handleSparkTooltipPointerMove);
+    peerConnectivityGrid.addEventListener("pointerleave", hideSparkTooltip);
+    document.addEventListener("scroll", hideSparkTooltip, true);
 
     scheduleAutoRefresh(readRefreshIntervalMs());
     refreshDashboard();
