@@ -22,8 +22,8 @@ Rules:
 - If it exists, credentials must match.
 
 Per logical database files:
-- Business data: `Data/{nodeId}/{dbName}.db`
-- System/replication metadata: `Data/{nodeId}/{dbName}.db.metadata`
+- Business data: `{AppBaseDirectory}/Data/{nodeId}/{dbName}.db`
+- System/replication metadata: `{AppBaseDirectory}/Data/{nodeId}/{dbName}.db.metadata`
 
 Metadata includes operation logs, checkpoints, node metadata, conflicts, sync state, and peer state.
 

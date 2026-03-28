@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
+using Microsoft.Extensions.Logging;
 
 namespace LiteDb.Distributed.Infrastructure.Storage;
 
@@ -9,6 +10,7 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
     private readonly ClusterNodeOptions _options;
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
     private readonly IDatabaseContextAccessor _databaseContextAccessor;
+    private readonly ILogger<LogicalDatabaseStoreProvider> _logger;
     private readonly ConcurrentDictionary<string, LiteDbNodeStore> _stores = new(StringComparer.Ordinal);
 
     private bool _disposed;
@@ -16,11 +18,13 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
     public LogicalDatabaseStoreProvider(
         ClusterNodeOptions options,
         ILogicalDatabaseCatalog logicalDatabaseCatalog,
-        IDatabaseContextAccessor databaseContextAccessor)
+        IDatabaseContextAccessor databaseContextAccessor,
+        ILogger<LogicalDatabaseStoreProvider> logger)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
         _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<LiteDbNodeStore> GetCurrentStoreAsync(CancellationToken cancellationToken = default)
@@ -51,17 +55,42 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
             registration.DatabaseName,
             _ =>
             {
-                var nodeDataDirectory = Path.GetFullPath(Path.Combine(_options.DataDirectory, _options.NodeId));
+                var rootDataDirectory = ResolveDataDirectory(_options.DataDirectory);
+                var nodeDataDirectory = Path.Combine(rootDataDirectory, _options.NodeId);
                 Directory.CreateDirectory(nodeDataDirectory);
+                var businessPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db");
+                var metadataPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata");
 
-                return new LiteDbNodeStore(new LiteDbNodeStoreOptions
+                _logger.LogInformation(
+                    "Opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}",
+                    _options.NodeId,
+                    registration.DatabaseName,
+                    businessPath,
+                    metadataPath);
+
+                try
                 {
-                    NodeId = _options.NodeId,
-                    DatabaseName = registration.DatabaseName,
-                    BusinessDatabasePath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db"),
-                    MetadataDatabasePath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata"),
-                    SeedPeers = _options.SeedPeers
-                });
+                    return new LiteDbNodeStore(new LiteDbNodeStoreOptions
+                    {
+                        NodeId = _options.NodeId,
+                        DatabaseName = registration.DatabaseName,
+                        BusinessDatabasePath = businessPath,
+                        MetadataDatabasePath = metadataPath,
+                        SeedPeers = _options.SeedPeers
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Failed opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}",
+                        _options.NodeId,
+                        registration.DatabaseName,
+                        businessPath,
+                        metadataPath);
+
+                    throw;
+                }
             });
     }
 
@@ -88,5 +117,17 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
         {
             throw new ObjectDisposedException(nameof(LogicalDatabaseStoreProvider));
         }
+    }
+
+    private static string ResolveDataDirectory(string dataDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(dataDirectory))
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+        }
+
+        return Path.IsPathRooted(dataDirectory)
+            ? Path.GetFullPath(dataDirectory)
+            : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
     }
 }

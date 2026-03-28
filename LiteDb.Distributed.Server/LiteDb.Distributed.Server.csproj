@@ -1,4 +1,14 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<ItemGroup>
+	  <None Remove="Data\README.txt" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Include="Data\README.txt">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\LiteDb.Distributed.Core\LiteDb.Distributed.Core.csproj" />

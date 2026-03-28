@@ -69,8 +69,16 @@ public sealed class LiteDbNodeStore :
         EnsureParentDirectory(businessFullPath);
         EnsureParentDirectory(metadataFullPath);
 
-        _businessDatabase = OpenDatabase(businessFullPath);
-        _metadataDatabase = OpenDatabase(metadataFullPath);
+        _businessDatabase = OpenDatabase(
+            businessFullPath,
+            options.DatabaseName,
+            _nodeId,
+            logicalFileKind: "business");
+        _metadataDatabase = OpenDatabase(
+            metadataFullPath,
+            options.DatabaseName,
+            _nodeId,
+            logicalFileKind: "metadata");
 
         EnsureSystemIndexes();
         SeedPeers(options.SeedPeers);
@@ -694,14 +702,28 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    private static LiteDatabase OpenDatabase(string fullPath)
+    private static LiteDatabase OpenDatabase(
+        string fullPath,
+        string databaseName,
+        string nodeId,
+        string logicalFileKind)
     {
-        var connectionString = new ConnectionString
+        try
         {
-            Filename = fullPath
-        };
+            var connectionString = new ConnectionString
+            {
+                Filename = fullPath
+            };
 
-        return new LiteDatabase(connectionString);
+            return new LiteDatabase(connectionString);
+        }
+        catch (LiteException ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to open {logicalFileKind} LiteDB file for NodeId='{nodeId}', Database='{databaseName}', Path='{fullPath}'. " +
+                "If this file was created when encryption was enabled, delete/recreate the file or migrate it before running this node.",
+                ex);
+        }
     }
 
     private void BeginCombinedTransaction()

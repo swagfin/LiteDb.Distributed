@@ -5,7 +5,7 @@ namespace LiteDb.Distributed.Infrastructure.Configuration;
 public sealed record ClusterNodeOptions
 {
     public required string NodeId { get; init; }
-    public string DataDirectory { get; init; } = "Data";
+    public string DataDirectory { get; init; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
     public int ReplicationIntervalSeconds { get; init; } = 5;
     public int ReplicationBatchSize { get; init; } = 200;
     public IReadOnlyList<string> CriticalCollections { get; init; } = Array.Empty<string>();

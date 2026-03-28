@@ -21,7 +21,8 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var nodeDataDirectory = Path.GetFullPath(Path.Combine(options.DataDirectory, options.NodeId));
+        var rootDataDirectory = ResolveDataDirectory(options.DataDirectory);
+        var nodeDataDirectory = Path.Combine(rootDataDirectory, options.NodeId);
         Directory.CreateDirectory(nodeDataDirectory);
 
         _catalogPath = Path.Combine(nodeDataDirectory, "_logical_databases.catalog.json");
@@ -155,6 +156,18 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
             CreatedUtc = entry.CreatedUtc,
             UpdatedUtc = entry.UpdatedUtc
         };
+    }
+
+    private static string ResolveDataDirectory(string dataDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(dataDirectory))
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+        }
+
+        return Path.IsPathRooted(dataDirectory)
+            ? Path.GetFullPath(dataDirectory)
+            : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
     }
 
     private sealed class CatalogWrapper
