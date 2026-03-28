@@ -172,25 +172,6 @@
       min-width: 120px;
     }
 
-    .toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: #2f4f80;
-      font-size: 0.84rem;
-      font-weight: 600;
-      user-select: none;
-      cursor: pointer;
-    }
-
-    .toggle input {
-      width: 16px;
-      height: 16px;
-      margin: 0;
-      accent-color: var(--brand-strong);
-      cursor: pointer;
-    }
-
     .btn {
       appearance: none;
       border: none;
@@ -572,10 +553,6 @@
               <option value="30000">30 seconds</option>
             </select>
           </label>
-          <label class="toggle" for="filterIssuesToggle">
-            <input id="filterIssuesToggle" type="checkbox" />
-            Show only degraded/offline nodes
-          </label>
         </div>
         <button id="refreshBtn" class="btn" type="button">Refresh Now</button>
         <p id="metaLine" class="meta">No data yet.</p>
@@ -603,14 +580,6 @@
 
     <section class="section">
       <div class="section-head">
-        <h2>Connected Nodes</h2>
-        <p>Per-node status and transport health from this dashboard perspective.</p>
-      </div>
-      <div id="nodesGrid" class="grid"></div>
-    </section>
-
-    <section class="section">
-      <div class="section-head">
         <h2>Peer Connectivity (Current Node)</h2>
         <p>HTTP + WebSocket connectivity with rolling latency trend per peer.</p>
       </div>
@@ -627,7 +596,6 @@
   </main>
 
   <script>
-    const nodesGrid = document.getElementById("nodesGrid");
     const peerConnectivityGrid = document.getElementById("peerConnectivityGrid");
     const databasesGrid = document.getElementById("databasesGrid");
     const summary = document.getElementById("summary");
@@ -635,15 +603,12 @@
     const errorLine = document.getElementById("errorLine");
     const refreshBtn = document.getElementById("refreshBtn");
     const refreshIntervalSelect = document.getElementById("refreshIntervalSelect");
-    const filterIssuesToggle = document.getElementById("filterIssuesToggle");
     const kpiCurrentNode = document.getElementById("kpiCurrentNode");
     const kpiNodeCount = document.getElementById("kpiNodeCount");
     const kpiDbCount = document.getElementById("kpiDbCount");
 
     const maxPeerLatencySamples = 32;
     const peerLatencyHistory = new Map();
-    let latestDashboardData = null;
-    let showOnlyIssueNodes = false;
     let refreshTimer = null;
 
     async function refreshDashboard() {
@@ -658,7 +623,6 @@
         }
 
         const data = await response.json();
-        latestDashboardData = data;
         capturePeerLatencySamples(data.PeerConnections || []);
         renderDashboard(data);
       } catch (error) {
@@ -675,55 +639,15 @@
       const peerConnections = data.PeerConnections || [];
       const timestamp = toUtcText(data.TimestampUtc);
       const intervalMs = readRefreshIntervalMs();
-      const filterText = showOnlyIssueNodes ? "issue-only node filter enabled" : "showing all nodes";
-
-      summary.textContent = `${nodes.length} nodes, ${databases.length} logical databases, refresh ${intervalMs}ms, ${filterText}`;
+      summary.textContent = `${nodes.length} nodes, ${databases.length} logical databases, refresh ${intervalMs}ms`;
       metaLine.textContent = `Refreshed: ${timestamp}`;
 
       kpiCurrentNode.textContent = data.NodeId || "-";
       kpiNodeCount.textContent = String(nodes.length);
       kpiDbCount.textContent = String(databases.length);
 
-      renderNodes(nodes, data.NodeId);
       renderPeerConnections(peerConnections);
       renderDatabases(databases);
-    }
-
-    function renderNodes(nodes, currentNodeId) {
-      nodesGrid.innerHTML = "";
-      const visibleNodes = showOnlyIssueNodes ? nodes.filter(node => isIssueNode(node)) : nodes;
-
-      if (visibleNodes.length === 0) {
-        const note = showOnlyIssueNodes ? "No degraded or offline nodes right now." : "No nodes discovered yet.";
-        nodesGrid.innerHTML = `<article class="panel reveal"><p class="note">${escapeHtml(note)}</p></article>`;
-        return;
-      }
-
-      for (const node of visibleNodes) {
-        const statusText = node.Status || (node.IsOnline ? "Online" : "Offline");
-        const checked = toUtcText(node.LastCheckedUtc);
-        const currentBadge = node.NodeId === currentNodeId ? `<span class="pill info">Current Node</span>` : `<span class="pill neutral">Peer</span>`;
-        const httpStatus = node.HttpStatus || (node.IsOnline ? "Connected" : "Offline");
-        const wsStatus = node.WebSocketStatus || "Unknown";
-        const currentClass = node.NodeId === currentNodeId ? " current-node" : "";
-        const error = node.Error ? `<div class="error">${escapeHtml(node.Error)}</div>` : "";
-        const httpLatency = formatLatency(node.HttpProbeDurationMs);
-        const wsLatency = formatLatency(node.WebSocketProbeDurationMs);
-
-        nodesGrid.insertAdjacentHTML("beforeend", `
-          <article class="panel node-card reveal${currentClass}">
-            <div class="row">
-              <span class="pill ${statusClass(statusText)}">${escapeHtml(statusText)}</span>
-              ${currentBadge}
-            </div>
-            <h3 class="title">${escapeHtml(node.NodeId)}</h3>
-            <p class="kv">Base URL: ${escapeHtml(node.BaseUrl || "(not set)")}</p>
-            <p class="kv">HTTP: <span class="pill ${statusClass(httpStatus)}">${escapeHtml(httpStatus)}</span> (${httpLatency})</p>
-            <p class="kv">WebSocket: <span class="pill ${statusClass(wsStatus)}">${escapeHtml(wsStatus)}</span> (${wsLatency})</p>
-            <p class="kv">Last checked: ${escapeHtml(checked)}</p>
-            ${error}
-          </article>`);
-      }
     }
 
     function renderPeerConnections(peers) {
@@ -772,7 +696,6 @@
         const status = db.Status || "Unknown";
         const error = db.Error ? `<div class="error">${escapeHtml(db.Error)}</div>` : "";
         const businessCollections = renderChips(db.BusinessCollections, "No business collections yet.");
-        const metadataCollections = renderChips(db.MetadataCollections, "No metadata collections yet.");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
           <article class="panel reveal">
@@ -785,8 +708,6 @@
             <p class="kv">Metadata file: ${formatFile(db.MetadataFile)}</p>
             <p class="kv">Business Collections</p>
             ${businessCollections}
-            <p class="kv">Metadata Collections</p>
-            ${metadataCollections}
             ${error}
           </article>`);
       }
@@ -944,19 +865,6 @@
       return Number.isFinite(number) && number >= 0 ? number : null;
     }
 
-    function isIssueNode(node) {
-      if (!node) {
-        return false;
-      }
-
-      return !isHealthyStatus(node.Status) || !isHealthyStatus(node.HttpStatus) || !isHealthyStatus(node.WebSocketStatus) || !!node.Error;
-    }
-
-    function isHealthyStatus(status) {
-      const normalized = String(status || "").toLowerCase();
-      return normalized === "online" || normalized === "connected" || normalized === "healthy" || normalized === "okay" || normalized === "active peer" || normalized === "local";
-    }
-
     function toUtcText(value) {
       const d = value ? new Date(value) : null;
       if (!d || Number.isNaN(d.getTime())) {
@@ -999,12 +907,6 @@
     refreshBtn.addEventListener("click", refreshDashboard);
     refreshIntervalSelect.addEventListener("change", () => {
       scheduleAutoRefresh(readRefreshIntervalMs());
-    });
-    filterIssuesToggle.addEventListener("change", () => {
-      showOnlyIssueNodes = filterIssuesToggle.checked;
-      if (latestDashboardData) {
-        renderDashboard(latestDashboardData);
-      }
     });
 
     scheduleAutoRefresh(readRefreshIntervalMs());
