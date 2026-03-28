@@ -22,6 +22,9 @@ var nodeOptions = new ClusterNodeOptions
     NodeId = builder.Configuration["Node:NodeId"] ?? "node-1",
     ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 1000,
     ReplicationPeerConcurrency = builder.Configuration.GetValue<int?>("Node:ReplicationPeerConcurrency") ?? 4,
+    CacheCleanupIntervalSeconds = builder.Configuration.GetValue<int?>("Node:CacheCleanupIntervalSeconds") ?? 30,
+    CacheCleanupBatchSize = builder.Configuration.GetValue<int?>("Node:CacheCleanupBatchSize") ?? 500,
+    CacheCleanupMaxScanPages = builder.Configuration.GetValue<int?>("Node:CacheCleanupMaxScanPages") ?? 20,
     CriticalCollections = builder.Configuration.GetSection("Node:CriticalCollections").Get<string[]>() ?? Array.Empty<string>(),
     SeedPeers = builder.Configuration.GetSection("Node:SeedPeers").Get<ClusterPeer[]>() ?? Array.Empty<ClusterPeer>()
 };

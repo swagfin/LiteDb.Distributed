@@ -1,4 +1,5 @@
 using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Infrastructure.Cache;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Conflict;
 using LiteDb.Distributed.Infrastructure.Context;
@@ -44,6 +45,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IReplicationWebSocketHandler>(sp => sp.GetRequiredService<PeerReplicationSignalService>());
         services.AddHostedService(sp => sp.GetRequiredService<PeerReplicationSignalService>());
         services.AddHostedService<ClusterReplicationBackgroundService>();
+        services.AddHostedService<CacheExpirationBackgroundService>();
 
         return services;
     }

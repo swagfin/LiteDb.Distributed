@@ -1,6 +1,7 @@
 # LiteDb.Distributed
 
 LiteDb.Distributed is a local-first, eventually consistent distributed document database built on top of LiteDB.
+![Node Dashboard - Online 4](./screenshots/node-dashboard.JPG)
 
 Each node:
 - Writes locally first.
@@ -24,12 +25,21 @@ Each logical database includes a reserved replicated cache collection named `cac
 - Default TTL is `5m` when `ttl` is not provided.
 - `ttl` examples: `30s`, `5m`, `2h`, `1d`.
 - The generic documents API cannot access the reserved `cache` collection.
+- Expiration uses a hybrid strategy:
+  - read-time lazy expiry (expired keys are never returned),
+  - background sweeper deletes expired cold keys in batches.
 
 Endpoints:
 
 - `PUT /api/cache/{key}?ttl=5m` with JSON body as cached value.
 - `GET /api/cache/{key}` returns cached value when not expired.
 - `DELETE /api/cache/{key}` tombstones the key and replicates deletion.
+
+Optional node settings:
+
+- `Node:CacheCleanupIntervalSeconds` (default `30`)
+- `Node:CacheCleanupBatchSize` (default `500`)
+- `Node:CacheCleanupMaxScanPages` (default `20`)
 
 ## Why Use This Instead Of Redis?
 
@@ -193,12 +203,6 @@ Configured node URLs:
 - `node-3`: `http://localhost:17003`
 
 Then register peers per logical database using `POST /api/cluster/peers` with `Database` and `ApiKey` headers.
-
-## Dashboard
-
-Node dashboard snapshot (Online: 4):
-
-![Node Dashboard - Online 4](./screenshots/node-dashboard.JPG)
 
 ## Notes
 

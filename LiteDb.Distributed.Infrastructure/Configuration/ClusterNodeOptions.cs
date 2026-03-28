@@ -8,6 +8,9 @@ public sealed record ClusterNodeOptions
     public string DataDirectory { get; init; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
     public int ReplicationBatchSize { get; init; } = 1000;
     public int ReplicationPeerConcurrency { get; init; } = 4;
+    public int CacheCleanupIntervalSeconds { get; init; } = 30;
+    public int CacheCleanupBatchSize { get; init; } = 500;
+    public int CacheCleanupMaxScanPages { get; init; } = 20;
     public IReadOnlyList<string> CriticalCollections { get; init; } = Array.Empty<string>();
     public IReadOnlyList<ClusterPeer> SeedPeers { get; init; } = Array.Empty<ClusterPeer>();
 }
