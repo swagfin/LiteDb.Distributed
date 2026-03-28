@@ -201,7 +201,7 @@ public sealed class ClusterReplicationTests
                 {
                     NodeId = nodeId,
                     ReplicationBatchSize = 500,
-                    ReplicationIntervalSeconds = 1
+                    ReplicationIntervalMilliseconds = 100
                 },
                 Store,
                 Store,

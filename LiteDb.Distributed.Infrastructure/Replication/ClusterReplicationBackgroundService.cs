@@ -24,13 +24,13 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
         _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        var seconds = Math.Max(1, options.ReplicationIntervalSeconds);
-        _interval = TimeSpan.FromSeconds(seconds);
+        var milliseconds = Math.Max(1, options.ReplicationIntervalMilliseconds);
+        _interval = TimeSpan.FromMilliseconds(milliseconds);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Cluster replication worker started. Interval={IntervalSeconds}s", _interval.TotalSeconds);
+        _logger.LogInformation("Cluster replication worker started. IntervalMs={IntervalMs}", _interval.TotalMilliseconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
