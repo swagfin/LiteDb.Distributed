@@ -756,6 +756,13 @@ public sealed class LiteDbNodeStore :
                 "If this file was created when encryption was enabled, delete/recreate the file or migrate it before running this node.",
                 ex);
         }
+        catch (IOException ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to open {logicalFileKind} LiteDB file for NodeId='{nodeId}', Database='{databaseName}', Path='{fullPath}'. " +
+                "The file is locked by another process. Ensure only one process owns this node/data path and avoid duplicate node instances.",
+                ex);
+        }
     }
 
     private void BeginCombinedTransaction()

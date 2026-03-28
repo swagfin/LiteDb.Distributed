@@ -11,7 +11,7 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
     private readonly IDatabaseContextAccessor _databaseContextAccessor;
     private readonly ILogger<LogicalDatabaseStoreProvider> _logger;
-    private readonly ConcurrentDictionary<string, LiteDbNodeStore> _stores = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Lazy<LiteDbNodeStore>> _stores = new(StringComparer.Ordinal);
 
     private bool _disposed;
 
@@ -51,47 +51,69 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
             .GetOrCreateAsync(databaseName, credential, cancellationToken)
             .ConfigureAwait(false);
 
-        return _stores.GetOrAdd(
+        var lazyStore = _stores.GetOrAdd(
             registration.DatabaseName,
-            _ =>
+            _ => new Lazy<LiteDbNodeStore>(
+                () => CreateStore(registration),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+
+        try
+        {
+            return lazyStore.Value;
+        }
+        catch (Exception ex)
+        {
+            // If creation failed, remove this lazy entry so the next request can retry.
+            _stores.TryRemove(new KeyValuePair<string, Lazy<LiteDbNodeStore>>(registration.DatabaseName, lazyStore));
+
+            _logger.LogError(
+                ex,
+                "Failed opening logical database store after retry-safe lazy initialization. NodeId={NodeId} Database={Database}",
+                _options.NodeId,
+                registration.DatabaseName);
+
+            throw;
+        }
+    }
+
+    private LiteDbNodeStore CreateStore(LogicalDatabaseRegistration registration)
+    {
+        var rootDataDirectory = ResolveDataDirectory(_options.DataDirectory);
+        var nodeDataDirectory = Path.Combine(rootDataDirectory, _options.NodeId);
+        Directory.CreateDirectory(nodeDataDirectory);
+        var businessPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db");
+        var metadataPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata");
+
+        _logger.LogInformation(
+            "Opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}",
+            _options.NodeId,
+            registration.DatabaseName,
+            businessPath,
+            metadataPath);
+
+        try
+        {
+            return new LiteDbNodeStore(new LiteDbNodeStoreOptions
             {
-                var rootDataDirectory = ResolveDataDirectory(_options.DataDirectory);
-                var nodeDataDirectory = Path.Combine(rootDataDirectory, _options.NodeId);
-                Directory.CreateDirectory(nodeDataDirectory);
-                var businessPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db");
-                var metadataPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata");
-
-                _logger.LogInformation(
-                    "Opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}",
-                    _options.NodeId,
-                    registration.DatabaseName,
-                    businessPath,
-                    metadataPath);
-
-                try
-                {
-                    return new LiteDbNodeStore(new LiteDbNodeStoreOptions
-                    {
-                        NodeId = _options.NodeId,
-                        DatabaseName = registration.DatabaseName,
-                        BusinessDatabasePath = businessPath,
-                        MetadataDatabasePath = metadataPath,
-                        SeedPeers = _options.SeedPeers
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(
-                        ex,
-                        "Failed opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}",
-                        _options.NodeId,
-                        registration.DatabaseName,
-                        businessPath,
-                        metadataPath);
-
-                    throw;
-                }
+                NodeId = _options.NodeId,
+                DatabaseName = registration.DatabaseName,
+                BusinessDatabasePath = businessPath,
+                MetadataDatabasePath = metadataPath,
+                SeedPeers = _options.SeedPeers
             });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}",
+                _options.NodeId,
+                registration.DatabaseName,
+                businessPath,
+                metadataPath);
+
+            throw;
+        }
     }
 
     public void Dispose()
@@ -103,9 +125,14 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
 
         _disposed = true;
 
-        foreach (var store in _stores.Values)
+        foreach (var lazyStore in _stores.Values)
         {
-            store.Dispose();
+            if (!lazyStore.IsValueCreated)
+            {
+                continue;
+            }
+
+            lazyStore.Value.Dispose();
         }
 
         _stores.Clear();
