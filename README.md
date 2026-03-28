@@ -16,6 +16,47 @@ Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
 - `Password` or `ApiKey` (required): validated against the logical database catalog.
 
+## Cache (Replicated TTL Key/Value)
+
+Each logical database includes a reserved replicated cache collection named `cache`.
+
+- Cache entries are replicated across peers through the normal operation log pipeline.
+- Default TTL is `5m` when `ttl` is not provided.
+- `ttl` examples: `30s`, `5m`, `2h`, `1d`.
+- The generic documents API cannot access the reserved `cache` collection.
+
+Endpoints:
+
+- `PUT /api/cache/{key}?ttl=5m` with JSON body as cached value.
+- `GET /api/cache/{key}` returns cached value when not expired.
+- `DELETE /api/cache/{key}` tombstones the key and replicates deletion.
+
+## Why Use This Instead Of Redis?
+
+LiteDb.Distributed is not a drop-in Redis replacement. It is a better fit for a different class of systems.
+
+Use LiteDb.Distributed when you need:
+
+- Local-first writes with no network dependency: writes succeed on the local node immediately, then replicate asynchronously.
+- Offline/edge operation: each node has full local storage and can keep serving reads/writes during network loss.
+- Durable document + cache in one engine: business documents and replicated TTL cache live in the same local-first system.
+- Per-database isolation: each logical database has separate business and metadata files, which reduces blast radius.
+- Operation-log driven replication: deterministic replay and checkpoint-based catch-up across nodes.
+- Simpler self-hosted footprint for branch/edge deployments: no separate central in-memory tier required.
+
+Concrete examples where this wins:
+
+- Store/POS branches that must keep operating during WAN outages and sync when links recover.
+- Multi-node desktop/on-prem apps that need local durability plus peer convergence.
+- Lightweight distributed cache needs where you also want persisted state and eventual replication.
+
+Use Redis when you need:
+
+- Ultra-low-latency centralized cache patterns at very high QPS.
+- Native Redis features (pub/sub, streams, sorted sets, Lua, modules).
+- Mature managed cloud offerings with Redis-specific tooling/operations.
+- Strictly centralized cache semantics over local-first behavior.
+
 ## Replication Visual Guide
 
 ```text
@@ -143,7 +184,7 @@ dotnet test .\LiteDb.Distributed.Tests\LiteDb.Distributed.Tests.csproj
 Run all three nodes with one command:
 
 ```powershell
-dotnet run --project .\LiteDb.Distributed.AppHost\LiteDb.Distributed.AppHost.csproj
+dotnet run --project .\LiteDb.Distributed.AspireHost\LiteDb.Distributed.AspireHost.csproj
 ```
 
 Configured node URLs:

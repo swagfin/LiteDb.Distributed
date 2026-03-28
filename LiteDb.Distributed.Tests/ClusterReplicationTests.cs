@@ -1,5 +1,4 @@
 using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Collections;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Core.SampleEntities;
 using LiteDb.Distributed.Infrastructure.Configuration;
@@ -164,6 +163,7 @@ public sealed class ClusterReplicationTests
 
     private sealed class TestNode : IAsyncDisposable
     {
+        private const string CustomerCollection = "customers";
         private readonly string _nodeId;
         private readonly IOperationIngestionService _ingestionService;
         private readonly PeerReplicationService _replicationService;
@@ -231,7 +231,7 @@ public sealed class ClusterReplicationTests
         public Task UpsertCustomerAsync(string customerId, string customerName)
         {
             return Store.UpsertAsync(
-                BusinessCollections.Customers,
+                CustomerCollection,
                 customerId,
                 new Customer
                 {
@@ -244,12 +244,12 @@ public sealed class ClusterReplicationTests
 
         public Task DeleteCustomerAsync(string customerId)
         {
-            return Store.DeleteAsync(BusinessCollections.Customers, customerId);
+            return Store.DeleteAsync(CustomerCollection, customerId);
         }
 
         public Task<Dictionary<string, object?>?> GetCustomerAsync(string customerId)
         {
-            return Store.GetByIdAsync<Dictionary<string, object?>>(BusinessCollections.Customers, customerId);
+            return Store.GetByIdAsync<Dictionary<string, object?>>(CustomerCollection, customerId);
         }
 
         public async Task<ReplicationPushResponse> ReceivePushAsync(

@@ -11,6 +11,7 @@ namespace LiteDb.Distributed.Server.Controllers;
 [Route("api/{documentName}")]
 public sealed class DocumentsController : ControllerBase
 {
+    private const string CacheCollectionName = "cache";
     private readonly ILocalDocumentWriter _writer;
     private readonly ILocalDocumentReader _reader;
     private readonly IReplicationSignalPublisher _replicationSignalPublisher;
@@ -27,6 +28,11 @@ public sealed class DocumentsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> ListAsync(string documentName, [FromQuery] int skip, [FromQuery] int take, CancellationToken cancellationToken)
     {
+        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        {
+            return reservedRejection;
+        }
+
         var stopwatch = Stopwatch.StartNew();
         var safeTake = take <= 0 ? 100 : take;
 
@@ -43,6 +49,11 @@ public sealed class DocumentsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetByIdAsync(string documentName, string id, CancellationToken cancellationToken)
     {
+        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        {
+            return reservedRejection;
+        }
+
         var stopwatch = Stopwatch.StartNew();
         _logger.LogDebug("Document get request. Collection={Collection} Id={Id}", documentName, id);
 
@@ -57,6 +68,11 @@ public sealed class DocumentsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> PostAsync(string documentName, [FromBody] JsonElement payload, [FromQuery] string? parentVersion, CancellationToken cancellationToken)
     {
+        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        {
+            return reservedRejection;
+        }
+
         var stopwatch = Stopwatch.StartNew();
 
         if (!TryExtractEntityId(payload, out var entityId))
@@ -93,6 +109,11 @@ public sealed class DocumentsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> PutAsync(string documentName, string id, [FromBody] JsonElement payload, [FromQuery] string? parentVersion, CancellationToken cancellationToken)
     {
+        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        {
+            return reservedRejection;
+        }
+
         var stopwatch = Stopwatch.StartNew();
         _logger.LogDebug("Document put request. Collection={Collection} Id={Id}", documentName, id);
 
@@ -123,6 +144,11 @@ public sealed class DocumentsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteAsync(string documentName, string id, [FromQuery] string? parentVersion, CancellationToken cancellationToken)
     {
+        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        {
+            return reservedRejection;
+        }
+
         var stopwatch = Stopwatch.StartNew();
         _logger.LogDebug("Document delete request. Collection={Collection} Id={Id}", documentName, id);
 
@@ -182,5 +208,25 @@ public sealed class DocumentsController : ControllerBase
 
         value = candidate;
         return true;
+    }
+
+    private static bool TryCreateReservedCollectionRejection(string documentName, out IActionResult rejection)
+    {
+        if (!IsReservedCollection(documentName))
+        {
+            rejection = null!;
+            return false;
+        }
+
+        rejection = new ObjectResult(new { Error = $"Collection '{documentName}' is reserved. Use '/api/cache' endpoints." })
+        {
+            StatusCode = StatusCodes.Status403Forbidden
+        };
+        return true;
+    }
+
+    private static bool IsReservedCollection(string? collectionName)
+    {
+        return string.Equals(collectionName, CacheCollectionName, StringComparison.OrdinalIgnoreCase);
     }
 }
