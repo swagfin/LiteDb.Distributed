@@ -51,15 +51,23 @@ Optional node settings:
 ## Why Use This Instead Of Redis?
 
 LiteDb.Distributed is not a drop-in Redis replacement. It is a better fit for a different class of systems.
+Redis is primarily key/value-first, while LiteDb.Distributed is built for document data that can also be shaped in a more relational-style model.
 
 Use LiteDb.Distributed when you need:
 
 - Local-first writes with no network dependency: writes succeed on the local node immediately, then replicate asynchronously.
 - Offline/edge operation: each node has full local storage and can keep serving reads/writes during network loss.
 - Durable document + cache in one engine: business documents and replicated TTL cache live in the same local-first system.
+- Document + relational-style modeling: even though this is a document store, records can be organized in table/collection structures that feel more relational for business data workflows.
 - Per-database isolation: each logical database has separate business and metadata files, which reduces blast radius.
 - Operation-log driven replication: deterministic replay and checkpoint-based catch-up across nodes.
+- Immutable operation history per database: easier troubleshooting, replay-based recovery, and audit-friendly change tracking.
 - Simpler self-hosted footprint for branch/edge deployments: no separate central in-memory tier required.
+- No migration burden for day-to-day changes: schema-flexible documents let you evolve fields without rigid table migration pipelines.
+- Reserved replicated cache with TTL in the same platform: no extra Redis dependency just to add distributed cache semantics.
+- Read-only query guardrails by default (`SELECT` / `EXPLAIN` only): safer operational access from tools like Studio.
+- Tenant-ready request model: `Database` + `ApiKey` headers make logical database routing and isolation explicit per request.
+- Efficient peer sync model: nodes exchange operations and checkpoints, not full DB files.
 
 Concrete examples where this wins:
 
@@ -69,7 +77,7 @@ Concrete examples where this wins:
 
 Use Redis when you need:
 
-- Ultra-low-latency centralized cache patterns at very high QPS.
+- Pure key/value-first patterns with ultra-low-latency centralized cache behavior at very high QPS.
 - Native Redis features (pub/sub, streams, sorted sets, Lua, modules).
 - Mature managed cloud offerings with Redis-specific tooling/operations.
 - Strictly centralized cache semantics over local-first behavior.

@@ -609,6 +609,14 @@ textarea:focus {
     background: rgba(0, 0, 0, 0.2);
 }
 
+.data-grid-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.55rem 0.6rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(8, 16, 25, 0.8);
+}
+
 table {
     width: 100%;
     border-collapse: collapse;

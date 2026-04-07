@@ -3,28 +3,28 @@
 
 <PageTitle>LiteDb Distributed Studio</PageTitle>
 
-@if (_busy)
-{
-    <div class="status-strip status-working status-loading" role="status" aria-live="polite">
-        <span class="loading-spinner" aria-hidden="true"></span>
-        <span class="loading-text">Working on your request...</span>
-        <span class="loading-line" aria-hidden="true"></span>
-    </div>
-}
-
-@if (!string.IsNullOrWhiteSpace(_errorMessage))
-{
-    <div class="status-strip status-error">@_errorMessage</div>
-}
-else if (!string.IsNullOrWhiteSpace(_infoMessage))
-{
-    <div class="status-strip status-info">@_infoMessage</div>
-}
-
 <div class="studio-grid">
     @if (ShowProfileManagement)
     {
         <section class="studio-panel profile-panel profile-manager-panel">
+            @if (_busy)
+            {
+                <div class="status-strip status-working status-loading" role="status" aria-live="polite">
+                    <span class="loading-spinner" aria-hidden="true"></span>
+                    <span class="loading-text">Working on your request...</span>
+                    <span class="loading-line" aria-hidden="true"></span>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <div class="status-strip status-error">@_errorMessage</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(_infoMessage))
+            {
+                <div class="status-strip status-info">@_infoMessage</div>
+            }
+
             <div class="panel-head">
                 <div class="h2">Profile Management</div>
                 <p>Select an existing profile or create a new one before opening Data Explorer.</p>
@@ -182,6 +182,24 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                 </aside>
 
                 <section class="query-results-pane" @onclick="DismissRowContextMenu">
+                    @if (_busy)
+                    {
+                        <div class="status-strip status-working status-loading workspace-status" role="status" aria-live="polite">
+                            <span class="loading-spinner" aria-hidden="true"></span>
+                            <span class="loading-text">Working on your request...</span>
+                            <span class="loading-line" aria-hidden="true"></span>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+                    {
+                        <div class="status-strip status-error workspace-status">@_errorMessage</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_infoMessage))
+                    {
+                        <div class="status-strip status-info workspace-status">@_infoMessage</div>
+                    }
+
                     @if (SelectedCollectionIsSystem)
                     {
                         <div class="status-strip status-info system-collection-note">
@@ -197,15 +215,18 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                     <div class="query-editor-row">
                         <label>
                             <span>LiteQL Query (Read-Only)</span>
-                            <textarea class="query-textarea" @bind="_queryText" spellcheck="false"></textarea>
+                            <textarea class="query-textarea" @bind="_queryText" @bind:event="onchange" spellcheck="false"></textarea>
                         </label>
                         <div class="query-editor-actions">
-                            <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Use Table Template</button>
+                            <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Reset</button>
                             <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run LiteQL</button>
                         </div>
                     </div>
 
                     <div class="table-wrap">
+                        <div class="data-grid-actions">
+                            <button type="button" class="btn btn-primary" @onclick="OpenNewDocumentModal" disabled="@(ActiveProfile is null || string.IsNullOrWhiteSpace(_selectedCollection) || SelectedCollectionIsSystem)">New Document</button>
+                        </div>
                         <table>
                             <thead>
                                 <tr>
@@ -327,9 +348,27 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
             <textarea class="document-editor-textarea" @bind="_documentJson" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
 
             <div class="action-row">
-                <button type="button" class="btn btn-ghost" @onclick="CreateDocumentTemplate" disabled="@SelectedCollectionIsSystem">New Document</button>
                 <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem)">Save</button>
                 <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showDeleteConfirmModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CancelDeleteConfirmation">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Confirm Delete</div>
+                <button type="button" class="btn btn-ghost" @onclick="CancelDeleteConfirmation">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Delete document '@_pendingDeleteDocumentId'? This action cannot be undone.</p>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CancelDeleteConfirmation">Cancel</button>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmDeleteFromModalAsync" disabled="@(_busy || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
             </div>
         </section>
     </div>
@@ -340,7 +379,7 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
     <div class="row-context-menu"
          style="left:@($"{_rowContextMenuX}px"); top:@($"{_rowContextMenuY}px");"
          @onclick:stopPropagation="true">
-        <button type="button" @onclick="EditFromRowContextMenuAsync">Edit</button>
+        <button type="button" @onclick="EditFromRowContextMenuAsync">View</button>
         <button type="button" @onclick="DeleteFromRowContextMenuAsync" disabled="@(SelectedCollectionIsSystem)">Delete</button>
     </div>
 }

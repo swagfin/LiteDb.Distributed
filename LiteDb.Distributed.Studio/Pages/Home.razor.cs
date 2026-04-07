@@ -9,7 +9,7 @@ namespace LiteDb.Distributed.Studio.Pages
 {
     public partial class Home : ComponentBase
     {
-        private const int DefaultBrowseTake = 200;
+        private const int DefaultBrowseTake = 100;
 
         [Inject]
         public required ProfileStore ProfileStore { get; init; }
@@ -40,9 +40,10 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _showTableModal;
         private bool _includeSystemCollections;
 
-        private string _queryText = "SELECT $ FROM OrderTransactions LIMIT 200";
+        private string _queryText = "SELECT $ FROM OrderTransactions LIMIT 100";
 
         private List<Dictionary<string, JsonElement>> _documents = [];
+        private List<string> _displayColumns = ["Result"];
         private Dictionary<string, JsonElement>? _selectedDocument;
 
         private string _selectedDocumentId = string.Empty;
@@ -55,10 +56,12 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _showProfileModal;
         private bool _editingProfile;
         private bool _showDocumentEditorModal;
+        private bool _showDeleteConfirmModal;
         private bool _showRowContextMenu;
         private double _rowContextMenuX;
         private double _rowContextMenuY;
         private Dictionary<string, JsonElement>? _rowContextMenuDocument;
+        private string _pendingDeleteDocumentId = string.Empty;
         private string? _errorMessage;
         private string? _infoMessage;
 
@@ -76,28 +79,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {GetProfileDisplayName(ActiveProfile)}";
 
-        private IReadOnlyList<string> DisplayColumns
-        {
-            get
-            {
-                List<string> keys = _documents.SelectMany(x => x.Keys).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-
-                int idIndex = keys.FindIndex(x => string.Equals(x, "Id", StringComparison.OrdinalIgnoreCase));
-                if (idIndex > 0)
-                {
-                    string id = keys[idIndex];
-                    keys.RemoveAt(idIndex);
-                    keys.Insert(0, id);
-                }
-
-                if (keys.Count == 0)
-                {
-                    keys.Add("Result");
-                }
-
-                return keys;
-            }
-        }
+        private IReadOnlyList<string> DisplayColumns => _displayColumns;
 
         protected override async Task OnInitializedAsync()
         {
@@ -168,6 +150,7 @@ namespace LiteDb.Distributed.Studio.Pages
             _showTableModal = false;
             ClearMessages();
             CloseDocumentEditorModal();
+            CancelDeleteConfirmation();
             DismissRowContextMenu();
         }
 
@@ -179,13 +162,14 @@ namespace LiteDb.Distributed.Studio.Pages
             _discoveredCollections = [];
             _collections = [];
             _selectedCollection = null;
-            _documents = [];
+            ClearDocuments();
             _selectedDocument = null;
             _selectedDocumentId = string.Empty;
             _newCollectionName = string.Empty;
             _showTableModal = false;
             CreateDocumentTemplate();
             CloseDocumentEditorModal();
+            CancelDeleteConfirmation();
             DismissRowContextMenu();
             await ProfileStore.SaveActiveProfileIdAsync(null).ConfigureAwait(false);
             _infoMessage = "Disconnected. Session ended.";
@@ -234,11 +218,12 @@ namespace LiteDb.Distributed.Studio.Pages
                 _selectedCollection = null;
                 _newCollectionName = string.Empty;
                 _showTableModal = false;
-                _documents = [];
+                ClearDocuments();
                 _selectedDocument = null;
                 _selectedDocumentId = string.Empty;
                 CreateDocumentTemplate();
                 CloseDocumentEditorModal();
+                CancelDeleteConfirmation();
                 DismissRowContextMenu();
                 await ProfileStore.SaveActiveProfileIdAsync(null).ConfigureAwait(false);
             }
@@ -419,7 +404,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
                 if (_collections.Count == 0)
                 {
-                    _documents = [];
+                    ClearDocuments();
                     _selectedDocument = null;
                     _selectedCollection = null;
 
@@ -495,7 +480,7 @@ namespace LiteDb.Distributed.Studio.Pages
             if (_collections.Count == 0)
             {
                 _selectedCollection = null;
-                _documents = [];
+                ClearDocuments();
                 _selectedDocument = null;
                 CreateDocumentTemplate();
                 return;
@@ -534,7 +519,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 {
                     _errorMessage = $"Collection '{_selectedCollection}' is reserved. Use '/api/cache' endpoints.";
                     _infoMessage = null;
-                    _documents = [];
+                    ClearDocuments();
                     return;
                 }
 
@@ -552,11 +537,11 @@ namespace LiteDb.Distributed.Studio.Pages
                 if (!result.Success)
                 {
                     _errorMessage = result.ErrorMessage;
-                    _documents = [];
+                    ClearDocuments();
                     return;
                 }
 
-                _documents = result.Data ?? [];
+                SetDocuments(result.Data ?? []);
 
                 if (_documents.Count == 0)
                 {
@@ -593,11 +578,11 @@ namespace LiteDb.Distributed.Studio.Pages
                 if (!result.Success)
                 {
                     _errorMessage = result.ErrorMessage;
-                    _documents = [];
+                    ClearDocuments();
                     return;
                 }
 
-                _documents = result.Data?.Rows ?? [];
+                SetDocuments(result.Data?.Rows ?? []);
 
                 if (_documents.Count == 0)
                 {
@@ -741,12 +726,12 @@ namespace LiteDb.Distributed.Studio.Pages
                 if (!result.Success)
                 {
                     _errorMessage = result.ErrorMessage;
-                    _documents = [];
+                    ClearDocuments();
                     return;
                 }
 
                 List<Dictionary<string, JsonElement>> rows = result.Data?.Rows ?? [];
-                _documents = rows;
+                SetDocuments(rows);
 
                 if (_documents.Count > 0)
                 {
@@ -774,6 +759,53 @@ namespace LiteDb.Distributed.Studio.Pages
             }
 
             _queryText = $"SELECT $ FROM {_selectedCollection} LIMIT {DefaultBrowseTake}";
+        }
+
+        private void SetDocuments(List<Dictionary<string, JsonElement>> documents)
+        {
+            _documents = documents ?? [];
+            UpdateDisplayColumns();
+        }
+
+        private void ClearDocuments()
+        {
+            _documents = [];
+            _displayColumns = ["Result"];
+        }
+
+        private void UpdateDisplayColumns()
+        {
+            if (_documents.Count == 0)
+            {
+                _displayColumns = ["Result"];
+                return;
+            }
+
+            // Precompute visible columns once per dataset to keep render-time work minimal.
+            List<string> columns = [];
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+            if (_documents.Any(x => x.Keys.Any(key => string.Equals(key, "Id", StringComparison.OrdinalIgnoreCase))))
+            {
+                columns.Add("Id");
+                seen.Add("Id");
+            }
+
+            foreach (Dictionary<string, JsonElement> document in _documents)
+            {
+                foreach (string key in document.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (seen.Contains(key))
+                    {
+                        continue;
+                    }
+
+                    columns.Add(key);
+                    seen.Add(key);
+                }
+            }
+
+            _displayColumns = columns.Count == 0 ? ["Result"] : columns;
         }
 
         private static bool TryValidateQuerySafety(string queryText, out string? error)
@@ -822,6 +854,13 @@ namespace LiteDb.Distributed.Studio.Pages
             DismissRowContextMenu();
         }
 
+        private void OpenNewDocumentModal()
+        {
+            CreateDocumentTemplate();
+            _showDocumentEditorModal = true;
+            DismissRowContextMenu();
+        }
+
         private void CloseDocumentEditorModal()
         {
             _showDocumentEditorModal = false;
@@ -856,17 +895,51 @@ namespace LiteDb.Distributed.Studio.Pages
             return Task.CompletedTask;
         }
 
-        private async Task DeleteFromRowContextMenuAsync()
+        private Task DeleteFromRowContextMenuAsync()
         {
             Dictionary<string, JsonElement>? document = _rowContextMenuDocument;
             DismissRowContextMenu();
 
             if (document is null)
             {
+                return Task.CompletedTask;
+            }
+
+            OpenDeleteConfirmationForDocument(document);
+            return Task.CompletedTask;
+        }
+
+        private void OpenDeleteConfirmationForDocument(Dictionary<string, JsonElement> document)
+        {
+            SelectDocument(document);
+            _pendingDeleteDocumentId = _selectedDocumentId.Trim();
+
+            if (string.IsNullOrWhiteSpace(_pendingDeleteDocumentId))
+            {
+                _errorMessage = "Select a document with a valid Id before deleting.";
+                _infoMessage = null;
                 return;
             }
 
-            SelectDocument(document);
+            _showDeleteConfirmModal = true;
+        }
+
+        private void CancelDeleteConfirmation()
+        {
+            _showDeleteConfirmModal = false;
+            _pendingDeleteDocumentId = string.Empty;
+        }
+
+        private async Task ConfirmDeleteFromModalAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_pendingDeleteDocumentId))
+            {
+                CancelDeleteConfirmation();
+                return;
+            }
+
+            _selectedDocumentId = _pendingDeleteDocumentId;
+            CancelDeleteConfirmation();
             await DeleteDocumentAsync().ConfigureAwait(false);
         }
 
