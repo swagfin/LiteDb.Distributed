@@ -26,15 +26,13 @@ namespace LiteDb.Distributed.Tests
         }
 
         [Fact]
-        public async Task ResolveAsync_ThrowsWhenPasswordAndApiKeyMismatch()
+        public async Task ResolveAsync_ThrowsWhenApiKeyHeaderMissing()
         {
             await using TestResolverScope scope = new TestResolverScope();
 
             HeaderDictionary headers = new HeaderDictionary
             {
-                ["Database"] = "testapp",
-                ["Password"] = "pass-a",
-                ["ApiKey"] = "pass-b"
+                ["Database"] = "testapp"
             };
 
             await Assert.ThrowsAsync<ArgumentException>(() => scope.Resolver.ResolveAsync(headers));

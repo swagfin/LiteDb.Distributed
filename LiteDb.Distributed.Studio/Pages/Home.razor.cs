@@ -46,6 +46,9 @@ namespace LiteDb.Distributed.Studio.Pages
         private string _documentJson = "{\n  \"Id\": \"\"\n}";
 
         private bool _busy;
+        private bool _savingProfile;
+        private bool _connectingProfile;
+        private bool _showProfileManagement = true;
         private string? _errorMessage;
         private string? _infoMessage;
 
@@ -55,7 +58,11 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private IReadOnlyList<ConnectionProfile> OrderedProfiles => _profiles.OrderByDescending(x => x.UpdatedUtc).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
-        private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Save a profile and hit Connect." : $"Connected to {ActiveProfile.Database} at {ActiveProfile.BaseUrl}";
+        private bool ShowProfileManagement => _showProfileManagement || ActiveProfile is null;
+
+        private bool IsProfileActionBusy => _savingProfile || _connectingProfile;
+
+        private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {ActiveProfile.BaseUrl}";
 
         private IReadOnlyList<string> DisplayColumns
         {
@@ -95,23 +102,24 @@ namespace LiteDb.Distributed.Studio.Pages
                 IReadOnlyList<ConnectionProfile> loaded = await ProfileStore.LoadProfilesAsync().ConfigureAwait(false);
 
                 _profiles = loaded.OrderByDescending(x => x.UpdatedUtc).ToList();
-
-                _activeProfileId = await ProfileStore.LoadActiveProfileIdAsync().ConfigureAwait(false);
+                Guid? savedActiveProfileId = await ProfileStore.LoadActiveProfileIdAsync().ConfigureAwait(false);
+                _activeProfileId = null;
+                _showProfileManagement = true;
 
                 if (_profiles.Count == 0)
                 {
                     _selectedProfileId = null;
                     _editor = ConnectionProfile.CreateDefault();
+                    _infoMessage = "Create a profile and connect to open Data Explorer.";
                     return;
                 }
 
-                ConnectionProfile starterProfile = _profiles.FirstOrDefault(x => x.Id == _activeProfileId)
+                ConnectionProfile starterProfile = _profiles.FirstOrDefault(x => x.Id == savedActiveProfileId)
                                      ?? _profiles[0];
 
                 _selectedProfileId = starterProfile.Id;
                 _editor = starterProfile.Clone();
-
-                await ConnectAsync(starterProfile, quiet: true).ConfigureAwait(false);
+                _infoMessage = "Select a profile and click Connect to open Data Explorer.";
             }
             catch (Exception ex)
             {
@@ -143,6 +151,24 @@ namespace LiteDb.Distributed.Studio.Pages
             ClearMessages();
         }
 
+        private void OpenProfileManagement()
+        {
+            _showProfileManagement = true;
+            ClearMessages();
+        }
+
+        private void OpenDataExplorer()
+        {
+            if (ActiveProfile is null)
+            {
+                _showProfileManagement = true;
+                return;
+            }
+
+            _showProfileManagement = false;
+            ClearMessages();
+        }
+
         private async Task SaveProfileAsync()
         {
             if (!TryNormalizeProfile(_editor, out ConnectionProfile? normalized, out string? error))
@@ -152,15 +178,23 @@ namespace LiteDb.Distributed.Studio.Pages
                 return;
             }
 
-            UpsertProfile(normalized);
+            _savingProfile = true;
+            try
+            {
+                UpsertProfile(normalized);
 
-            _selectedProfileId = normalized.Id;
-            _editor = normalized.Clone();
+                _selectedProfileId = normalized.Id;
+                _editor = normalized.Clone();
 
-            await PersistProfilesAsync().ConfigureAwait(false);
+                await PersistProfilesAsync().ConfigureAwait(false);
 
-            _infoMessage = $"Profile '{normalized.Name}' saved.";
-            _errorMessage = null;
+                _infoMessage = $"Profile '{normalized.Name}' saved.";
+                _errorMessage = null;
+            }
+            finally
+            {
+                _savingProfile = false;
+            }
         }
 
         private async Task DeleteProfileAsync()
@@ -179,6 +213,7 @@ namespace LiteDb.Distributed.Studio.Pages
             if (_activeProfileId == _selectedProfileId)
             {
                 _activeProfileId = null;
+                _showProfileManagement = true;
                 _overview = null;
                 _collections = [];
                 _selectedCollection = null;
@@ -208,15 +243,22 @@ namespace LiteDb.Distributed.Studio.Pages
                 return;
             }
 
-            UpsertProfile(normalized);
-            _selectedProfileId = normalized.Id;
-            _activeProfileId = normalized.Id;
-            _editor = normalized.Clone();
+            _connectingProfile = true;
+            try
+            {
+                UpsertProfile(normalized);
+                _selectedProfileId = normalized.Id;
+                _editor = normalized.Clone();
 
-            await PersistProfilesAsync().ConfigureAwait(false);
-            await ProfileStore.SaveActiveProfileIdAsync(_activeProfileId).ConfigureAwait(false);
+                await PersistProfilesAsync().ConfigureAwait(false);
 
-            await ConnectAsync(normalized, quiet: false).ConfigureAwait(false);
+                bool connected = await ConnectAsync(normalized, quiet: false).ConfigureAwait(false);
+                _showProfileManagement = !connected;
+            }
+            finally
+            {
+                _connectingProfile = false;
+            }
         }
 
         private async Task RefreshCollectionsAsync()
@@ -229,24 +271,25 @@ namespace LiteDb.Distributed.Studio.Pages
                 return;
             }
 
-            await ConnectAsync(profile, quiet: true).ConfigureAwait(false);
+            bool connected = await ConnectAsync(profile, quiet: true).ConfigureAwait(false);
+            if (connected)
+            {
+                _showProfileManagement = false;
+            }
         }
 
-        private async Task ConnectAsync(ConnectionProfile profile, bool quiet)
+        private async Task<bool> ConnectAsync(ConnectionProfile profile, bool quiet)
         {
             _busy = true;
             ClearMessages();
 
             try
             {
-                _activeProfileId = profile.Id;
-                await ProfileStore.SaveActiveProfileIdAsync(profile.Id).ConfigureAwait(false);
-
                 ApiResult<DashboardOverviewDto> overviewResult = await ApiClient.GetOverviewAsync(profile.BaseUrl).ConfigureAwait(false);
                 if (!overviewResult.Success)
                 {
                     _errorMessage = overviewResult.ErrorMessage;
-                    return;
+                    return false;
                 }
 
                 _overview = overviewResult.Data;
@@ -255,9 +298,11 @@ namespace LiteDb.Distributed.Studio.Pages
                 if (!collectionsResult.Success)
                 {
                     _errorMessage = collectionsResult.ErrorMessage;
-                    return;
+                    return false;
                 }
 
+                _activeProfileId = profile.Id;
+                await ProfileStore.SaveActiveProfileIdAsync(profile.Id).ConfigureAwait(false);
                 _collections = collectionsResult.Data ?? [];
 
                 if (_collections.Count == 0)
@@ -271,7 +316,7 @@ namespace LiteDb.Distributed.Studio.Pages
                         _infoMessage = "Connected. No collections discovered yet for this database.";
                     }
 
-                    return;
+                    return true;
                 }
 
                 if (string.IsNullOrWhiteSpace(_selectedCollection)
@@ -289,6 +334,13 @@ namespace LiteDb.Distributed.Studio.Pages
                 {
                     _infoMessage = "Connected and collections loaded.";
                 }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = $"Failed to connect profile: {ex.Message}";
+                return false;
             }
             finally
             {
@@ -771,9 +823,20 @@ namespace LiteDb.Distributed.Studio.Pages
             return false;
         }
 
-        private static string GetCredentialModeName(CredentialType credentialType)
+        private static string MaskApiKey(string? apiKey)
         {
-            return credentialType == CredentialType.Password ? "Password Header" : "ApiKey Header";
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                return "-";
+            }
+
+            string normalized = apiKey.Trim();
+            if (normalized.Length <= 6)
+            {
+                return new string('*', normalized.Length);
+            }
+
+            return $"{normalized[..3]}***{normalized[^3..]}";
         }
 
         private void UpsertProfile(ConnectionProfile profile)
@@ -839,7 +902,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             if (string.IsNullOrWhiteSpace(credential))
             {
-                error = "Credential is required.";
+                error = "ApiKey is required.";
                 profile = input;
                 return false;
             }

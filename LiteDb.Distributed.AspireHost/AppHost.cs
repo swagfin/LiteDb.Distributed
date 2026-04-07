@@ -1,5 +1,8 @@
 ﻿IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 
+//studio project
+builder.AddProject<Projects.LiteDb_Distributed_Studio>("studio");
+
 ConfigureNode(
     AddNodeProject(builder, "node-1"),
     "node-1",
@@ -23,6 +26,8 @@ ConfigureNode(
     17003,
     ("node-1", "http://localhost:17001"),
     ("node-2", "http://localhost:17002"));
+
+
 
 builder.Build().Run();
 

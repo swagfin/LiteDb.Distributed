@@ -7,7 +7,6 @@ namespace LiteDb.Distributed.Infrastructure.Context
     public class DatabaseRequestContextResolver : IDatabaseRequestContextResolver
     {
         private const string DatabaseHeader = "Database";
-        private const string PasswordHeader = "Password";
         private const string ApiKeyHeader = "ApiKey";
 
         private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
@@ -25,25 +24,13 @@ namespace LiteDb.Distributed.Infrastructure.Context
 
             string rawDatabaseName = headers[DatabaseHeader].ToString();
             string normalizedDatabaseName = DatabaseNameNormalizer.Normalize(rawDatabaseName);
-
-            string password = headers[PasswordHeader].ToString();
             string apiKey = headers[ApiKeyHeader].ToString();
 
-            if (string.IsNullOrWhiteSpace(password) && string.IsNullOrWhiteSpace(apiKey))
+            if (string.IsNullOrWhiteSpace(apiKey))
             {
-                throw new ArgumentException("Either Password or ApiKey header is required.");
+                throw new ArgumentException("ApiKey header is required.");
             }
-
-            if (!string.IsNullOrWhiteSpace(password)
-                && !string.IsNullOrWhiteSpace(apiKey)
-                && !string.Equals(password, apiKey, StringComparison.Ordinal))
-            {
-                throw new ArgumentException("Password and ApiKey headers both provided but do not match.");
-            }
-
-            string credential = string.IsNullOrWhiteSpace(password) ? apiKey : password;
-
-            LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(normalizedDatabaseName, credential, cancellationToken).ConfigureAwait(false);
+            LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(normalizedDatabaseName, apiKey, cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Database request context resolved. Database={Database}", registration.DatabaseName);
 

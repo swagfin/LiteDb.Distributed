@@ -20,7 +20,7 @@
     box-shadow: var(--shadow-soft);
 }
 
-.app-title-block h1 {
+.app-title-block .h1 {
     margin: 0;
     font-size: clamp(1.2rem, 2vw, 1.85rem);
     font-weight: 700;

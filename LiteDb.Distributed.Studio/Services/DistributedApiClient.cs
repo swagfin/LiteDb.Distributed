@@ -103,7 +103,7 @@ namespace LiteDb.Distributed.Studio.Services
             HttpRequestMessage request = new HttpRequestMessage(method, BuildAbsoluteUrl(profile.BaseUrl, relativePath));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             request.Headers.Add("Database", profile.Database);
-            request.Headers.Add(profile.CredentialHeaderName, profile.Credential);
+            request.Headers.Add("ApiKey", profile.Credential);
 
             return request;
         }

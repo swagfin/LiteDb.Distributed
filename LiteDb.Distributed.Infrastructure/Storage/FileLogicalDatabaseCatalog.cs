@@ -123,7 +123,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         {
             if (string.IsNullOrWhiteSpace(credential))
             {
-                throw new ArgumentException("Password or ApiKey header is required.", nameof(credential));
+                throw new ArgumentException("ApiKey header is required.", nameof(credential));
             }
 
             return credential.Trim();

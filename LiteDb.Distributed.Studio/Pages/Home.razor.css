@@ -1,6 +1,6 @@
-﻿.studio-grid {
+.studio-grid {
     display: grid;
-    grid-template-columns: 330px 1fr;
+    grid-template-columns: 1fr;
     gap: 1rem;
     min-height: calc(100vh - 220px);
 }
@@ -13,8 +13,8 @@
     padding: 1rem;
 }
 
-.panel-head h2,
-.editor-head h3 {
+.panel-head .h2,
+.editor-head .h3 {
     margin: 0;
     font-size: 1.05rem;
 }
@@ -30,6 +30,23 @@
     display: flex;
     flex-direction: column;
     gap: 0.9rem;
+}
+
+.profile-manager-panel {
+    width: min(760px, 100%);
+    margin: 0 auto;
+}
+
+.active-connection-hint {
+    border: 1px solid rgba(114, 196, 134, 0.35);
+    background: rgba(114, 196, 134, 0.12);
+    border-radius: 10px;
+    padding: 0.55rem 0.65rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+    font-size: 0.82rem;
 }
 
 .profile-list {
@@ -86,10 +103,6 @@
 .editor-grid {
     display: grid;
     gap: 0.7rem;
-}
-
-.editor-span-2 {
-    grid-column: 1 / -1;
 }
 
 label span {
@@ -171,8 +184,44 @@ textarea:focus {
 
 .workspace-panel {
     display: grid;
-    grid-template-rows: auto auto auto auto auto 1fr auto;
     gap: 0.85rem;
+}
+
+.connected-profile-bar {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 0.65rem 0.75rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+    gap: 0.6rem;
+    align-items: end;
+}
+
+.connected-profile-bar article {
+    min-width: 0;
+}
+
+.connected-profile-bar span {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.connected-profile-bar strong {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.connected-profile-actions {
+    display: flex;
+    justify-content: flex-end;
 }
 
 .workspace-head {
@@ -355,6 +404,41 @@ textarea {
     background: rgba(78, 168, 222, 0.15);
 }
 
+.status-loading {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    overflow: hidden;
+    padding-bottom: 0.85rem;
+}
+
+.loading-spinner {
+    width: 0.95rem;
+    height: 0.95rem;
+    border-radius: 999px;
+    border: 2px solid rgba(78, 168, 222, 0.35);
+    border-top-color: var(--accent-cyan);
+    animation: spin 0.8s linear infinite;
+    flex: 0 0 auto;
+}
+
+.loading-text {
+    font-weight: 500;
+}
+
+.loading-line {
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.35rem;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(78, 168, 222, 0), rgba(78, 168, 222, 0.9), rgba(78, 168, 222, 0));
+    transform: translateX(-45%);
+    animation: loading-slide 1.1s ease-in-out infinite;
+}
+
 .status-info {
     border-color: rgba(114, 196, 134, 0.4);
     background: rgba(114, 196, 134, 0.15);
@@ -366,10 +450,6 @@ textarea {
 }
 
 @media (max-width: 1220px) {
-    .studio-grid {
-        grid-template-columns: 1fr;
-    }
-
     .query-toolbar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -381,6 +461,15 @@ textarea {
     .kpi-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .connected-profile-bar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .connected-profile-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+    }
 }
 
 @media (max-width: 760px) {
@@ -391,6 +480,11 @@ textarea {
 
     .query-toolbar {
         grid-template-columns: 1fr;
+    }
+
+    .active-connection-hint {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .inline-input {
@@ -409,5 +503,32 @@ textarea {
     .editor-head {
         flex-direction: column;
         align-items: stretch;
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes loading-slide {
+    0% {
+        transform: translateX(-55%);
+        opacity: 0.55;
+    }
+
+    50% {
+        transform: translateX(55%);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateX(-55%);
+        opacity: 0.55;
     }
 }

@@ -15,7 +15,7 @@ This MVP supports multiple logical databases selected from HTTP headers.
 
 Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
-- `Password` or `ApiKey` (required): validated against the logical database catalog.
+- `ApiKey` (required): validated against the logical database catalog.
 
 Read-only query endpoint:
 
@@ -215,7 +215,7 @@ Then register peers per logical database using `POST /api/cluster/peers` with `D
 
 `LiteDb.Distributed.Studio` is a browser-based management UI for:
 
-- saving connection profiles (server URL, database, ApiKey/Password),
+- saving connection profiles (server URL, database, ApiKey),
 - browsing collections and paged documents,
 - looking up documents by `Id`,
 - running read-only LiteQL queries (`SELECT`/`EXPLAIN`),
