@@ -62,14 +62,14 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private ConnectionProfile? SelectedProfile => _selectedProfileId is null ? null : _profiles.FirstOrDefault(x => x.Id == _selectedProfileId.Value);
 
-        private IReadOnlyList<ConnectionProfile> OrderedProfiles => _profiles.OrderByDescending(x => x.UpdatedUtc).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        private IReadOnlyList<ConnectionProfile> OrderedProfiles => _profiles.OrderByDescending(x => x.UpdatedUtc).ThenBy(x => GetProfileDisplayName(x), StringComparer.OrdinalIgnoreCase).ToList();
 
         private bool ShowProfileManagement => _showProfileManagement || ActiveProfile is null;
 
         private bool IsProfileActionBusy => _savingProfile || _connectingProfile;
         private bool SelectedCollectionIsSystem => IsReservedCollection(_selectedCollection);
 
-        private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {ActiveProfile.BaseUrl}";
+        private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {GetProfileDisplayName(ActiveProfile)}";
 
         private IReadOnlyList<string> DisplayColumns
         {
@@ -108,7 +108,7 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 IReadOnlyList<ConnectionProfile> loaded = await ProfileStore.LoadProfilesAsync().ConfigureAwait(false);
 
-                _profiles = loaded.OrderByDescending(x => x.UpdatedUtc).ToList();
+                _profiles = NormalizeProfiles(loaded);
                 Guid? savedActiveProfileId = await ProfileStore.LoadActiveProfileIdAsync().ConfigureAwait(false);
                 _activeProfileId = null;
                 _showProfileManagement = true;
@@ -195,7 +195,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
                 await PersistProfilesAsync().ConfigureAwait(false);
 
-                _infoMessage = $"Profile '{normalized.Name}' saved.";
+                _infoMessage = $"Profile '{GetProfileDisplayName(normalized)}' saved.";
                 _errorMessage = null;
             }
             finally
@@ -1063,13 +1063,118 @@ namespace LiteDb.Distributed.Studio.Pages
             return $"{normalized[..3]}***{normalized[^3..]}";
         }
 
+        private static string GetProfileDisplayName(ConnectionProfile? profile)
+        {
+            if (profile is null)
+            {
+                return "-";
+            }
+
+            string explicitName = (profile.Name ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(explicitName))
+            {
+                return explicitName;
+            }
+
+            return BuildServerEndpointLabel(profile.BaseUrl);
+        }
+
+        private static string BuildServerEndpointLabel(string? baseUrl)
+        {
+            string normalizedUrl = (baseUrl ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedUrl))
+            {
+                return "unnamed-endpoint";
+            }
+
+            if (!Uri.TryCreate(normalizedUrl, UriKind.Absolute, out Uri? serverUri))
+            {
+                return normalizedUrl;
+            }
+
+            return serverUri.IsDefaultPort
+                ? $"{serverUri.Scheme}://{serverUri.Host}"
+                : $"{serverUri.Scheme}://{serverUri.Host}:{serverUri.Port}";
+        }
+
+        private static string BuildServerUniqueKey(string? baseUrl)
+        {
+            string normalizedUrl = (baseUrl ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedUrl))
+            {
+                return string.Empty;
+            }
+
+            if (!Uri.TryCreate(normalizedUrl, UriKind.Absolute, out Uri? serverUri))
+            {
+                return normalizedUrl.ToLowerInvariant();
+            }
+
+            string scheme = serverUri.Scheme.ToLowerInvariant();
+            string host = serverUri.Host.ToLowerInvariant();
+            int port = serverUri.Port;
+
+            return $"{scheme}://{host}:{port}";
+        }
+
+        private static List<ConnectionProfile> NormalizeProfiles(IEnumerable<ConnectionProfile> profiles)
+        {
+            List<ConnectionProfile> orderedProfiles = profiles
+                .Where(x => x is not null)
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ToList();
+
+            Dictionary<string, ConnectionProfile> uniqueProfiles = new(StringComparer.OrdinalIgnoreCase);
+            List<ConnectionProfile> results = new List<ConnectionProfile>();
+
+            foreach (ConnectionProfile profile in orderedProfiles)
+            {
+                string key = BuildServerUniqueKey(profile.BaseUrl);
+                if (uniqueProfiles.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                ConnectionProfile normalized = profile.Clone();
+                normalized.Name = (normalized.Name ?? string.Empty).Trim();
+                normalized.BaseUrl = BuildServerEndpointLabel(normalized.BaseUrl);
+                normalized.Database = (normalized.Database ?? string.Empty).Trim().ToLowerInvariant();
+                normalized.Credential = (normalized.Credential ?? string.Empty).Trim();
+                if (normalized.UpdatedUtc == default)
+                {
+                    normalized.UpdatedUtc = DateTime.UtcNow;
+                }
+
+                uniqueProfiles[key] = normalized;
+                results.Add(normalized);
+            }
+
+            return results.OrderByDescending(x => x.UpdatedUtc).ToList();
+        }
+
         private void UpsertProfile(ConnectionProfile profile)
         {
-            int index = _profiles.FindIndex(x => x.Id == profile.Id);
+            string targetKey = BuildServerUniqueKey(profile.BaseUrl);
+            int sameEndpointIndex = _profiles.FindIndex(x => string.Equals(BuildServerUniqueKey(x.BaseUrl), targetKey, StringComparison.OrdinalIgnoreCase));
+            int sameIdIndex = _profiles.FindIndex(x => x.Id == profile.Id);
 
-            if (index >= 0)
+            if (sameEndpointIndex >= 0)
             {
-                _profiles[index] = profile;
+                Guid existingId = _profiles[sameEndpointIndex].Id;
+                profile.Id = existingId;
+                _profiles[sameEndpointIndex] = profile;
+
+                if (sameIdIndex >= 0 && sameIdIndex != sameEndpointIndex)
+                {
+                    _profiles.RemoveAt(sameIdIndex);
+                }
+
+                return;
+            }
+
+            if (sameIdIndex >= 0)
+            {
+                _profiles[sameIdIndex] = profile;
                 return;
             }
 
@@ -1132,14 +1237,10 @@ namespace LiteDb.Distributed.Studio.Pages
             }
 
             string name = (input.Name ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                name = $"{database}@{serverUri.Host}";
-            }
 
             profile = input.Clone();
             profile.Name = name;
-            profile.BaseUrl = serverUri.ToString().TrimEnd('/');
+            profile.BaseUrl = BuildServerEndpointLabel(serverUri.ToString());
             profile.Database = database;
             profile.Credential = credential;
             profile.UpdatedUtc = DateTime.UtcNow;

@@ -33,7 +33,7 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
             @if (ActiveProfile is not null)
             {
                 <div class="active-connection-hint">
-                    <span>Connected: @ActiveProfile.Name (@ActiveProfile.Database)</span>
+                    <span>Connected: @GetProfileDisplayName(ActiveProfile) (@ActiveProfile.Database)</span>
                     <button type="button" class="btn btn-ghost" @onclick="OpenDataExplorer">Open Data Explorer</button>
                 </div>
             }
@@ -45,7 +45,7 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                             class="profile-chip @(profile.Id == _selectedProfileId ? "active" : string.Empty)"
                             @onclick="() => SelectProfile(profile.Id)"
                             disabled="@(_busy || IsProfileActionBusy)">
-                        <span class="profile-chip-name">@profile.Name</span>
+                        <span class="profile-chip-name">@GetProfileDisplayName(profile)</span>
                         <span class="profile-chip-meta">@profile.Database - @profile.BaseUrl</span>
                     </button>
                 }
@@ -58,8 +58,8 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
 
             <div class="editor-grid">
                 <label>
-                    <span>Profile Name</span>
-                    <input @bind="_editor.Name" placeholder="Branch Node 01" disabled="@(_busy || IsProfileActionBusy)" />
+                    <span>Profile Name (Optional)</span>
+                    <input @bind="_editor.Name" placeholder="Auto: server endpoint label" disabled="@(_busy || IsProfileActionBusy)" />
                 </label>
                 <label>
                     <span>Server URL</span>
@@ -89,7 +89,7 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
             <div class="connected-profile-bar">
                 <article>
                     <span>Profile</span>
-                    <strong>@(ActiveProfile?.Name ?? "-")</strong>
+                    <strong>@GetProfileDisplayName(ActiveProfile)</strong>
                 </article>
                 <article>
                     <span>Server</span>

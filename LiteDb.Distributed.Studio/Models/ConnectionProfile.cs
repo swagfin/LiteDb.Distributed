@@ -3,7 +3,7 @@ namespace LiteDb.Distributed.Studio.Models
     public class ConnectionProfile
     {
         public Guid Id { get; set; } = Guid.NewGuid();
-        public string Name { get; set; } = "Local Node";
+        public string Name { get; set; } = string.Empty;
         public string BaseUrl { get; set; } = "http://localhost:1446";
         public string Database { get; set; } = "testapp";
         public string Credential { get; set; } = "sample-local-key";
