@@ -263,7 +263,7 @@ namespace LiteDb.Distributed.Tests
                     MetadataDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db.metadata")
                 });
 
-                IConflictResolver conflictResolver = new CriticalCollectionConflictResolver(new LastWriteWinsConflictResolver(), Array.Empty<string>());
+                IConflictResolver conflictResolver = new NodeConflictPolicyResolver("ApplyIncoming");
 
                 _ingestionService = new OperationIngestionService(Store, conflictResolver, Store, Store, NullLogger<OperationIngestionService>.Instance);
 

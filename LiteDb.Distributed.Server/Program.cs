@@ -7,17 +7,23 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:1446");
 string[] studioCorsOrigins = builder.Configuration.GetSection("Studio:CorsOrigins").Get<string[]>() ?? Array.Empty<string>();
 
-builder.Services.AddControllers() .AddJsonOptions(options => { options.JsonSerializerOptions.PropertyNamingPolicy = null; });
+builder.Services.AddControllers().AddJsonOptions(options => { options.JsonSerializerOptions.PropertyNamingPolicy = null; });
 
 builder.Services.ConfigureHttpJsonOptions(options => { options.SerializerOptions.PropertyNamingPolicy = null; });
 
-builder.Services.AddCors(options => { options.AddPolicy("StudioCors", policy => { if (studioCorsOrigins.Length > 0)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("StudioCors", policy =>
+    {
+        if (studioCorsOrigins.Length > 0)
         {
             policy.WithOrigins(studioCorsOrigins);
         }
         else
         {
-            policy.SetIsOriginAllowed(origin => { if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri))
+            policy.SetIsOriginAllowed(origin =>
+            {
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri))
                 {
                     return false;
                 }
@@ -41,7 +47,7 @@ ClusterNodeOptions nodeOptions = new ClusterNodeOptions
     CacheCleanupIntervalSeconds = builder.Configuration.GetValue<int?>("Node:CacheCleanupIntervalSeconds") ?? 30,
     CacheCleanupBatchSize = builder.Configuration.GetValue<int?>("Node:CacheCleanupBatchSize") ?? 500,
     CacheCleanupMaxScanPages = builder.Configuration.GetValue<int?>("Node:CacheCleanupMaxScanPages") ?? 20,
-    CriticalCollections = builder.Configuration.GetSection("Node:CriticalCollections").Get<string[]>() ?? Array.Empty<string>(),
+    ConflictResolutionPolicy = builder.Configuration["Node:ConflictResolutionPolicy"] ?? "ApplyIncoming",
     SeedPeers = builder.Configuration.GetSection("Node:SeedPeers").Get<ClusterPeer[]>() ?? Array.Empty<ClusterPeer>()
 };
 

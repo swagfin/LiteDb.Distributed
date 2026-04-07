@@ -35,7 +35,7 @@ namespace LiteDb.Distributed.Infrastructure
 
             services.AddHttpClient<IPeerReplicationClient, HttpPeerReplicationClient>();
 
-            services.AddSingleton<IConflictResolver>(sp => new CriticalCollectionConflictResolver(new LastWriteWinsConflictResolver(), options.CriticalCollections));
+            services.AddSingleton<IConflictResolver>(sp => new NodeConflictPolicyResolver(options.ConflictResolutionPolicy));
 
             services.AddSingleton<IOperationIngestionService, OperationIngestionService>();
             services.AddSingleton<IClusterReplicationService, PeerReplicationService>();

@@ -12,7 +12,7 @@ namespace LiteDb.Distributed.Infrastructure.Configuration
         public int CacheCleanupIntervalSeconds { get; init; } = 30;
         public int CacheCleanupBatchSize { get; init; } = 500;
         public int CacheCleanupMaxScanPages { get; init; } = 20;
-        public IReadOnlyList<string> CriticalCollections { get; init; } = Array.Empty<string>();
+        public string ConflictResolutionPolicy { get; init; } = "ApplyIncoming";
         public IReadOnlyList<ClusterPeer> SeedPeers { get; init; } = Array.Empty<ClusterPeer>();
     }
 

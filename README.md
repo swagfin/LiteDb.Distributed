@@ -203,31 +203,22 @@ POST/PUT/DELETE /api/{document}
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
-    participant A as Node A (Writer)
-    participant B as Node B (Peer)
-    participant M as LiteDB Metadata
-    participant D as LiteDB Business DB
+    participant Client
+    participant NodeA as Node A
+    participant NodeB as Node B
 
-    C->>A: PUT /api/{document}/{id}
-    A->>D: Upsert document
-    A->>M: Append immutable operation log
-    A-->>C: 200 OK (local-first success)
+    Client->>NodeA: Write request
+    NodeA->>NodeA: Save document + append operation log
+    NodeA-->>Client: Success (local-first)
 
-    Note over A: Async replication dispatch starts
-    A->>B: POST /api/replication/push (operations)
-    B->>B: Ingest + apply remote ops
-    B-->>A: Push response (accepted count)
+    Note over NodeA,NodeB: Async replication cycle
+    NodeA->>NodeB: Push new operations
+    NodeB->>NodeB: Apply operations to local state
+    NodeA->>NodeB: Pull missing operations (if any)
+    NodeA->>NodeA: Apply pulled operations + update checkpoints
 
-    A->>B: POST /api/replication/pull (after checkpoint)
-    B-->>A: Missing operations since checkpoint
-    A->>A: Apply pulled operations
-    A->>M: Save peer checkpoints
-
-    A->>B: WS /ws/replication sync-request (hint)
-    B->>A: WS ack
-
-    Note over A,B: If signal/call fails -> retry with backoff, plus 1-minute safety sweep
+    NodeA->>NodeB: WebSocket sync hint
+    Note over NodeA,NodeB: Retries + periodic safety sweep ensure eventual convergence
 ```
 
 ### Latency Measurement Notes
@@ -306,7 +297,7 @@ The server allows Studio browser calls via CORS. Configure origins in:
 
 - Replication is event-driven: local writes schedule immediate source-node replication with retry/backoff, WebSocket peer signals are hints for faster convergence, and a fixed 1-minute safety sweep handles anti-entropy catch-up.
 - Peer replication is bounded-parallel per cycle (`Node:ReplicationPeerConcurrency`, default `4`) for better multi-peer latency.
-- Conflict resolution is pluggable (default includes LWW with optional conflict recording for critical collections).
-- Credentials are catalog-based (MVP) and independent of LiteDB file encryption, so resetting a DB credential does not require re-encrypting data files.
+- Conflict resolution is controlled per node by `Node:ConflictResolutionPolicy` (`ApplyIncoming` or `KeepLocal`).
+- API keys are application-level authorization values and independent of LiteDB file encryption.
 
 
