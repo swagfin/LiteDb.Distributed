@@ -96,7 +96,12 @@
     margin-top: 0.4rem;
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.4rem;
+}
+
+.profile-card-actions .btn-success {
+    margin-left: auto;
 }
 
 .profile-chip {
@@ -278,6 +283,17 @@ textarea:focus {
 
 .btn-ghost {
     border-color: rgba(255, 255, 255, 0.16);
+}
+
+.btn-icon {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
 }
 
 .workspace-panel {
