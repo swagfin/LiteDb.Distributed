@@ -38,48 +38,40 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                 </div>
             }
 
-            <div class="profile-list">
-                @foreach (ConnectionProfile profile in OrderedProfiles)
-                {
-                    <button type="button"
-                            class="profile-chip @(profile.Id == _selectedProfileId ? "active" : string.Empty)"
-                            @onclick="() => SelectProfile(profile.Id)"
-                            disabled="@(_busy || IsProfileActionBusy)">
-                        <span class="profile-chip-name">@GetProfileDisplayName(profile)</span>
-                        <span class="profile-chip-meta">@profile.Database - @profile.BaseUrl</span>
-                    </button>
-                }
+            <div class="profile-toolbar">
+                <button type="button" class="btn btn-primary" @onclick="OpenCreateProfileModal" disabled="@(_busy || IsProfileActionBusy)">Add Profile</button>
+            </div>
 
+            <div class="profile-cards">
                 @if (_profiles.Count == 0)
                 {
-                    <p class="empty-label">No saved profile yet. Fill the form and save one.</p>
+                    <p class="empty-label">No saved profile yet. Add one to get started.</p>
                 }
-            </div>
+                else
+                {
+                    @foreach (ConnectionProfile profile in OrderedProfiles)
+                    {
+                        <article class="profile-card @(profile.Id == _selectedProfileId ? "active" : string.Empty)">
+                            <div class="profile-card-head">
+                                <div class="profile-chip-name">@GetProfileDisplayName(profile)</div>
+                                @if (_activeProfileId == profile.Id)
+                                {
+                                    <span class="profile-active-pill">Connected</span>
+                                }
+                            </div>
+                            <div class="profile-chip-meta">@profile.BaseUrl</div>
+                            <div class="profile-chip-meta">Database: @profile.Database</div>
+                            <div class="profile-chip-meta">Updated: @profile.UpdatedUtc.ToLocalTime().ToString("g")</div>
 
-            <div class="editor-grid">
-                <label>
-                    <span>Profile Name (Optional)</span>
-                    <input @bind="_editor.Name" placeholder="Auto: server endpoint label" disabled="@(_busy || IsProfileActionBusy)" />
-                </label>
-                <label>
-                    <span>Server URL</span>
-                    <input @bind="_editor.BaseUrl" placeholder="http://localhost:1446" disabled="@(_busy || IsProfileActionBusy)" />
-                </label>
-                <label>
-                    <span>Database</span>
-                    <input @bind="_editor.Database" placeholder="testapp" disabled="@(_busy || IsProfileActionBusy)" />
-                </label>
-                <label>
-                    <span>ApiKey</span>
-                    <input @bind="_editor.Credential" placeholder="sample-local-key" disabled="@(_busy || IsProfileActionBusy)" />
-                </label>
-            </div>
-
-            <div class="action-row">
-                <button type="button" class="btn btn-ghost" @onclick="StartNewProfile" disabled="@(_busy || IsProfileActionBusy)">New</button>
-                <button type="button" class="btn btn-primary" @onclick="SaveProfileAsync" disabled="@(_busy || IsProfileActionBusy)">@(_savingProfile ? "Saving..." : "Save")</button>
-                <button type="button" class="btn btn-danger" @onclick="DeleteProfileAsync" disabled="@(_busy || IsProfileActionBusy || _selectedProfileId is null)">Delete</button>
-                <button type="button" class="btn btn-success" @onclick="ConnectUsingEditorAsync" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile ? "Connecting..." : "Connect")</button>
+                            <div class="profile-card-actions">
+                                <button type="button" class="btn btn-ghost" @onclick="() => SelectProfile(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">Select</button>
+                                <button type="button" class="btn btn-ghost" @onclick="() => OpenEditProfileModal(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">Edit</button>
+                                <button type="button" class="btn btn-success" @onclick="() => ConnectProfileAsync(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile && _selectedProfileId == profile.Id ? "Connecting..." : "Connect")</button>
+                                <button type="button" class="btn btn-danger" @onclick="() => DeleteProfileAsync(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">Delete</button>
+                            </div>
+                        </article>
+                    }
+                }
             </div>
         </section>
     }
@@ -289,3 +281,42 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
         </section>
     }
 </div>
+
+@if (_showProfileModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CloseProfileModal">
+        <section class="profile-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">@ProfileModalTitle</div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseProfileModal" disabled="@(_busy || IsProfileActionBusy)">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Save a profile for this server endpoint. Name is optional and can be left blank.</p>
+
+            <div class="editor-grid">
+                <label>
+                    <span>Server URL</span>
+                    <input @bind="_editor.BaseUrl" placeholder="http://localhost:1446" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+                <label>
+                    <span>Database</span>
+                    <input @bind="_editor.Database" placeholder="testapp" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+                <label>
+                    <span>ApiKey</span>
+                    <input @bind="_editor.Credential" placeholder="sample-local-key" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+                <label>
+                    <span>Profile Name (Optional)</span>
+                    <input @bind="_editor.Name" placeholder="Auto: server endpoint label" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+            </div>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CloseProfileModal" disabled="@(_busy || IsProfileActionBusy)">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_savingProfile ? "Saving..." : "Save")</button>
+                <button type="button" class="btn btn-success" @onclick="SaveAndConnectProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile ? "Connecting..." : "Save & Connect")</button>
+            </div>
+        </section>
+    </div>
+}

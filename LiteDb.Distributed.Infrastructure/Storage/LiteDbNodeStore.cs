@@ -992,14 +992,6 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                 payload[entry.Key] = entry.Value;
             }
 
-            if (!payload.Keys.Any(x => string.Equals(x, "Id", StringComparison.OrdinalIgnoreCase))
-                && materialized.TryGetValue("_id", out BsonValue? idValue)
-                && idValue.IsString)
-            {
-                // Preserve common DTO expectations where "Id" mirrors LiteDB "_id".
-                payload["Id"] = idValue.AsString;
-            }
-
             return LiteDB.JsonSerializer.Serialize(payload);
         }
 

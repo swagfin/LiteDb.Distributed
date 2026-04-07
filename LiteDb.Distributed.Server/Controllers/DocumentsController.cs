@@ -213,8 +213,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 return false;
             }
 
-            return TryReadPropertyAsString(payload, "Id", out entityId)
-                   || TryReadPropertyAsString(payload, "id", out entityId);
+            return TryReadPropertyAsString(payload, "Id", out entityId);
         }
 
         private static bool TryReadPropertyAsString(JsonElement payload, string propertyName, out string value)

@@ -55,6 +55,8 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _savingProfile;
         private bool _connectingProfile;
         private bool _showProfileManagement = true;
+        private bool _showProfileModal;
+        private bool _editingProfile;
         private string? _errorMessage;
         private string? _infoMessage;
 
@@ -68,6 +70,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private bool IsProfileActionBusy => _savingProfile || _connectingProfile;
         private bool SelectedCollectionIsSystem => IsReservedCollection(_selectedCollection);
+        private string ProfileModalTitle => _editingProfile ? "Edit Profile" : "Add Profile";
 
         private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {GetProfileDisplayName(ActiveProfile)}";
 
@@ -112,6 +115,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 Guid? savedActiveProfileId = await ProfileStore.LoadActiveProfileIdAsync().ConfigureAwait(false);
                 _activeProfileId = null;
                 _showProfileManagement = true;
+                _showProfileModal = false;
 
                 if (_profiles.Count == 0)
                 {
@@ -153,9 +157,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private void StartNewProfile()
         {
-            _selectedProfileId = null;
-            _editor = ConnectionProfile.CreateDefault();
-            ClearMessages();
+            OpenCreateProfileModal();
         }
 
         private void OpenProfileManagement()
@@ -178,46 +180,25 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private async Task SaveProfileAsync()
         {
-            if (!TryNormalizeProfile(_editor, out ConnectionProfile? normalized, out string? error))
-            {
-                _errorMessage = error;
-                _infoMessage = null;
-                return;
-            }
-
-            _savingProfile = true;
-            try
-            {
-                UpsertProfile(normalized);
-
-                _selectedProfileId = normalized.Id;
-                _editor = normalized.Clone();
-
-                await PersistProfilesAsync().ConfigureAwait(false);
-
-                _infoMessage = $"Profile '{GetProfileDisplayName(normalized)}' saved.";
-                _errorMessage = null;
-            }
-            finally
-            {
-                _savingProfile = false;
-            }
+            await SaveProfileInternalAsync(connectAfterSave: false).ConfigureAwait(false);
         }
 
-        private async Task DeleteProfileAsync()
+        private async Task DeleteProfileAsync(Guid? profileId = null)
         {
-            if (_selectedProfileId is null)
+            Guid? targetProfileId = profileId ?? _selectedProfileId;
+            if (targetProfileId is null)
             {
                 return;
             }
 
-            int removed = _profiles.RemoveAll(x => x.Id == _selectedProfileId.Value);
+            ConnectionProfile? deletedProfile = _profiles.FirstOrDefault(x => x.Id == targetProfileId.Value);
+            int removed = _profiles.RemoveAll(x => x.Id == targetProfileId.Value);
             if (removed == 0)
             {
                 return;
             }
 
-            if (_activeProfileId == _selectedProfileId)
+            if (_activeProfileId == targetProfileId)
             {
                 _activeProfileId = null;
                 _showProfileManagement = true;
@@ -233,16 +214,90 @@ namespace LiteDb.Distributed.Studio.Pages
                 await ProfileStore.SaveActiveProfileIdAsync(null).ConfigureAwait(false);
             }
 
-            _selectedProfileId = _profiles.FirstOrDefault()?.Id;
-            _editor = _selectedProfileId is Guid nextId ? _profiles.First(x => x.Id == nextId).Clone() : ConnectionProfile.CreateDefault();
+            if (_selectedProfileId == targetProfileId)
+            {
+                _selectedProfileId = _profiles.FirstOrDefault()?.Id;
+            }
+
+            _editor = _selectedProfileId is Guid nextId
+                ? _profiles.First(x => x.Id == nextId).Clone()
+                : ConnectionProfile.CreateDefault();
 
             await PersistProfilesAsync().ConfigureAwait(false);
 
             _errorMessage = null;
-            _infoMessage = "Profile deleted.";
+            _infoMessage = $"Profile '{GetProfileDisplayName(deletedProfile)}' deleted.";
         }
 
         private async Task ConnectUsingEditorAsync()
+        {
+            await SaveProfileInternalAsync(connectAfterSave: true).ConfigureAwait(false);
+        }
+
+        private void OpenCreateProfileModal()
+        {
+            _editingProfile = false;
+            _selectedProfileId = null;
+            _editor = ConnectionProfile.CreateDefault();
+            _showProfileModal = true;
+            ClearMessages();
+        }
+
+        private void OpenEditProfileModal(Guid profileId)
+        {
+            ConnectionProfile? profile = _profiles.FirstOrDefault(x => x.Id == profileId);
+            if (profile is null)
+            {
+                return;
+            }
+
+            _editingProfile = true;
+            _selectedProfileId = profile.Id;
+            _editor = profile.Clone();
+            _showProfileModal = true;
+            ClearMessages();
+        }
+
+        private void CloseProfileModal()
+        {
+            _showProfileModal = false;
+            _editingProfile = false;
+        }
+
+        private async Task SaveProfileFromModalAsync()
+        {
+            await SaveProfileInternalAsync(connectAfterSave: false).ConfigureAwait(false);
+        }
+
+        private async Task SaveAndConnectProfileFromModalAsync()
+        {
+            await SaveProfileInternalAsync(connectAfterSave: true).ConfigureAwait(false);
+        }
+
+        private async Task ConnectProfileAsync(Guid profileId)
+        {
+            ConnectionProfile? profile = _profiles.FirstOrDefault(x => x.Id == profileId);
+            if (profile is null)
+            {
+                return;
+            }
+
+            _selectedProfileId = profile.Id;
+            _editor = profile.Clone();
+
+            _connectingProfile = true;
+            try
+            {
+                bool connected = await ConnectAsync(profile, quiet: false).ConfigureAwait(false);
+                _showProfileManagement = !connected;
+            }
+            finally
+            {
+                _connectingProfile = false;
+            }
+        }
+
+        private async Task SaveProfileInternalAsync(bool connectAfterSave)
         {
             if (!TryNormalizeProfile(_editor, out ConnectionProfile? normalized, out string? error))
             {
@@ -251,7 +306,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 return;
             }
 
-            _connectingProfile = true;
+            _savingProfile = true;
             try
             {
                 UpsertProfile(normalized);
@@ -260,6 +315,24 @@ namespace LiteDb.Distributed.Studio.Pages
 
                 await PersistProfilesAsync().ConfigureAwait(false);
 
+                _showProfileModal = false;
+                _editingProfile = false;
+                _infoMessage = $"Profile '{GetProfileDisplayName(normalized)}' saved.";
+                _errorMessage = null;
+            }
+            finally
+            {
+                _savingProfile = false;
+            }
+
+            if (!connectAfterSave)
+            {
+                return;
+            }
+
+            _connectingProfile = true;
+            try
+            {
                 bool connected = await ConnectAsync(normalized, quiet: false).ConfigureAwait(false);
                 _showProfileManagement = !connected;
             }
@@ -921,12 +994,6 @@ namespace LiteDb.Distributed.Studio.Pages
                 return id;
             }
 
-            if (TryGetValueIgnoreCase(document, "_id", out JsonElement internalId)
-                && TryReadIdValue(internalId, out string? normalizedInternalId))
-            {
-                return normalizedInternalId;
-            }
-
             return null;
         }
 
@@ -939,8 +1006,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             foreach (JsonProperty property in root.EnumerateObject())
             {
-                if (!string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(property.Name, "_id", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
