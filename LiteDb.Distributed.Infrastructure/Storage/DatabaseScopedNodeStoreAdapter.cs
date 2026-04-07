@@ -60,6 +60,15 @@ public sealed class DatabaseScopedNodeStoreAdapter :
         return await store.ListAsync<TDocument>(collection, skip, take, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<TDocument>> ExecuteQueryAsync<TDocument>(
+        string query,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+    {
+        var store = await _storeProvider.GetCurrentStoreAsync(cancellationToken).ConfigureAwait(false);
+        return await store.ExecuteQueryAsync<TDocument>(query, take, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<DocumentState?> GetStateAsync(
         string collection,
         string entityId,

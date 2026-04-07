@@ -12,5 +12,10 @@ public interface ILocalDocumentReader
         int skip = 0,
         int take = 100,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<TDocument>> ExecuteQueryAsync<TDocument>(
+        string query,
+        int take = 100,
+        CancellationToken cancellationToken = default);
 }
 

@@ -330,6 +330,56 @@ public sealed class LiteDbNodeStore :
         }
     }
 
+    public Task<IReadOnlyList<TDocument>> ExecuteQueryAsync<TDocument>(
+        string query,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new ArgumentException("Query is required.", nameof(query));
+        }
+
+        if (take <= 0)
+        {
+            return Task.FromResult<IReadOnlyList<TDocument>>(Array.Empty<TDocument>());
+        }
+
+        var safeTake = Math.Clamp(take, 1, 10_000);
+
+        lock (_gate)
+        {
+            using var reader = _businessDatabase.Execute(query, new BsonDocument());
+            var result = new List<TDocument>(safeTake);
+            var count = 0;
+
+            while (reader.Read())
+            {
+                if (count++ >= safeTake)
+                {
+                    break;
+                }
+
+                var current = reader.Current;
+                var document = current.IsDocument
+                    ? current.AsDocument
+                    : new BsonDocument { ["[value]"] = current };
+
+                var json = LiteDB.JsonSerializer.Serialize(document);
+                var item = SystemTextJsonSerializer.Deserialize<TDocument>(json, JsonOptions);
+
+                if (item is not null)
+                {
+                    result.Add(item);
+                }
+            }
+
+            return Task.FromResult<IReadOnlyList<TDocument>>(result);
+        }
+    }
+
     public Task<DocumentState?> GetStateAsync(
         string collection,
         string entityId,
@@ -1154,4 +1204,3 @@ public sealed class LiteDbNodeStore :
         return baseUrl.TrimEnd('/');
     }
 }
-

@@ -17,6 +17,13 @@ Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
 - `Password` or `ApiKey` (required): validated against the logical database catalog.
 
+Read-only query endpoint:
+
+- `POST /api/query`
+  - Body: `{ "query": "SELECT $ FROM OrderTransactions LIMIT 200", "take": 200 }`
+  - Only `SELECT` and `EXPLAIN` are allowed.
+  - `SELECT INTO` and multi-statement queries are blocked.
+
 ## Cache (Replicated TTL Key/Value)
 
 Each logical database includes a reserved replicated cache collection named `cache`.
@@ -203,6 +210,31 @@ Configured node URLs:
 - `node-3`: `http://localhost:17003`
 
 Then register peers per logical database using `POST /api/cluster/peers` with `Database` and `ApiKey` headers.
+
+## LiteDb.Distributed.Studio (Blazor WASM)
+
+`LiteDb.Distributed.Studio` is a browser-based management UI for:
+
+- saving connection profiles (server URL, database, ApiKey/Password),
+- browsing collections and paged documents,
+- looking up documents by `Id`,
+- running read-only LiteQL queries (`SELECT`/`EXPLAIN`),
+- editing/saving/deleting documents as JSON.
+
+Run it with:
+
+```powershell
+dotnet run --project .\LiteDb.Distributed.Studio\LiteDb.Distributed.Studio.csproj
+```
+
+Default development profile URL is:
+
+- `http://localhost:5206`
+
+The server allows Studio browser calls via CORS. Configure origins in:
+
+- `LiteDb.Distributed.Server/appsettings.Development.json`
+  - `Studio:CorsOrigins`
 
 ## Notes
 

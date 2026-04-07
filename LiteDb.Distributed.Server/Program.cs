@@ -5,6 +5,7 @@ using LiteDb.Distributed.Infrastructure.Context;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:1446");
+var studioCorsOrigins = builder.Configuration.GetSection("Studio:CorsOrigins").Get<string[]>() ?? Array.Empty<string>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -15,6 +16,33 @@ builder.Services.AddControllers()
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = null;
+});
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("StudioCors", policy =>
+    {
+        if (studioCorsOrigins.Length > 0)
+        {
+            policy.WithOrigins(studioCorsOrigins);
+        }
+        else
+        {
+            policy.SetIsOriginAllowed(origin =>
+            {
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    return false;
+                }
+
+                return string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        policy.AllowAnyHeader();
+        policy.AllowAnyMethod();
+    });
 });
 
 var nodeOptions = new ClusterNodeOptions
@@ -41,6 +69,7 @@ app.UseWebSockets(new WebSocketOptions
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseCors("StudioCors");
 
 app.Use(async (httpContext, next) =>
 {
