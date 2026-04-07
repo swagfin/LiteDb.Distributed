@@ -19,6 +19,7 @@ namespace LiteDb.Distributed.Tests
                 ["ApiKey"] = "key-123"
             };
 
+            // Resolver normalizes tenant/database identity before setting request context.
             DatabaseRequestContext context = await scope.Resolver.ResolveAsync(headers);
 
             Assert.Equal("testapp", context.DatabaseName);
@@ -36,6 +37,7 @@ namespace LiteDb.Distributed.Tests
                 ["Database"] = "testapp"
             };
 
+            // Missing ApiKey should fail fast as a bad request.
             await Assert.ThrowsAsync<ArgumentException>(() => scope.Resolver.ResolveAsync(headers));
         }
 
@@ -50,6 +52,7 @@ namespace LiteDb.Distributed.Tests
                 ["ApiKey"] = "key-123"
             };
 
+            // Key can authenticate, but lacks permission to create a missing logical DB.
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => scope.Resolver.ResolveAsync(headers));
         }
 
@@ -64,6 +67,7 @@ namespace LiteDb.Distributed.Tests
                 ["ApiKey"] = "key-123"
             };
 
+            // Wildcard DB scope + ADD_DB role allows first-touch database creation.
             DatabaseRequestContext context = await scope.Resolver.ResolveAsync(headers);
 
             Assert.Equal("newdb", context.DatabaseName);
@@ -79,6 +83,7 @@ namespace LiteDb.Distributed.Tests
                 _rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(_rootPath);
 
+                // Catalog persists per-test in a temp folder to avoid cross-test contamination.
                 FileLogicalDatabaseCatalog catalog = new FileLogicalDatabaseCatalog(new ClusterNodeOptions
                 {
                     NodeId = "resolver-node",

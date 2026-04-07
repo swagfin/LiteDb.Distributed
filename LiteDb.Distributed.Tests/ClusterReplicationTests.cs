@@ -15,6 +15,7 @@ namespace LiteDb.Distributed.Tests
         [Fact]
         public async Task WriteOnOneNode_ReplicatesToOtherNodes()
         {
+            // Three-node topology gives us a simple way to verify fan-out replication.
             await using TestCluster cluster = new TestCluster();
             TestNode nodeA = cluster.AddNode("node-a");
             TestNode nodeB = cluster.AddNode("node-b");
@@ -25,6 +26,7 @@ namespace LiteDb.Distributed.Tests
             await nodeA.UpsertCustomerAsync("cust-001", "Acme One");
             await cluster.ReplicateAllAsync(rounds: 3);
 
+            // We validate materialized business state, not just operation-log counts.
             Dictionary<string, object?>? bCustomer = await nodeB.GetCustomerAsync("cust-001");
             Dictionary<string, object?>? cCustomer = await nodeC.GetCustomerAsync("cust-001");
 
@@ -46,6 +48,7 @@ namespace LiteDb.Distributed.Tests
             await nodeA.UpsertCustomerAsync("cust-join-001", "Join Target");
             await cluster.ReplicateAllAsync(rounds: 2);
 
+            // Node C joins later and should catch up from peers via pull/push cycles.
             TestNode nodeC = cluster.AddNode("node-c");
             await nodeC.AddPeerAsync(nodeA);
             await nodeC.AddPeerAsync(nodeB);
@@ -90,6 +93,7 @@ namespace LiteDb.Distributed.Tests
             await nodeA.UpsertCustomerAsync("cust-op-002", "Op Two");
             await nodeA.DeleteCustomerAsync("cust-op-001");
 
+            // Log sequence must stay monotonic and unique to support deterministic replay.
             IReadOnlyList<OperationRecord> operations = await nodeA.Store.GetOperationsAfterLogSequenceAsync(0, 100);
             Assert.Equal(3, operations.Count);
             Assert.Equal(new[] { 1L, 2L, 3L }, operations.Select(x => x.LogSequence));
@@ -114,6 +118,7 @@ namespace LiteDb.Distributed.Tests
             QueryController.QueryResponse response = await nodeA.ExecuteQueryAsync("UPDATE customers SET {\"Tier\":\"vip\"} WHERE $_id = 'cust-bulk-upd-001' OR $_id = 'cust-bulk-upd-002'");
             await cluster.ReplicateAllAsync(rounds: 3);
 
+            // Safe query mode reports matched rows and applied writes separately.
             Assert.Equal(2, response.MatchedCount);
             Assert.Equal(2, response.AppliedCount);
 
@@ -150,6 +155,7 @@ namespace LiteDb.Distributed.Tests
             QueryController.QueryResponse response = await nodeA.ExecuteQueryAsync("DELETE FROM customers WHERE $_id = 'cust-bulk-del-001' OR $_id = 'cust-bulk-del-002'");
             await cluster.ReplicateAllAsync(rounds: 3);
 
+            // Two targeted documents should be removed everywhere, while unrelated rows remain.
             Assert.Equal(2, response.MatchedCount);
             Assert.Equal(2, response.AppliedCount);
 
@@ -190,6 +196,7 @@ namespace LiteDb.Distributed.Tests
             {
                 List<TestNode> nodes = _nodes.Values.ToList();
 
+                // Build a full-mesh peer view for deterministic test behavior.
                 foreach (TestNode? source in nodes)
                 {
                     foreach (TestNode? target in nodes)
@@ -206,6 +213,7 @@ namespace LiteDb.Distributed.Tests
 
             public async Task ReplicateAllAsync(int rounds)
             {
+                // Multiple rounds reduce timing flakiness in eventually consistent flows.
                 for (int i = 0; i < rounds; i++)
                 {
                     foreach (TestNode node in _nodes.Values)
@@ -246,6 +254,7 @@ namespace LiteDb.Distributed.Tests
             {
                 _nodeId = nodeId;
 
+                // Each test node gets isolated business/metadata files under temp storage.
                 Store = new LiteDbNodeStore(new LiteDbNodeStoreOptions
                 {
                     NodeId = nodeId,
@@ -260,6 +269,7 @@ namespace LiteDb.Distributed.Tests
 
                 InMemoryPeerReplicationClient peerClient = new InMemoryPeerReplicationClient(nodeResolver);
 
+                // In-memory client wiring lets tests focus on replication logic without HTTP.
                 _replicationService = new PeerReplicationService(
                     new ClusterNodeOptions
                     {
@@ -320,6 +330,7 @@ namespace LiteDb.Distributed.Tests
 
             public async Task<QueryController.QueryResponse> ExecuteQueryAsync(string query, int take = 200)
             {
+                // Tests assert on controller-level responses to exercise query safety behavior.
                 IActionResult result = await _queryController.ExecuteAsync(new QueryController.QueryRequest
                 {
                     Query = query,
