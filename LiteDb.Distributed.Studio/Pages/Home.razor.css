@@ -70,7 +70,8 @@
     gap: 0.4rem;
 }
 
-.profile-card.active {
+.profile-card:hover,
+.profile-card:focus-within {
     border-color: var(--accent-orange);
     background: rgba(238, 150, 75, 0.12);
 }

@@ -815,6 +815,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             string command = commandMatch.Groups["cmd"].Value;
             bool hasWhere = Regex.IsMatch(normalized, "\\bwhere\\b", RegexOptions.IgnoreCase);
+            bool hasLimit = Regex.IsMatch(normalized, "\\blimit\\b", RegexOptions.IgnoreCase);
 
             if (string.Equals(command, "update", StringComparison.OrdinalIgnoreCase) && !hasWhere)
             {
@@ -828,9 +829,9 @@ namespace LiteDb.Distributed.Studio.Pages
                 return true;
             }
 
-            if (string.Equals(command, "select", StringComparison.OrdinalIgnoreCase) && !hasWhere)
+            if (string.Equals(command, "select", StringComparison.OrdinalIgnoreCase) && !hasWhere && !hasLimit)
             {
-                message = "SELECT query has no WHERE clause. This may scan a large table. Continue?";
+                message = "SELECT query has no WHERE or LIMIT clause. This may scan a large table. Continue?";
                 return true;
             }
 

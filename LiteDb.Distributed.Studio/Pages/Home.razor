@@ -51,7 +51,7 @@
                 {
                     @foreach (ConnectionProfile profile in OrderedProfiles)
                     {
-                        <article class="profile-card @(profile.Id == _selectedProfileId ? "active" : string.Empty)">
+                        <article class="profile-card">
                             <div class="profile-card-head">
                                 <div class="profile-chip-name">@GetProfileDisplayName(profile)</div>
                                 @if (_activeProfileId == profile.Id)
