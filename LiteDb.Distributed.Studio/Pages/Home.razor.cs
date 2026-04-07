@@ -1082,6 +1082,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 TrySelectDocumentById(documentId);
 
                 _infoMessage = result.Data is null ? $"Document '{documentId}' saved." : $"Document '{documentId}' saved. Version: {result.Data.Version}";
+                CloseDocumentEditorModal();
             }
             finally
             {
@@ -1140,6 +1141,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 await BrowseCollectionAsync().ConfigureAwait(false);
 
                 _infoMessage = $"Document '{documentId}' deleted.";
+                CloseDocumentEditorModal();
             }
             finally
             {
