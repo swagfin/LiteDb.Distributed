@@ -1,8 +1,8 @@
-using System.Net;
+﻿using System.Net;
 
 namespace LiteDb.Distributed.Studio.Models;
 
-public sealed class ApiResult<T>
+public class ApiResult<T>
 {
     public bool Success { get; init; }
     public T? Data { get; init; }
@@ -31,3 +31,4 @@ public sealed class ApiResult<T>
         };
     }
 }
+

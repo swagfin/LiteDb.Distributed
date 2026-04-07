@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Core.Abstractions;
+﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Replication;
 using Microsoft.AspNetCore.Mvc;
@@ -9,7 +9,7 @@ namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
 [Route("api/{documentName}")]
-public sealed class DocumentsController : ControllerBase
+public class DocumentsController : ControllerBase
 {
     private const string CacheCollectionName = "cache";
     private readonly ILocalDocumentWriter _writer;
@@ -28,17 +28,17 @@ public sealed class DocumentsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> ListAsync(string documentName, [FromQuery] int skip, [FromQuery] int take, CancellationToken cancellationToken)
     {
-        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
         {
             return reservedRejection;
         }
 
-        var stopwatch = Stopwatch.StartNew();
-        var safeTake = take <= 0 ? 100 : take;
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        int safeTake = take <= 0 ? 100 : take;
 
         _logger.LogDebug("Document list request. Collection={Collection} Skip={Skip} Take={Take}", documentName, skip, safeTake);
 
-        var documents = await _reader.ListAsync<Dictionary<string, object?>>(documentName, skip, safeTake, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<Dictionary<string, object?>> documents = await _reader.ListAsync<Dictionary<string, object?>>(documentName, skip, safeTake, cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
         _logger.LogDebug("Document list completed. Collection={Collection} Count={Count} DurationMs={DurationMs}", documentName, documents.Count, stopwatch.Elapsed.TotalMilliseconds);
@@ -49,15 +49,15 @@ public sealed class DocumentsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetByIdAsync(string documentName, string id, CancellationToken cancellationToken)
     {
-        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
         {
             return reservedRejection;
         }
 
-        var stopwatch = Stopwatch.StartNew();
+        Stopwatch stopwatch = Stopwatch.StartNew();
         _logger.LogDebug("Document get request. Collection={Collection} Id={Id}", documentName, id);
 
-        var document = await _reader.GetByIdAsync<Dictionary<string, object?>>(documentName, id, cancellationToken).ConfigureAwait(false);
+        Dictionary<string, object?>? document = await _reader.GetByIdAsync<Dictionary<string, object?>>(documentName, id, cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
         _logger.LogDebug("Document get completed. Collection={Collection} Id={Id} Found={Found} DurationMs={DurationMs}", documentName, id, document is not null, stopwatch.Elapsed.TotalMilliseconds);
@@ -68,14 +68,14 @@ public sealed class DocumentsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> PostAsync(string documentName, [FromBody] JsonElement payload, [FromQuery] string? parentVersion, CancellationToken cancellationToken)
     {
-        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
         {
             return reservedRejection;
         }
 
-        var stopwatch = Stopwatch.StartNew();
+        Stopwatch stopwatch = Stopwatch.StartNew();
 
-        if (!TryExtractEntityId(payload, out var entityId))
+        if (!TryExtractEntityId(payload, out string? entityId))
         {
             stopwatch.Stop();
             _logger.LogWarning("Document post rejected due to missing Id. Collection={Collection} DurationMs={DurationMs}", documentName, stopwatch.Elapsed.TotalMilliseconds);
@@ -84,7 +84,7 @@ public sealed class DocumentsController : ControllerBase
 
         try
         {
-            var result = await _writer.UpsertAsync(documentName, entityId, payload, parentVersion, cancellationToken).ConfigureAwait(false);
+            Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, entityId, payload, parentVersion, cancellationToken).ConfigureAwait(false);
             _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
             stopwatch.Stop();
 
@@ -109,17 +109,17 @@ public sealed class DocumentsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> PutAsync(string documentName, string id, [FromBody] JsonElement payload, [FromQuery] string? parentVersion, CancellationToken cancellationToken)
     {
-        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
         {
             return reservedRejection;
         }
 
-        var stopwatch = Stopwatch.StartNew();
+        Stopwatch stopwatch = Stopwatch.StartNew();
         _logger.LogDebug("Document put request. Collection={Collection} Id={Id}", documentName, id);
 
         try
         {
-            var result = await _writer.UpsertAsync(documentName, id, payload, parentVersion, cancellationToken).ConfigureAwait(false);
+            Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, id, payload, parentVersion, cancellationToken).ConfigureAwait(false);
             _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
             stopwatch.Stop();
 
@@ -144,19 +144,17 @@ public sealed class DocumentsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteAsync(string documentName, string id, [FromQuery] string? parentVersion, CancellationToken cancellationToken)
     {
-        if (TryCreateReservedCollectionRejection(documentName, out var reservedRejection))
+        if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
         {
             return reservedRejection;
         }
 
-        var stopwatch = Stopwatch.StartNew();
+        Stopwatch stopwatch = Stopwatch.StartNew();
         _logger.LogDebug("Document delete request. Collection={Collection} Id={Id}", documentName, id);
 
         try
         {
-            var result = await _writer
-                .DeleteAsync(documentName, id, parentVersion, cancellationToken)
-                .ConfigureAwait(false);
+            Core.Models.WriteResult result = await _writer.DeleteAsync(documentName, id, parentVersion, cancellationToken).ConfigureAwait(false);
             _replicationSignalPublisher.NotifyLocalChange($"document-delete:{documentName}");
             stopwatch.Stop();
 
@@ -195,12 +193,12 @@ public sealed class DocumentsController : ControllerBase
     {
         value = string.Empty;
 
-        if (!payload.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
+        if (!payload.TryGetProperty(propertyName, out JsonElement property) || property.ValueKind != JsonValueKind.String)
         {
             return false;
         }
 
-        var candidate = property.GetString();
+        string? candidate = property.GetString();
         if (string.IsNullOrWhiteSpace(candidate))
         {
             return false;
@@ -230,3 +228,5 @@ public sealed class DocumentsController : ControllerBase
         return string.Equals(collectionName, CacheCollectionName, StringComparison.OrdinalIgnoreCase);
     }
 }
+
+

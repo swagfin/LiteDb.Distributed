@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Core.Abstractions;
+﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LiteDb.Distributed.Infrastructure.Cache;
 
-public sealed class CacheExpirationBackgroundService : BackgroundService
+public class CacheExpirationBackgroundService : BackgroundService
 {
     private const string CacheCollectionName = "cache";
     private readonly ClusterNodeOptions _nodeOptions;
@@ -33,8 +33,8 @@ public sealed class CacheExpirationBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var cleanupIntervalSeconds = Math.Max(1, _nodeOptions.CacheCleanupIntervalSeconds);
-        var cleanupInterval = TimeSpan.FromSeconds(cleanupIntervalSeconds);
+        int cleanupIntervalSeconds = Math.Max(1, _nodeOptions.CacheCleanupIntervalSeconds);
+        TimeSpan cleanupInterval = TimeSpan.FromSeconds(cleanupIntervalSeconds);
         _logger.LogInformation("Cache expiration sweeper started. NodeId={NodeId} IntervalSeconds={IntervalSeconds} BatchSize={BatchSize} MaxScanPages={MaxScanPages}", _nodeOptions.NodeId, cleanupIntervalSeconds, Math.Max(1, _nodeOptions.CacheCleanupBatchSize), Math.Max(1, _nodeOptions.CacheCleanupMaxScanPages));
 
         while (!stoppingToken.IsCancellationRequested)
@@ -65,23 +65,23 @@ public sealed class CacheExpirationBackgroundService : BackgroundService
 
     private async Task SweepAllDatabasesAsync(CancellationToken cancellationToken)
     {
-        var registrations = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<LogicalDatabaseRegistration> registrations = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
         if (registrations.Count == 0)
         {
             return;
         }
 
-        foreach (var registration in registrations.OrderBy(x => x.DatabaseName, StringComparer.Ordinal))
+        foreach (LogicalDatabaseRegistration? registration in registrations.OrderBy(x => x.DatabaseName, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            using var scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+            using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
             {
                 DatabaseName = registration.DatabaseName,
                 Credential = registration.Credential
             });
 
-            var deleted = await SweepDatabaseAsync(registration.DatabaseName, cancellationToken).ConfigureAwait(false);
+            int deleted = await SweepDatabaseAsync(registration.DatabaseName, cancellationToken).ConfigureAwait(false);
             if (deleted <= 0)
             {
                 continue;
@@ -94,15 +94,15 @@ public sealed class CacheExpirationBackgroundService : BackgroundService
 
     private async Task<int> SweepDatabaseAsync(string databaseName, CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
-        var expiredKeys = await CollectExpiredKeysAsync(now, cancellationToken).ConfigureAwait(false);
+        DateTime now = DateTime.UtcNow;
+        IReadOnlyList<string> expiredKeys = await CollectExpiredKeysAsync(now, cancellationToken).ConfigureAwait(false);
         if (expiredKeys.Count == 0)
         {
             return 0;
         }
 
-        var deletedCount = 0;
-        foreach (var key in expiredKeys)
+        int deletedCount = 0;
+        foreach (string key in expiredKeys)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -126,20 +126,20 @@ public sealed class CacheExpirationBackgroundService : BackgroundService
 
     private async Task<IReadOnlyList<string>> CollectExpiredKeysAsync(DateTime utcNow, CancellationToken cancellationToken)
     {
-        var maxScanPages = Math.Max(1, _nodeOptions.CacheCleanupMaxScanPages);
-        var batchSize = Math.Max(1, _nodeOptions.CacheCleanupBatchSize);
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-        var skip = 0;
+        int maxScanPages = Math.Max(1, _nodeOptions.CacheCleanupMaxScanPages);
+        int batchSize = Math.Max(1, _nodeOptions.CacheCleanupBatchSize);
+        HashSet<string> keys = new HashSet<string>(StringComparer.Ordinal);
+        int skip = 0;
 
-        for (var page = 0; page < maxScanPages; page++)
+        for (int page = 0; page < maxScanPages; page++)
         {
-            var entries = await _reader.ListAsync<CacheSweepEntry>(CacheCollectionName, skip, batchSize, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<CacheSweepEntry> entries = await _reader.ListAsync<CacheSweepEntry>(CacheCollectionName, skip, batchSize, cancellationToken).ConfigureAwait(false);
             if (entries.Count == 0)
             {
                 break;
             }
 
-            foreach (var entry in entries)
+            foreach (CacheSweepEntry entry in entries)
             {
                 if (string.IsNullOrWhiteSpace(entry.Id))
                 {
@@ -172,9 +172,10 @@ public sealed class CacheExpirationBackgroundService : BackgroundService
         return value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
     }
 
-    private sealed class CacheSweepEntry
+    private class CacheSweepEntry
     {
         public string Id { get; init; } = string.Empty;
         public DateTime ExpiresAtUtc { get; init; }
     }
 }
+

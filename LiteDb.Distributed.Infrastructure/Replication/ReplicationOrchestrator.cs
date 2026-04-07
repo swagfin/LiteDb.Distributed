@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Core.Abstractions;
+﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.Extensions.Logging;
@@ -6,7 +6,7 @@ using System.Diagnostics;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
 
-public sealed class ReplicationOrchestrator : IReplicationOrchestrator
+public class ReplicationOrchestrator : IReplicationOrchestrator
 {
     private readonly IClusterReplicationService _clusterReplicationService;
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
@@ -32,11 +32,11 @@ public sealed class ReplicationOrchestrator : IReplicationOrchestrator
         await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var totalStopwatch = Stopwatch.StartNew();
-            var databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
+            Stopwatch totalStopwatch = Stopwatch.StartNew();
+            IReadOnlyList<LogicalDatabaseRegistration> databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("Cluster replication batch started. Reason={Reason} DatabaseCount={DatabaseCount}", reason, databases.Count);
 
-            foreach (var database in databases)
+            foreach (LogicalDatabaseRegistration database in databases)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 await ReplicateDatabaseCoreAsync(database, reason, suppressExceptions: true, cancellationToken).ConfigureAwait(false);
@@ -58,7 +58,7 @@ public sealed class ReplicationOrchestrator : IReplicationOrchestrator
             throw new ArgumentException("Replication reason is required.", nameof(reason));
         }
 
-        var registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, credential, cancellationToken).ConfigureAwait(false);
+        LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, credential, cancellationToken).ConfigureAwait(false);
 
         await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -73,11 +73,11 @@ public sealed class ReplicationOrchestrator : IReplicationOrchestrator
 
     private async Task ReplicateDatabaseCoreAsync(LogicalDatabaseRegistration database, string reason, bool suppressExceptions, CancellationToken cancellationToken)
     {
-        var stopwatch = Stopwatch.StartNew();
+        Stopwatch stopwatch = Stopwatch.StartNew();
 
         try
         {
-            using var scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+            using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
             {
                 DatabaseName = database.DatabaseName,
                 Credential = database.Credential
@@ -102,3 +102,4 @@ public sealed class ReplicationOrchestrator : IReplicationOrchestrator
         }
     }
 }
+

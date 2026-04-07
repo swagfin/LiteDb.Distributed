@@ -1,11 +1,11 @@
-using LiteDb.Distributed.Core.Abstractions;
+﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
 
-public sealed class OperationIngestionService : IOperationIngestionService
+public class OperationIngestionService : IOperationIngestionService
 {
     private readonly IDocumentStateReader _documentStateReader;
     private readonly IConflictResolver _conflictResolver;
@@ -31,21 +31,19 @@ public sealed class OperationIngestionService : IOperationIngestionService
 
         ArgumentNullException.ThrowIfNull(operations);
 
-        var acceptedCount = 0;
-        var conflictCount = 0;
-        var batchStopwatch = Stopwatch.StartNew();
+        int acceptedCount = 0;
+        int conflictCount = 0;
+        Stopwatch batchStopwatch = Stopwatch.StartNew();
 
         _logger.LogDebug("Starting operation ingestion. LocalNodeId={LocalNodeId} IncomingOperationCount={IncomingOperationCount}", localNodeId, operations.Count);
 
-        foreach (var operation in operations.OrderBy(x => x.LogSequence))
+        foreach (OperationRecord? operation in operations.OrderBy(x => x.LogSequence))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var localState = await _documentStateReader
-                .GetStateAsync(operation.Collection, operation.EntityId, cancellationToken)
-                .ConfigureAwait(false);
+            DocumentState? localState = await _documentStateReader.GetStateAsync(operation.Collection, operation.EntityId, cancellationToken).ConfigureAwait(false);
 
-            var decision = await _conflictResolver
+            ConflictResolutionResult decision = await _conflictResolver
                 .ResolveAsync(
                     new ConflictResolutionContext
                     {
@@ -58,11 +56,9 @@ public sealed class OperationIngestionService : IOperationIngestionService
 
             if (decision.Action == ConflictResolutionAction.ApplyIncoming)
             {
-                var applyStopwatch = Stopwatch.StartNew();
+                Stopwatch applyStopwatch = Stopwatch.StartNew();
 
-                var applied = await _remoteOperationApplier
-                    .ApplyRemoteOperationAsync(operation with { IsSynced = true }, cancellationToken)
-                    .ConfigureAwait(false);
+                bool applied = await _remoteOperationApplier.ApplyRemoteOperationAsync(operation with { IsSynced = true }, cancellationToken).ConfigureAwait(false);
 
                 applyStopwatch.Stop();
 
@@ -107,7 +103,7 @@ public sealed class OperationIngestionService : IOperationIngestionService
         }
 
         batchStopwatch.Stop();
-        var notAppliedCount = Math.Max(0, operations.Count - acceptedCount);
+        int notAppliedCount = Math.Max(0, operations.Count - acceptedCount);
 
         _logger.LogInformation("Operation ingestion completed. LocalNodeId={LocalNodeId} Incoming={Incoming} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} DurationMs={DurationMs}", localNodeId, operations.Count, acceptedCount, conflictCount, notAppliedCount, batchStopwatch.Elapsed.TotalMilliseconds);
 
@@ -118,4 +114,6 @@ public sealed class OperationIngestionService : IOperationIngestionService
         };
     }
 }
+
+
 

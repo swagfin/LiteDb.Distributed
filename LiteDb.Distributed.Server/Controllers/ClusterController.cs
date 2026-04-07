@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Core.Abstractions;
+﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +8,7 @@ namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
 [Route("api/cluster")]
-public sealed class ClusterController : ControllerBase
+public class ClusterController : ControllerBase
 {
     private readonly ClusterNodeOptions _nodeOptions;
     private readonly IClusterPeerRegistry _peerRegistry;
@@ -24,7 +24,7 @@ public sealed class ClusterController : ControllerBase
     [HttpPost("peers")]
     public async Task<IActionResult> UpsertPeerAsync([FromBody] ClusterPeer peer, CancellationToken cancellationToken)
     {
-        var stopwatch = Stopwatch.StartNew();
+        Stopwatch stopwatch = Stopwatch.StartNew();
 
         if (string.Equals(peer.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal))
         {
@@ -44,8 +44,8 @@ public sealed class ClusterController : ControllerBase
     [HttpGet("peers")]
     public async Task<IActionResult> GetPeersAsync(CancellationToken cancellationToken)
     {
-        var stopwatch = Stopwatch.StartNew();
-        var peers = await _peerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        IReadOnlyList<ClusterPeer> peers = await _peerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
         _logger.LogDebug("Peer list requested. NodeId={NodeId} PeerCount={PeerCount} DurationMs={DurationMs}", _nodeOptions.NodeId, peers.Count, stopwatch.Elapsed.TotalMilliseconds);
@@ -53,3 +53,4 @@ public sealed class ClusterController : ControllerBase
         return Ok(peers);
     }
 }
+

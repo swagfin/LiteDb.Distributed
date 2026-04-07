@@ -1,27 +1,27 @@
-using LiteDb.Distributed.Infrastructure.Configuration;
+﻿using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Storage;
 
 namespace LiteDb.Distributed.Tests;
 
-public sealed class LogicalDatabaseCatalogTests
+public class LogicalDatabaseCatalogTests
 {
     [Fact]
     public async Task GetOrCreate_NormalizesDatabaseNameToLowercase()
     {
-        await using var scope = new TestCatalogScope();
+        await using TestCatalogScope scope = new TestCatalogScope();
 
-        var created = await scope.Catalog.GetOrCreateAsync("TestApp", "secret-1");
+        LogicalDatabaseRegistration created = await scope.Catalog.GetOrCreateAsync("TestApp", "secret-1");
         Assert.Equal("testapp", created.DatabaseName);
 
-        var all = await scope.Catalog.GetAllAsync();
+        IReadOnlyList<LogicalDatabaseRegistration> all = await scope.Catalog.GetAllAsync();
         Assert.Contains(all, x => x.DatabaseName == "testapp");
     }
 
     [Fact]
     public async Task GetOrCreate_ThrowsWhenCredentialDiffersForExistingDatabase()
     {
-        await using var scope = new TestCatalogScope();
+        await using TestCatalogScope scope = new TestCatalogScope();
 
         await scope.Catalog.GetOrCreateAsync("TestApp", "secret-1");
 
@@ -31,7 +31,7 @@ public sealed class LogicalDatabaseCatalogTests
         });
     }
 
-    private sealed class TestCatalogScope : IAsyncDisposable
+    private class TestCatalogScope : IAsyncDisposable
     {
         private readonly string _rootPath;
 
@@ -61,3 +61,4 @@ public sealed class LogicalDatabaseCatalogTests
         }
     }
 }
+

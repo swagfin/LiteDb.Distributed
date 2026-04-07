@@ -1,36 +1,23 @@
-using LiteDb.Distributed.Core.Models;
+﻿using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:1446");
-var studioCorsOrigins = builder.Configuration.GetSection("Studio:CorsOrigins").Get<string[]>() ?? Array.Empty<string>();
+string[] studioCorsOrigins = builder.Configuration.GetSection("Studio:CorsOrigins").Get<string[]>() ?? Array.Empty<string>();
 
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.PropertyNamingPolicy = null;
-    });
+builder.Services.AddControllers() .AddJsonOptions(options => { options.JsonSerializerOptions.PropertyNamingPolicy = null; });
 
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.PropertyNamingPolicy = null;
-});
+builder.Services.ConfigureHttpJsonOptions(options => { options.SerializerOptions.PropertyNamingPolicy = null; });
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("StudioCors", policy =>
-    {
-        if (studioCorsOrigins.Length > 0)
+builder.Services.AddCors(options => { options.AddPolicy("StudioCors", policy => { if (studioCorsOrigins.Length > 0)
         {
             policy.WithOrigins(studioCorsOrigins);
         }
         else
         {
-            policy.SetIsOriginAllowed(origin =>
-            {
-                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+            policy.SetIsOriginAllowed(origin => { if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri))
                 {
                     return false;
                 }
@@ -45,7 +32,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-var nodeOptions = new ClusterNodeOptions
+ClusterNodeOptions nodeOptions = new ClusterNodeOptions
 {
     NodeId = builder.Configuration["Node:NodeId"] ?? "node-1",
     ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 1000,
@@ -59,13 +46,10 @@ var nodeOptions = new ClusterNodeOptions
 
 builder.Services.AddLiteDbDistributedNode(nodeOptions);
 
-var app = builder.Build();
-var logger = app.Logger;
+WebApplication app = builder.Build();
+ILogger logger = app.Logger;
 
-app.UseWebSockets(new WebSocketOptions
-{
-    KeepAliveInterval = TimeSpan.FromSeconds(30)
-});
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -79,20 +63,18 @@ app.Use(async (httpContext, next) =>
         return;
     }
 
-    var contextResolver = httpContext.RequestServices.GetRequiredService<IDatabaseRequestContextResolver>();
-    var contextAccessor = httpContext.RequestServices.GetRequiredService<IDatabaseContextAccessor>();
+    IDatabaseRequestContextResolver contextResolver = httpContext.RequestServices.GetRequiredService<IDatabaseRequestContextResolver>();
+    IDatabaseContextAccessor contextAccessor = httpContext.RequestServices.GetRequiredService<IDatabaseContextAccessor>();
 
     try
     {
         logger.LogDebug("Resolving database context for request. Method={Method} Path={Path}", httpContext.Request.Method, httpContext.Request.Path.Value);
 
-        var databaseContext = await contextResolver
-            .ResolveAsync(httpContext.Request.Headers, httpContext.RequestAborted)
-            .ConfigureAwait(false);
+        DatabaseRequestContext databaseContext = await contextResolver.ResolveAsync(httpContext.Request.Headers, httpContext.RequestAborted).ConfigureAwait(false);
 
         logger.LogDebug("Database context resolved. Method={Method} Path={Path} Database={Database}", httpContext.Request.Method, httpContext.Request.Path.Value, databaseContext.DatabaseName);
 
-        using var scope = contextAccessor.BeginScope(databaseContext);
+        using IDisposable scope = contextAccessor.BeginScope(databaseContext);
         await next().ConfigureAwait(false);
     }
     catch (DatabaseAuthenticationException ex)
@@ -101,8 +83,7 @@ app.Use(async (httpContext, next) =>
 
         httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
         await httpContext.Response
-            .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted)
-            .ConfigureAwait(false);
+            .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
     }
     catch (ArgumentException ex)
     {
@@ -110,11 +91,12 @@ app.Use(async (httpContext, next) =>
 
         httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
         await httpContext.Response
-            .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted)
-            .ConfigureAwait(false);
+            .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
     }
 });
 
 app.MapControllers();
 
 app.Run();
+
+

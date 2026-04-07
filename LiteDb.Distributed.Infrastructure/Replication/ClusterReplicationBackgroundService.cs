@@ -1,10 +1,10 @@
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
 
-public sealed class ClusterReplicationBackgroundService : BackgroundService
+public class ClusterReplicationBackgroundService : BackgroundService
 {
     private static readonly TimeSpan CatchUpInterval = TimeSpan.FromMinutes(1);
     private readonly IReplicationOrchestrator _replicationOrchestrator;
@@ -24,7 +24,7 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var iterationStopwatch = Stopwatch.StartNew();
+            Stopwatch iterationStopwatch = Stopwatch.StartNew();
 
             try
             {
@@ -44,4 +44,5 @@ public sealed class ClusterReplicationBackgroundService : BackgroundService
         }
     }
 }
+
 

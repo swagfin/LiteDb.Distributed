@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using LiteDb.Distributed.Infrastructure.Configuration;
@@ -6,7 +6,7 @@ using LiteDb.Distributed.Infrastructure.Context;
 
 namespace LiteDb.Distributed.Infrastructure.Storage;
 
-public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
+public class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -21,27 +21,24 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var rootDataDirectory = ResolveDataDirectory(options.DataDirectory);
-        var nodeDataDirectory = Path.Combine(rootDataDirectory, options.NodeId);
+        string rootDataDirectory = ResolveDataDirectory(options.DataDirectory);
+        string nodeDataDirectory = Path.Combine(rootDataDirectory, options.NodeId);
         Directory.CreateDirectory(nodeDataDirectory);
 
         _catalogPath = Path.Combine(nodeDataDirectory, "_logical_databases.catalog.json");
     }
 
-    public async Task<LogicalDatabaseRegistration> GetOrCreateAsync(
-        string databaseName,
-        string credential,
-        CancellationToken cancellationToken = default)
+    public async Task<LogicalDatabaseRegistration> GetOrCreateAsync(string databaseName, string credential, CancellationToken cancellationToken = default)
     {
-        var normalizedName = DatabaseNameNormalizer.Normalize(databaseName);
-        var normalizedCredential = NormalizeCredential(credential);
+        string normalizedName = DatabaseNameNormalizer.Normalize(databaseName);
+        string normalizedCredential = NormalizeCredential(credential);
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
+            Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
 
-            if (catalog.TryGetValue(normalizedName, out var existing))
+            if (catalog.TryGetValue(normalizedName, out CatalogEntry? existing))
             {
                 if (!SecureEquals(existing.Credential, normalizedCredential))
                 {
@@ -52,8 +49,8 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
                 return ToRegistration(existing);
             }
 
-            var now = DateTime.UtcNow;
-            var entry = new CatalogEntry
+            DateTime now = DateTime.UtcNow;
+            CatalogEntry entry = new CatalogEntry
             {
                 DatabaseName = normalizedName,
                 Credential = normalizedCredential,
@@ -73,17 +70,13 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
         }
     }
 
-    public async Task<IReadOnlyList<LogicalDatabaseRegistration>> GetAllAsync(
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<LogicalDatabaseRegistration>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
-            return catalog.Values
-                .OrderBy(x => x.DatabaseName, StringComparer.Ordinal)
-                .Select(ToRegistration)
-                .ToList();
+            Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
+            return catalog.Values.OrderBy(x => x.DatabaseName, StringComparer.Ordinal).Select(ToRegistration).ToList();
         }
         finally
         {
@@ -98,33 +91,29 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
             return new Dictionary<string, CatalogEntry>(StringComparer.Ordinal);
         }
 
-        await using var stream = File.OpenRead(_catalogPath);
-        var wrapper = await JsonSerializer
-            .DeserializeAsync<CatalogWrapper>(stream, JsonOptions, cancellationToken)
-            .ConfigureAwait(false);
+        await using FileStream stream = File.OpenRead(_catalogPath);
+        CatalogWrapper? wrapper = await JsonSerializer.DeserializeAsync<CatalogWrapper>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
 
-        var entries = wrapper?.Databases ?? new List<CatalogEntry>();
+        List<CatalogEntry> entries = wrapper?.Databases ?? new List<CatalogEntry>();
         return entries.ToDictionary(x => x.DatabaseName, x => x, StringComparer.Ordinal);
     }
 
-    private async Task WriteInternalAsync(
-        Dictionary<string, CatalogEntry> catalog,
-        CancellationToken cancellationToken)
+    private async Task WriteInternalAsync(Dictionary<string, CatalogEntry> catalog, CancellationToken cancellationToken)
     {
-        var wrapper = new CatalogWrapper
+        CatalogWrapper wrapper = new CatalogWrapper
         {
             Databases = catalog.Values
                 .OrderBy(x => x.DatabaseName, StringComparer.Ordinal)
                 .ToList()
         };
 
-        var directory = Path.GetDirectoryName(_catalogPath);
+        string? directory = Path.GetDirectoryName(_catalogPath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        await using var stream = File.Create(_catalogPath);
+        await using FileStream stream = File.Create(_catalogPath);
         await JsonSerializer.SerializeAsync(stream, wrapper, JsonOptions, cancellationToken).ConfigureAwait(false);
     }
 
@@ -140,8 +129,8 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
 
     private static bool SecureEquals(string left, string right)
     {
-        var leftBytes = Encoding.UTF8.GetBytes(left);
-        var rightBytes = Encoding.UTF8.GetBytes(right);
+        byte[] leftBytes = Encoding.UTF8.GetBytes(left);
+        byte[] rightBytes = Encoding.UTF8.GetBytes(right);
 
         return leftBytes.Length == rightBytes.Length
                && CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
@@ -170,12 +159,12 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
             : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
     }
 
-    private sealed class CatalogWrapper
+    private class CatalogWrapper
     {
         public List<CatalogEntry> Databases { get; init; } = new();
     }
 
-    private sealed class CatalogEntry
+    private class CatalogEntry
     {
         public string DatabaseName { get; init; } = string.Empty;
         public string Credential { get; init; } = string.Empty;
@@ -183,3 +172,5 @@ public sealed class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
         public DateTime UpdatedUtc { get; set; }
     }
 }
+
+

@@ -1,6 +1,6 @@
-namespace LiteDb.Distributed.Studio.Models;
+﻿namespace LiteDb.Distributed.Studio.Models;
 
-public sealed class DashboardOverviewDto
+public class DashboardOverviewDto
 {
     public string NodeId { get; set; } = string.Empty;
     public DateTime TimestampUtc { get; set; }
@@ -11,7 +11,7 @@ public sealed class DashboardOverviewDto
     public List<DashboardDatabaseStatusDto> Databases { get; set; } = [];
 }
 
-public sealed class DashboardNodeStatusDto
+public class DashboardNodeStatusDto
 {
     public string NodeId { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = string.Empty;
@@ -25,7 +25,7 @@ public sealed class DashboardNodeStatusDto
     public DateTime LastCheckedUtc { get; set; }
 }
 
-public sealed class DashboardPeerConnectivityDto
+public class DashboardPeerConnectivityDto
 {
     public string PeerNodeId { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = string.Empty;
@@ -39,7 +39,7 @@ public sealed class DashboardPeerConnectivityDto
     public DateTime LastCheckedUtc { get; set; }
 }
 
-public sealed class DashboardDatabaseStatusDto
+public class DashboardDatabaseStatusDto
 {
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
@@ -51,10 +51,11 @@ public sealed class DashboardDatabaseStatusDto
     public List<string> MetadataCollections { get; set; } = [];
 }
 
-public sealed class DashboardFileStatusDto
+public class DashboardFileStatusDto
 {
     public string Path { get; set; } = string.Empty;
     public bool Exists { get; set; }
     public long SizeBytes { get; set; }
     public DateTime? LastWriteUtc { get; set; }
 }
+

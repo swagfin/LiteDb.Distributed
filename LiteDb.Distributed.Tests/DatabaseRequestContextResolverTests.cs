@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Infrastructure.Configuration;
+﻿using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
@@ -6,20 +6,20 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LiteDb.Distributed.Tests;
 
-public sealed class DatabaseRequestContextResolverTests
+public class DatabaseRequestContextResolverTests
 {
     [Fact]
     public async Task ResolveAsync_UsesApiKeyAndNormalizesDatabaseName()
     {
-        await using var scope = new TestResolverScope();
+        await using TestResolverScope scope = new TestResolverScope();
 
-        var headers = new HeaderDictionary
+        HeaderDictionary headers = new HeaderDictionary
         {
             ["Database"] = "TestApp",
             ["ApiKey"] = "key-123"
         };
 
-        var context = await scope.Resolver.ResolveAsync(headers);
+        DatabaseRequestContext context = await scope.Resolver.ResolveAsync(headers);
 
         Assert.Equal("testapp", context.DatabaseName);
         Assert.Equal("key-123", context.Credential);
@@ -28,9 +28,9 @@ public sealed class DatabaseRequestContextResolverTests
     [Fact]
     public async Task ResolveAsync_ThrowsWhenPasswordAndApiKeyMismatch()
     {
-        await using var scope = new TestResolverScope();
+        await using TestResolverScope scope = new TestResolverScope();
 
-        var headers = new HeaderDictionary
+        HeaderDictionary headers = new HeaderDictionary
         {
             ["Database"] = "testapp",
             ["Password"] = "pass-a",
@@ -40,7 +40,7 @@ public sealed class DatabaseRequestContextResolverTests
         await Assert.ThrowsAsync<ArgumentException>(() => scope.Resolver.ResolveAsync(headers));
     }
 
-    private sealed class TestResolverScope : IAsyncDisposable
+    private class TestResolverScope : IAsyncDisposable
     {
         private readonly string _rootPath;
 
@@ -49,7 +49,7 @@ public sealed class DatabaseRequestContextResolverTests
             _rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_rootPath);
 
-            var catalog = new FileLogicalDatabaseCatalog(new ClusterNodeOptions
+            FileLogicalDatabaseCatalog catalog = new FileLogicalDatabaseCatalog(new ClusterNodeOptions
             {
                 NodeId = "resolver-node",
                 DataDirectory = _rootPath
@@ -73,3 +73,4 @@ public sealed class DatabaseRequestContextResolverTests
         }
     }
 }
+

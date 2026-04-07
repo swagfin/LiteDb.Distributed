@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Collections;
 using LiteDb.Distributed.Core.Exceptions;
@@ -9,7 +9,7 @@ using SystemTextJsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace LiteDb.Distributed.Infrastructure.Storage;
 
-public sealed class LiteDbNodeStore :
+public class LiteDbNodeStore :
     ILocalDocumentWriter,
     ILocalDocumentReader,
     IDocumentStateReader,
@@ -63,8 +63,8 @@ public sealed class LiteDbNodeStore :
         }
 
         _nodeId = options.NodeId.Trim();
-        var businessFullPath = Path.GetFullPath(options.BusinessDatabasePath);
-        var metadataFullPath = Path.GetFullPath(options.MetadataDatabasePath);
+        string businessFullPath = Path.GetFullPath(options.BusinessDatabasePath);
+        string metadataFullPath = Path.GetFullPath(options.MetadataDatabasePath);
 
         EnsureParentDirectory(businessFullPath);
         EnsureParentDirectory(metadataFullPath);
@@ -84,12 +84,7 @@ public sealed class LiteDbNodeStore :
         SeedPeers(options.SeedPeers);
     }
 
-    public Task<WriteResult> UpsertAsync<TDocument>(
-        string collection,
-        string entityId,
-        TDocument document,
-        string? parentVersion = null,
-        CancellationToken cancellationToken = default)
+    public Task<WriteResult> UpsertAsync<TDocument>(string collection, string entityId, TDocument document, string? parentVersion = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateBusinessCollection(collection);
@@ -104,10 +99,10 @@ public sealed class LiteDbNodeStore :
             throw new ArgumentNullException(nameof(document));
         }
 
-        var payload = SystemTextJsonSerializer.Serialize(document, JsonOptions);
-        var payloadDocument = ParsePayloadAsDocument(payload);
-        var committedUtc = DateTime.UtcNow;
-        var operationId = Guid.NewGuid().ToString("N");
+        string payload = SystemTextJsonSerializer.Serialize(document, JsonOptions);
+        BsonDocument payloadDocument = ParsePayloadAsDocument(payload);
+        DateTime committedUtc = DateTime.UtcNow;
+        string operationId = Guid.NewGuid().ToString("N");
 
         lock (_gate)
         {
@@ -115,17 +110,15 @@ public sealed class LiteDbNodeStore :
 
             try
             {
-                var sequence = ReserveNextLocalSequence(committedUtc);
-                var businessCollection = BusinessCollection(collection);
-                var existing = businessCollection.FindById(entityId);
+                long sequence = ReserveNextLocalSequence(committedUtc);
+                ILiteCollection<BsonDocument> businessCollection = BusinessCollection(collection);
+                BsonDocument? existing = businessCollection.FindById(entityId);
 
                 ValidateParentVersion(parentVersion, existing, collection, entityId);
 
-                var operationType = existing is null || ReadBoolean(existing, DeletedField)
-                    ? OperationType.Insert
-                    : OperationType.Update;
+                OperationType operationType = existing is null || ReadBoolean(existing, DeletedField) ? OperationType.Insert : OperationType.Update;
 
-                var materialized = existing ?? new BsonDocument();
+                BsonDocument materialized = existing ?? new BsonDocument();
                 ReplacePayload(materialized, payloadDocument, entityId);
                 ApplySystemMetadata(
                     materialized,
@@ -137,7 +130,7 @@ public sealed class LiteDbNodeStore :
 
                 businessCollection.Upsert(materialized);
 
-                var operation = new OperationRecord
+                OperationRecord operation = new OperationRecord
                 {
                     Id = operationId,
                     NodeId = _nodeId,
@@ -175,11 +168,7 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    public Task<WriteResult> DeleteAsync(
-        string collection,
-        string entityId,
-        string? parentVersion = null,
-        CancellationToken cancellationToken = default)
+    public Task<WriteResult> DeleteAsync(string collection, string entityId, string? parentVersion = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateBusinessCollection(collection);
@@ -189,8 +178,8 @@ public sealed class LiteDbNodeStore :
             throw new ArgumentException("EntityId is required.", nameof(entityId));
         }
 
-        var committedUtc = DateTime.UtcNow;
-        var operationId = Guid.NewGuid().ToString("N");
+        DateTime committedUtc = DateTime.UtcNow;
+        string operationId = Guid.NewGuid().ToString("N");
 
         lock (_gate)
         {
@@ -198,17 +187,15 @@ public sealed class LiteDbNodeStore :
 
             try
             {
-                var sequence = ReserveNextLocalSequence(committedUtc);
-                var businessCollection = BusinessCollection(collection);
-                var existing = businessCollection.FindById(entityId);
+                long sequence = ReserveNextLocalSequence(committedUtc);
+                ILiteCollection<BsonDocument> businessCollection = BusinessCollection(collection);
+                BsonDocument? existing = businessCollection.FindById(entityId);
 
                 ValidateParentVersion(parentVersion, existing, collection, entityId);
 
-                var payload = existing is null
-                    ? "{}"
-                    : SerializePayloadOnly(existing);
+                string payload = existing is null ? "{}" : SerializePayloadOnly(existing);
 
-                var tombstone = existing ?? new BsonDocument();
+                BsonDocument tombstone = existing ?? new BsonDocument();
                 ClearBusinessFields(tombstone);
                 tombstone["_id"] = entityId;
                 ApplySystemMetadata(
@@ -221,7 +208,7 @@ public sealed class LiteDbNodeStore :
 
                 businessCollection.Upsert(tombstone);
 
-                var operation = new OperationRecord
+                OperationRecord operation = new OperationRecord
                 {
                     Id = operationId,
                     NodeId = _nodeId,
@@ -259,10 +246,7 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    public Task<TDocument?> GetByIdAsync<TDocument>(
-        string collection,
-        string entityId,
-        CancellationToken cancellationToken = default)
+    public Task<TDocument?> GetByIdAsync<TDocument>(string collection, string entityId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateBusinessCollection(collection);
@@ -274,24 +258,20 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            var materialized = BusinessCollection(collection).FindById(entityId);
+            BsonDocument? materialized = BusinessCollection(collection).FindById(entityId);
 
             if (materialized is null || ReadBoolean(materialized, DeletedField))
             {
                 return Task.FromResult<TDocument?>(default);
             }
 
-            var json = SerializePayloadOnly(materialized);
-            var result = SystemTextJsonSerializer.Deserialize<TDocument>(json, JsonOptions);
+            string json = SerializePayloadOnly(materialized);
+            TDocument? result = SystemTextJsonSerializer.Deserialize<TDocument>(json, JsonOptions);
             return Task.FromResult<TDocument?>(result);
         }
     }
 
-    public Task<IReadOnlyList<TDocument>> ListAsync<TDocument>(
-        string collection,
-        int skip = 0,
-        int take = 100,
-        CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<TDocument>> ListAsync<TDocument>(string collection, int skip = 0, int take = 100, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateBusinessCollection(collection);
@@ -301,24 +281,19 @@ public sealed class LiteDbNodeStore :
             return Task.FromResult<IReadOnlyList<TDocument>>(Array.Empty<TDocument>());
         }
 
-        var safeSkip = Math.Max(skip, 0);
-        var safeTake = Math.Clamp(take, 1, 10_000);
+        int safeSkip = Math.Max(skip, 0);
+        int safeTake = Math.Clamp(take, 1, 10_000);
 
         lock (_gate)
         {
-            var materialized = BusinessCollection(collection)
-                .FindAll()
-                .Where(d => !ReadBoolean(d, DeletedField))
-                .Skip(safeSkip)
-                .Take(safeTake)
-                .ToList();
+            List<BsonDocument> materialized = BusinessCollection(collection).FindAll().Where(d => !ReadBoolean(d, DeletedField)).Skip(safeSkip).Take(safeTake).ToList();
 
-            var result = new List<TDocument>(materialized.Count);
+            List<TDocument> result = new List<TDocument>(materialized.Count);
 
-            foreach (var bsonDocument in materialized)
+            foreach (BsonDocument? bsonDocument in materialized)
             {
-                var json = SerializePayloadOnly(bsonDocument);
-                var item = SystemTextJsonSerializer.Deserialize<TDocument>(json, JsonOptions);
+                string json = SerializePayloadOnly(bsonDocument);
+                TDocument? item = SystemTextJsonSerializer.Deserialize<TDocument>(json, JsonOptions);
 
                 if (item is not null)
                 {
@@ -330,10 +305,7 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    public Task<IReadOnlyList<TDocument>> ExecuteQueryAsync<TDocument>(
-        string query,
-        int take = 100,
-        CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<TDocument>> ExecuteQueryAsync<TDocument>(string query, int take = 100, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -347,13 +319,13 @@ public sealed class LiteDbNodeStore :
             return Task.FromResult<IReadOnlyList<TDocument>>(Array.Empty<TDocument>());
         }
 
-        var safeTake = Math.Clamp(take, 1, 10_000);
+        int safeTake = Math.Clamp(take, 1, 10_000);
 
         lock (_gate)
         {
-            using var reader = _businessDatabase.Execute(query, new BsonDocument());
-            var result = new List<TDocument>(safeTake);
-            var count = 0;
+            using IBsonDataReader reader = _businessDatabase.Execute(query, new BsonDocument());
+            List<TDocument> result = new List<TDocument>(safeTake);
+            int count = 0;
 
             while (reader.Read())
             {
@@ -362,13 +334,11 @@ public sealed class LiteDbNodeStore :
                     break;
                 }
 
-                var current = reader.Current;
-                var document = current.IsDocument
-                    ? current.AsDocument
-                    : new BsonDocument { ["[value]"] = current };
+                BsonValue current = reader.Current;
+                BsonDocument document = current.IsDocument ? current.AsDocument : new BsonDocument { ["[value]"] = current };
 
-                var json = LiteDB.JsonSerializer.Serialize(document);
-                var item = SystemTextJsonSerializer.Deserialize<TDocument>(json, JsonOptions);
+                string json = LiteDB.JsonSerializer.Serialize(document);
+                TDocument? item = SystemTextJsonSerializer.Deserialize<TDocument>(json, JsonOptions);
 
                 if (item is not null)
                 {
@@ -380,10 +350,7 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    public Task<DocumentState?> GetStateAsync(
-        string collection,
-        string entityId,
-        CancellationToken cancellationToken = default)
+    public Task<DocumentState?> GetStateAsync(string collection, string entityId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateBusinessCollection(collection);
@@ -395,14 +362,14 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            var materialized = BusinessCollection(collection).FindById(entityId);
+            BsonDocument? materialized = BusinessCollection(collection).FindById(entityId);
 
             if (materialized is null)
             {
                 return Task.FromResult<DocumentState?>(null);
             }
 
-            var state = new DocumentState
+            DocumentState state = new DocumentState
             {
                 Collection = collection,
                 EntityId = entityId,
@@ -433,9 +400,7 @@ public sealed class LiteDbNodeStore :
 
             try
             {
-                var logSequence = operation.LogSequence > 0
-                    ? operation.LogSequence
-                    : ReserveNextLocalSequence(DateTime.UtcNow);
+                long logSequence = operation.LogSequence > 0 ? operation.LogSequence : ReserveNextLocalSequence(DateTime.UtcNow);
 
                 InsertOperationInternal(operation with { LogSequence = logSequence });
                 CommitCombinedTransaction();
@@ -449,10 +414,7 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    public Task<IReadOnlyList<OperationRecord>> GetOperationsAfterLogSequenceAsync(
-        long afterLogSequence,
-        int batchSize,
-        CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<OperationRecord>> GetOperationsAfterLogSequenceAsync(long afterLogSequence, int batchSize, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -461,28 +423,19 @@ public sealed class LiteDbNodeStore :
             return Task.FromResult<IReadOnlyList<OperationRecord>>(Array.Empty<OperationRecord>());
         }
 
-        var cappedBatchSize = Math.Clamp(batchSize, 1, 10_000);
+        int cappedBatchSize = Math.Clamp(batchSize, 1, 10_000);
 
         lock (_gate)
         {
-            var operations = OperationsCollection()
+            List<OperationRecord> operations = OperationsCollection()
                 .Query()
-                .Where(x => x.LogSequence > afterLogSequence)
-                .OrderBy(x => x.LogSequence)
-                .Limit(cappedBatchSize)
-                .ToList()
-                .Select(MapToOperationRecord)
-                .ToList();
+                .Where(x => x.LogSequence > afterLogSequence).OrderBy(x => x.LogSequence).Limit(cappedBatchSize).ToList().Select(MapToOperationRecord).ToList();
 
             return Task.FromResult<IReadOnlyList<OperationRecord>>(operations);
         }
     }
 
-    public Task<IReadOnlyList<OperationRecord>> GetLocalOperationsAfterSequenceAsync(
-        string nodeId,
-        long afterSequence,
-        int batchSize,
-        CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<OperationRecord>> GetLocalOperationsAfterSequenceAsync(string nodeId, long afterSequence, int batchSize, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -496,18 +449,13 @@ public sealed class LiteDbNodeStore :
             return Task.FromResult<IReadOnlyList<OperationRecord>>(Array.Empty<OperationRecord>());
         }
 
-        var cappedBatchSize = Math.Clamp(batchSize, 1, 10_000);
+        int cappedBatchSize = Math.Clamp(batchSize, 1, 10_000);
 
         lock (_gate)
         {
-            var operations = OperationsCollection()
+            List<OperationRecord> operations = OperationsCollection()
                 .Query()
-                .Where(x => x.NodeId == nodeId && x.Sequence > afterSequence)
-                .OrderBy(x => x.Sequence)
-                .Limit(cappedBatchSize)
-                .ToList()
-                .Select(MapToOperationRecord)
-                .ToList();
+                .Where(x => x.NodeId == nodeId && x.Sequence > afterSequence).OrderBy(x => x.Sequence).Limit(cappedBatchSize).ToList().Select(MapToOperationRecord).ToList();
 
             return Task.FromResult<IReadOnlyList<OperationRecord>>(operations);
         }
@@ -528,10 +476,7 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    public Task<PeerCheckpointRecord> GetOrCreatePeerCheckpointAsync(
-        string localNodeId,
-        string peerNodeId,
-        CancellationToken cancellationToken = default)
+    public Task<PeerCheckpointRecord> GetOrCreatePeerCheckpointAsync(string localNodeId, string peerNodeId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -547,9 +492,9 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            var key = BuildPeerCheckpointKey(localNodeId, peerNodeId);
-            var checkpoints = PeerCheckpointsCollection();
-            var existing = checkpoints.FindById(key);
+            string key = BuildPeerCheckpointKey(localNodeId, peerNodeId);
+            ILiteCollection<PeerCheckpointEntity> checkpoints = PeerCheckpointsCollection();
+            PeerCheckpointEntity? existing = checkpoints.FindById(key);
 
             if (existing is null)
             {
@@ -570,9 +515,7 @@ public sealed class LiteDbNodeStore :
         }
     }
 
-    public Task SavePeerCheckpointAsync(
-        PeerCheckpointRecord checkpoint,
-        CancellationToken cancellationToken = default)
+    public Task SavePeerCheckpointAsync(PeerCheckpointRecord checkpoint, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(checkpoint);
@@ -625,11 +568,7 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            var peers = ClusterPeersCollection()
-                .FindAll()
-                .Select(MapToClusterPeer)
-                .OrderBy(x => x.NodeId, StringComparer.Ordinal)
-                .ToList();
+            List<ClusterPeer> peers = ClusterPeersCollection().FindAll().Select(MapToClusterPeer).OrderBy(x => x.NodeId, StringComparer.Ordinal).ToList();
 
             return Task.FromResult<IReadOnlyList<ClusterPeer>>(peers);
         }
@@ -664,9 +603,7 @@ public sealed class LiteDbNodeStore :
         return Task.CompletedTask;
     }
 
-    public Task<bool> ApplyRemoteOperationAsync(
-        OperationRecord operation,
-        CancellationToken cancellationToken = default)
+    public Task<bool> ApplyRemoteOperationAsync(OperationRecord operation, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateOperation(operation);
@@ -683,12 +620,12 @@ public sealed class LiteDbNodeStore :
 
             try
             {
-                var businessCollection = BusinessCollection(operation.Collection);
-                var existing = businessCollection.FindById(operation.EntityId);
+                ILiteCollection<BsonDocument> businessCollection = BusinessCollection(operation.Collection);
+                BsonDocument existing = businessCollection.FindById(operation.EntityId);
 
                 if (operation.OperationType == OperationType.Delete || operation.IsTombstone)
                 {
-                    var tombstone = existing ?? new BsonDocument();
+                    BsonDocument tombstone = existing ?? new BsonDocument();
                     ClearBusinessFields(tombstone);
                     tombstone["_id"] = operation.EntityId;
 
@@ -704,8 +641,8 @@ public sealed class LiteDbNodeStore :
                 }
                 else
                 {
-                    var payload = ParsePayloadAsDocument(operation.Payload);
-                    var materialized = existing ?? new BsonDocument();
+                    BsonDocument payload = ParsePayloadAsDocument(operation.Payload);
+                    BsonDocument materialized = existing ?? new BsonDocument();
 
                     ReplacePayload(materialized, payload, operation.EntityId);
                     ApplySystemMetadata(
@@ -719,12 +656,8 @@ public sealed class LiteDbNodeStore :
                     businessCollection.Upsert(materialized);
                 }
 
-                var localLogSequence = ReserveNextLocalSequence(DateTime.UtcNow);
-                InsertOperationInternal(operation with
-                {
-                    LogSequence = localLogSequence,
-                    IsSynced = true
-                });
+                long localLogSequence = ReserveNextLocalSequence(DateTime.UtcNow);
+                InsertOperationInternal(operation with { LogSequence = localLogSequence, IsSynced = true });
                 CommitCombinedTransaction();
 
                 return Task.FromResult(true);
@@ -743,11 +676,7 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            var names = _businessDatabase
-                .GetCollectionNames()
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToList();
+            List<string> names = _businessDatabase.GetCollectionNames().Where(name => !string.IsNullOrWhiteSpace(name)).OrderBy(name => name, StringComparer.Ordinal).ToList();
 
             return Task.FromResult<IReadOnlyList<string>>(names);
         }
@@ -759,11 +688,7 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            var names = _metadataDatabase
-                .GetCollectionNames()
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToList();
+            List<string> names = _metadataDatabase.GetCollectionNames().Where(name => !string.IsNullOrWhiteSpace(name)).OrderBy(name => name, StringComparer.Ordinal).ToList();
 
             return Task.FromResult<IReadOnlyList<string>>(names);
         }
@@ -777,22 +702,18 @@ public sealed class LiteDbNodeStore :
 
     private static void EnsureParentDirectory(string path)
     {
-        var directory = Path.GetDirectoryName(path);
+        string? directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(directory))
         {
             Directory.CreateDirectory(directory);
         }
     }
 
-    private static LiteDatabase OpenDatabase(
-        string fullPath,
-        string databaseName,
-        string nodeId,
-        string logicalFileKind)
+    private static LiteDatabase OpenDatabase(string fullPath, string databaseName, string nodeId, string logicalFileKind)
     {
         try
         {
-            var connectionString = new ConnectionString
+            ConnectionString connectionString = new ConnectionString
             {
                 Filename = fullPath
             };
@@ -848,7 +769,7 @@ public sealed class LiteDbNodeStore :
 
     private void EnsureSystemIndexes()
     {
-        var operations = OperationsCollection();
+        ILiteCollection<OperationEntity> operations = OperationsCollection();
         operations.EnsureIndex(x => x.NodeId);
         operations.EnsureIndex(x => x.Sequence);
         operations.EnsureIndex(x => x.LogSequence);
@@ -892,8 +813,8 @@ public sealed class LiteDbNodeStore :
 
     private long ReserveNextLocalSequence(DateTime writeUtc)
     {
-        var nodeMetadata = NodeMetadataCollection();
-        var existing = nodeMetadata.FindById(_nodeId) ?? new NodeMetadataEntity
+        ILiteCollection<NodeMetadataEntity> nodeMetadata = NodeMetadataCollection();
+        NodeMetadataEntity existing = nodeMetadata.FindById(_nodeId) ?? new NodeMetadataEntity
         {
             NodeId = _nodeId,
             LastLocalSequence = 0,
@@ -909,8 +830,8 @@ public sealed class LiteDbNodeStore :
 
     private void UpdateNodeMetadataForRemoteOperation(OperationRecord operation)
     {
-        var nodeMetadata = NodeMetadataCollection();
-        var existing = nodeMetadata.FindById(operation.NodeId) ?? new NodeMetadataEntity
+        ILiteCollection<NodeMetadataEntity> nodeMetadata = NodeMetadataCollection();
+        NodeMetadataEntity existing = nodeMetadata.FindById(operation.NodeId) ?? new NodeMetadataEntity
         {
             NodeId = operation.NodeId,
             LastLocalSequence = 0,
@@ -918,27 +839,19 @@ public sealed class LiteDbNodeStore :
         };
 
         existing.LastLocalSequence = Math.Max(existing.LastLocalSequence, operation.Sequence);
-        existing.LastWriteUtc = existing.LastWriteUtc < operation.TimestampUtc
-            ? operation.TimestampUtc
-            : existing.LastWriteUtc;
+        existing.LastWriteUtc = existing.LastWriteUtc < operation.TimestampUtc ? operation.TimestampUtc : existing.LastWriteUtc;
 
         nodeMetadata.Upsert(existing);
     }
 
-    private static void ValidateParentVersion(
-        string? parentVersion,
-        BsonDocument? existing,
-        string collection,
-        string entityId)
+    private static void ValidateParentVersion(string? parentVersion, BsonDocument? existing, string collection, string entityId)
     {
         if (string.IsNullOrWhiteSpace(parentVersion))
         {
             return;
         }
 
-        var currentVersion = existing is null
-            ? null
-            : ReadString(existing, VersionField);
+        string? currentVersion = existing is null ? null : ReadString(existing, VersionField);
 
         if (!string.Equals(currentVersion, parentVersion, StringComparison.Ordinal))
         {
@@ -1002,7 +915,7 @@ public sealed class LiteDbNodeStore :
             return new BsonDocument();
         }
 
-        var value = LiteDB.JsonSerializer.Deserialize(payload);
+        BsonValue value = LiteDB.JsonSerializer.Deserialize(payload);
 
         if (value.IsDocument)
         {
@@ -1017,7 +930,7 @@ public sealed class LiteDbNodeStore :
         ClearBusinessFields(target);
         target["_id"] = entityId;
 
-        foreach (var entry in payload)
+        foreach (KeyValuePair<string, BsonValue> entry in payload)
         {
             if (string.Equals(entry.Key, "_id", StringComparison.OrdinalIgnoreCase))
             {
@@ -1045,11 +958,9 @@ public sealed class LiteDbNodeStore :
 
     private static void ClearBusinessFields(BsonDocument document)
     {
-        var keysToRemove = document.Keys
-            .Where(key => !string.Equals(key, "_id", StringComparison.Ordinal) && !key.StartsWith("_sys_", StringComparison.Ordinal))
-            .ToList();
+        List<string> keysToRemove = document.Keys.Where(key => !string.Equals(key, "_id", StringComparison.Ordinal) && !key.StartsWith("_sys_", StringComparison.Ordinal)).ToList();
 
-        foreach (var key in keysToRemove)
+        foreach (string? key in keysToRemove)
         {
             document.Remove(key);
         }
@@ -1057,9 +968,9 @@ public sealed class LiteDbNodeStore :
 
     private static string SerializePayloadOnly(BsonDocument materialized)
     {
-        var payload = new BsonDocument();
+        BsonDocument payload = new BsonDocument();
 
-        foreach (var entry in materialized)
+        foreach (KeyValuePair<string, BsonValue> entry in materialized)
         {
             if (string.Equals(entry.Key, "_id", StringComparison.Ordinal) || entry.Key.StartsWith("_sys_", StringComparison.Ordinal))
             {
@@ -1070,7 +981,7 @@ public sealed class LiteDbNodeStore :
         }
 
         if (!payload.Keys.Any(x => string.Equals(x, "Id", StringComparison.OrdinalIgnoreCase))
-            && materialized.TryGetValue("_id", out var idValue)
+            && materialized.TryGetValue("_id", out BsonValue? idValue)
             && idValue.IsString)
         {
             payload["Id"] = idValue.AsString;
@@ -1081,19 +992,19 @@ public sealed class LiteDbNodeStore :
 
     private static string ReadString(BsonDocument document, string field)
     {
-        return document.TryGetValue(field, out var value) && value.IsString
+        return document.TryGetValue(field, out BsonValue? value) && value.IsString
             ? value.AsString
             : string.Empty;
     }
 
     private static bool ReadBoolean(BsonDocument document, string field)
     {
-        return document.TryGetValue(field, out var value) && value.IsBoolean && value.AsBoolean;
+        return document.TryGetValue(field, out BsonValue? value) && value.IsBoolean && value.AsBoolean;
     }
 
     private static DateTime ReadDateTime(BsonDocument document, string field)
     {
-        if (!document.TryGetValue(field, out var value) || !value.IsDateTime)
+        if (!document.TryGetValue(field, out BsonValue? value) || !value.IsDateTime)
         {
             return DateTime.MinValue;
         }
@@ -1149,9 +1060,9 @@ public sealed class LiteDbNodeStore :
 
         lock (_gate)
         {
-            var collection = ClusterPeersCollection();
+            ILiteCollection<ClusterPeerEntity> collection = ClusterPeersCollection();
 
-            foreach (var peer in peers)
+            foreach (ClusterPeer peer in peers)
             {
                 if (string.IsNullOrWhiteSpace(peer.NodeId)
                     || string.IsNullOrWhiteSpace(peer.BaseUrl)
@@ -1204,3 +1115,6 @@ public sealed class LiteDbNodeStore :
         return baseUrl.TrimEnd('/');
     }
 }
+
+
+

@@ -1,13 +1,11 @@
-using LiteDb.Distributed.Core.Abstractions;
+﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 
 namespace LiteDb.Distributed.Infrastructure.Conflict;
 
-public sealed class LastWriteWinsConflictResolver : IConflictResolver
+public class LastWriteWinsConflictResolver : IConflictResolver
 {
-    public Task<ConflictResolutionResult> ResolveAsync(
-        ConflictResolutionContext context,
-        CancellationToken cancellationToken = default)
+    public Task<ConflictResolutionResult> ResolveAsync(ConflictResolutionContext context, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(context);
@@ -21,8 +19,8 @@ public sealed class LastWriteWinsConflictResolver : IConflictResolver
             });
         }
 
-        var incoming = context.IncomingOperation.TimestampUtc;
-        var local = context.LocalDocumentState.LastModifiedUtc;
+        DateTime incoming = context.IncomingOperation.TimestampUtc;
+        DateTime local = context.LocalDocumentState.LastModifiedUtc;
 
         if (incoming >= local)
         {
@@ -40,4 +38,6 @@ public sealed class LastWriteWinsConflictResolver : IConflictResolver
         });
     }
 }
+
+
 

@@ -1,10 +1,10 @@
-using LiteDb.Distributed.Infrastructure.Storage;
+﻿using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace LiteDb.Distributed.Infrastructure.Context;
 
-public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextResolver
+public class DatabaseRequestContextResolver : IDatabaseRequestContextResolver
 {
     private const string DatabaseHeader = "Database";
     private const string PasswordHeader = "Password";
@@ -23,11 +23,11 @@ public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextReso
     {
         ArgumentNullException.ThrowIfNull(headers);
 
-        var rawDatabaseName = headers[DatabaseHeader].ToString();
-        var normalizedDatabaseName = DatabaseNameNormalizer.Normalize(rawDatabaseName);
+        string rawDatabaseName = headers[DatabaseHeader].ToString();
+        string normalizedDatabaseName = DatabaseNameNormalizer.Normalize(rawDatabaseName);
 
-        var password = headers[PasswordHeader].ToString();
-        var apiKey = headers[ApiKeyHeader].ToString();
+        string password = headers[PasswordHeader].ToString();
+        string apiKey = headers[ApiKeyHeader].ToString();
 
         if (string.IsNullOrWhiteSpace(password) && string.IsNullOrWhiteSpace(apiKey))
         {
@@ -41,11 +41,9 @@ public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextReso
             throw new ArgumentException("Password and ApiKey headers both provided but do not match.");
         }
 
-        var credential = string.IsNullOrWhiteSpace(password) ? apiKey : password;
+        string credential = string.IsNullOrWhiteSpace(password) ? apiKey : password;
 
-        var registration = await _logicalDatabaseCatalog
-            .GetOrCreateAsync(normalizedDatabaseName, credential, cancellationToken)
-            .ConfigureAwait(false);
+        LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(normalizedDatabaseName, credential, cancellationToken).ConfigureAwait(false);
 
         _logger.LogDebug("Database request context resolved. Database={Database}", registration.DatabaseName);
 
@@ -56,3 +54,5 @@ public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextReso
         };
     }
 }
+
+

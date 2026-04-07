@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LiteDb.Distributed.Infrastructure.Replication;
 
-public sealed class PeerReplicationSignalService : BackgroundService, IReplicationSignalPublisher, IReplicationWebSocketHandler
+public class PeerReplicationSignalService : BackgroundService, IReplicationSignalPublisher, IReplicationWebSocketHandler
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly TimeSpan WebSocketAckTimeout = TimeSpan.FromSeconds(5);
@@ -38,7 +38,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
     public void NotifyLocalChange(string reason)
     {
-        var context = _databaseContextAccessor.Current;
+        DatabaseRequestContext? context = _databaseContextAccessor.Current;
         if (context is null)
         {
             _logger.LogDebug("Replication signal enqueue skipped because no active database context. Reason={Reason}", reason);
@@ -50,8 +50,8 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
             reason = "local-change";
         }
 
-        var now = DateTime.UtcNow;
-        var scheduled = _scheduledDispatches.AddOrUpdate(
+        DateTime now = DateTime.UtcNow;
+        ScheduledDispatch scheduled = _scheduledDispatches.AddOrUpdate(
             context.DatabaseName,
             _ => new ScheduledDispatch(context.DatabaseName, context.Credential, reason, 0, now, now),
             (_, existing) => existing with { Credential = context.Credential, Reason = reason, Attempt = 0, DueUtc = now, UpdatedUtc = now });
@@ -67,7 +67,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
         while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
         {
-            var payload = await ReceiveTextMessageAsync(webSocket, cancellationToken).ConfigureAwait(false);
+            string? payload = await ReceiveTextMessageAsync(webSocket, cancellationToken).ConfigureAwait(false);
             if (payload is null)
             {
                 break;
@@ -99,7 +99,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
                 continue;
             }
 
-            var applyStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            System.Diagnostics.Stopwatch applyStopwatch = System.Diagnostics.Stopwatch.StartNew();
             _logger.LogDebug("Replication websocket signal received. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Database={Database} Reason={Reason}", _nodeOptions.NodeId, message!.SourceNodeId, message.Database, message.Reason);
 
             try
@@ -132,15 +132,12 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
         {
             await WaitForDueDispatchWindowAsync(stoppingToken).ConfigureAwait(false);
 
-            var now = DateTime.UtcNow;
-            var dueDispatches = _scheduledDispatches
-                .Where(x => x.Value.DueUtc <= now)
-                .Select(x => x.Key)
-                .ToList();
+            DateTime now = DateTime.UtcNow;
+            List<string> dueDispatches = _scheduledDispatches.Where(x => x.Value.DueUtc <= now).Select(x => x.Key).ToList();
 
-            foreach (var key in dueDispatches)
+            foreach (string? key in dueDispatches)
             {
-                if (!_scheduledDispatches.TryRemove(key, out var dispatch))
+                if (!_scheduledDispatches.TryRemove(key, out ScheduledDispatch? dispatch))
                 {
                     continue;
                 }
@@ -161,15 +158,15 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
                 return;
             }
 
-            var now = DateTime.UtcNow;
-            var nextDueUtc = _scheduledDispatches.Values.Min(x => x.DueUtc);
+            DateTime now = DateTime.UtcNow;
+            DateTime nextDueUtc = _scheduledDispatches.Values.Min(x => x.DueUtc);
             if (nextDueUtc <= now)
             {
                 return;
             }
 
-            var wait = nextDueUtc - now;
-            var signaled = await _dispatchSignal.WaitAsync(wait, cancellationToken).ConfigureAwait(false);
+            TimeSpan wait = nextDueUtc - now;
+            bool signaled = await _dispatchSignal.WaitAsync(wait, cancellationToken).ConfigureAwait(false);
             if (!signaled)
             {
                 return;
@@ -181,7 +178,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
     private async Task ProcessDispatchAsync(ScheduledDispatch dispatch, CancellationToken cancellationToken)
     {
-        var dispatchStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        System.Diagnostics.Stopwatch dispatchStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
@@ -200,15 +197,12 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
         {
             dispatchStopwatch.Stop();
 
-            var nextAttempt = dispatch.Attempt + 1;
-            var retryDelay = ComputeRetryDelay(nextAttempt);
-            var retryDueUtc = DateTime.UtcNow.Add(retryDelay);
-            var retryDispatch = dispatch with { Attempt = nextAttempt, DueUtc = retryDueUtc, UpdatedUtc = DateTime.UtcNow };
+            int nextAttempt = dispatch.Attempt + 1;
+            TimeSpan retryDelay = ComputeRetryDelay(nextAttempt);
+            DateTime retryDueUtc = DateTime.UtcNow.Add(retryDelay);
+            ScheduledDispatch retryDispatch = dispatch with { Attempt = nextAttempt, DueUtc = retryDueUtc, UpdatedUtc = DateTime.UtcNow };
 
-            _scheduledDispatches.AddOrUpdate(
-                dispatch.DatabaseName,
-                _ => retryDispatch,
-                (_, existing) => MergeRetry(existing, retryDispatch));
+            _scheduledDispatches.AddOrUpdate(dispatch.DatabaseName, _ => retryDispatch, (_, existing) => MergeRetry(existing, retryDispatch));
 
             _logger.LogWarning(ex, "Replication dispatch failed; retry scheduled. Database={Database} Attempt={Attempt} RetryInMs={RetryInMs} DurationMs={DurationMs}", dispatch.DatabaseName, nextAttempt, retryDelay.TotalMilliseconds, dispatchStopwatch.Elapsed.TotalMilliseconds);
         }
@@ -216,14 +210,14 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
     private async Task BroadcastSignalToPeersAsync(ScheduledDispatch dispatch, CancellationToken cancellationToken)
     {
-        using var scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+        using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
         {
             DatabaseName = dispatch.DatabaseName,
             Credential = dispatch.Credential
         });
 
-        var peers = await _clusterPeerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
-        var targets = peers.Where(x => x.IsActive && !string.Equals(x.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal)).ToList();
+        IReadOnlyList<ClusterPeer> peers = await _clusterPeerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
+        List<ClusterPeer> targets = peers.Where(x => x.IsActive && !string.Equals(x.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal)).ToList();
 
         if (targets.Count == 0)
         {
@@ -231,7 +225,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
             return;
         }
 
-        var message = new ReplicationSignalMessage
+        ReplicationSignalMessage message = new ReplicationSignalMessage
         {
             Type = "sync-request",
             SourceNodeId = _nodeOptions.NodeId,
@@ -241,10 +235,10 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
             TimestampUtc = DateTime.UtcNow
         };
 
-        var payload = JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions);
-        var acknowledged = 0;
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(message, JsonOptions);
+        int acknowledged = 0;
 
-        foreach (var peer in targets)
+        foreach (ClusterPeer? peer in targets)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (await SendSignalToPeerAsync(peer, dispatch.DatabaseName, payload, cancellationToken).ConfigureAwait(false))
@@ -258,21 +252,21 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
     private async Task<bool> SendSignalToPeerAsync(ClusterPeer peer, string databaseName, byte[] payload, CancellationToken cancellationToken)
     {
-        var endpoint = BuildWebSocketEndpoint(peer.BaseUrl);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        Uri endpoint = BuildWebSocketEndpoint(peer.BaseUrl);
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
-            using var webSocket = new ClientWebSocket();
+            using ClientWebSocket webSocket = new ClientWebSocket();
             webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
 
-            using var ackTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using CancellationTokenSource ackTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             ackTimeout.CancelAfter(WebSocketAckTimeout);
 
             await webSocket.ConnectAsync(endpoint, ackTimeout.Token).ConfigureAwait(false);
             await webSocket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, ackTimeout.Token).ConfigureAwait(false);
 
-            var ackPayload = await ReceiveTextMessageAsync(webSocket, ackTimeout.Token).ConfigureAwait(false);
+            string? ackPayload = await ReceiveTextMessageAsync(webSocket, ackTimeout.Token).ConfigureAwait(false);
             if (ackPayload is null)
             {
                 stopwatch.Stop();
@@ -280,7 +274,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
                 return false;
             }
 
-            var ack = JsonSerializer.Deserialize<ReplicationSignalAck>(ackPayload, JsonOptions);
+            ReplicationSignalAck? ack = JsonSerializer.Deserialize<ReplicationSignalAck>(ackPayload, JsonOptions);
             if (ack is null || !ack.Accepted)
             {
                 stopwatch.Stop();
@@ -307,8 +301,8 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
     private static Uri BuildWebSocketEndpoint(string baseUrl)
     {
-        var baseUri = new Uri(baseUrl, UriKind.Absolute);
-        var scheme = string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
+        Uri baseUri = new Uri(baseUrl, UriKind.Absolute);
+        string scheme = string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
 
         return new UriBuilder(baseUri)
         {
@@ -335,15 +329,15 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
     private static async Task<string?> ReceiveTextMessageAsync(WebSocket webSocket, CancellationToken cancellationToken)
     {
-        var rented = ArrayPool<byte>.Shared.Rent(8 * 1024);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(8 * 1024);
 
         try
         {
-            using var stream = new MemoryStream();
+            using MemoryStream stream = new MemoryStream();
 
             while (true)
             {
-                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(rented), cancellationToken).ConfigureAwait(false);
+                WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(rented), cancellationToken).ConfigureAwait(false);
 
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
@@ -383,7 +377,7 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
             return;
         }
 
-        var payload = JsonSerializer.SerializeToUtf8Bytes(new ReplicationSignalAck { Accepted = accepted, Error = error }, JsonOptions);
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new ReplicationSignalAck { Accepted = accepted, Error = error }, JsonOptions);
 
         try
         {
@@ -397,10 +391,10 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
 
     private static TimeSpan ComputeRetryDelay(int attempt)
     {
-        var boundedAttempt = Math.Clamp(attempt, 1, 10);
-        var exponent = Math.Pow(2, boundedAttempt - 1);
-        var delayMs = Math.Min(RetryBaseDelay.TotalMilliseconds * exponent, RetryMaxDelay.TotalMilliseconds);
-        var jitterMs = Random.Shared.Next(0, 250);
+        int boundedAttempt = Math.Clamp(attempt, 1, 10);
+        double exponent = Math.Pow(2, boundedAttempt - 1);
+        double delayMs = Math.Min(RetryBaseDelay.TotalMilliseconds * exponent, RetryMaxDelay.TotalMilliseconds);
+        int jitterMs = Random.Shared.Next(0, 250);
         return TimeSpan.FromMilliseconds(delayMs + jitterMs);
     }
 
@@ -419,10 +413,10 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
             return existing;
         }
 
-        var dueUtc = existing.DueUtc <= retry.DueUtc ? existing.DueUtc : retry.DueUtc;
-        var attempt = existing.Attempt == 0 ? 0 : Math.Max(existing.Attempt, retry.Attempt);
-        var credential = string.IsNullOrWhiteSpace(existing.Credential) ? retry.Credential : existing.Credential;
-        var reason = string.IsNullOrWhiteSpace(existing.Reason) ? retry.Reason : existing.Reason;
+        DateTime dueUtc = existing.DueUtc <= retry.DueUtc ? existing.DueUtc : retry.DueUtc;
+        int attempt = existing.Attempt == 0 ? 0 : Math.Max(existing.Attempt, retry.Attempt);
+        string credential = string.IsNullOrWhiteSpace(existing.Credential) ? retry.Credential : existing.Credential;
+        string reason = string.IsNullOrWhiteSpace(existing.Reason) ? retry.Reason : existing.Reason;
 
         return existing with { Credential = credential, Reason = reason, Attempt = attempt, DueUtc = dueUtc, UpdatedUtc = DateTime.UtcNow };
     }
@@ -445,3 +439,6 @@ public sealed class PeerReplicationSignalService : BackgroundService, IReplicati
         public string? Error { get; init; }
     }
 }
+
+
+

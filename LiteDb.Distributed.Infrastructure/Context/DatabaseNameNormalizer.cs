@@ -13,7 +13,7 @@ internal static class DatabaseNameNormalizer
             throw new ArgumentException("Database header is required.", nameof(rawName));
         }
 
-        var normalized = rawName.Trim().ToLowerInvariant();
+        string normalized = rawName.Trim().ToLowerInvariant();
 
         if (!AllowedPattern.IsMatch(normalized))
         {

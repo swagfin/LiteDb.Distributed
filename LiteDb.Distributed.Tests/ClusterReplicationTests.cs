@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Core.Abstractions;
+﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Core.SampleEntities;
 using LiteDb.Distributed.Infrastructure.Configuration;
@@ -9,23 +9,23 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LiteDb.Distributed.Tests;
 
-public sealed class ClusterReplicationTests
+public class ClusterReplicationTests
 {
     [Fact]
     public async Task WriteOnOneNode_ReplicatesToOtherNodes()
     {
-        await using var cluster = new TestCluster();
-        var nodeA = cluster.AddNode("node-a");
-        var nodeB = cluster.AddNode("node-b");
-        var nodeC = cluster.AddNode("node-c");
+        await using TestCluster cluster = new TestCluster();
+        TestNode nodeA = cluster.AddNode("node-a");
+        TestNode nodeB = cluster.AddNode("node-b");
+        TestNode nodeC = cluster.AddNode("node-c");
 
         await cluster.ConnectAllAsync();
 
         await nodeA.UpsertCustomerAsync("cust-001", "Acme One");
         await cluster.ReplicateAllAsync(rounds: 3);
 
-        var bCustomer = await nodeB.GetCustomerAsync("cust-001");
-        var cCustomer = await nodeC.GetCustomerAsync("cust-001");
+        Dictionary<string, object?>? bCustomer = await nodeB.GetCustomerAsync("cust-001");
+        Dictionary<string, object?>? cCustomer = await nodeC.GetCustomerAsync("cust-001");
 
         Assert.NotNull(bCustomer);
         Assert.NotNull(cCustomer);
@@ -36,23 +36,23 @@ public sealed class ClusterReplicationTests
     [Fact]
     public async Task NewNode_CatchesUpFromExistingNode()
     {
-        await using var cluster = new TestCluster();
-        var nodeA = cluster.AddNode("node-a");
-        var nodeB = cluster.AddNode("node-b");
+        await using TestCluster cluster = new TestCluster();
+        TestNode nodeA = cluster.AddNode("node-a");
+        TestNode nodeB = cluster.AddNode("node-b");
 
         await cluster.ConnectAllAsync();
 
         await nodeA.UpsertCustomerAsync("cust-join-001", "Join Target");
         await cluster.ReplicateAllAsync(rounds: 2);
 
-        var nodeC = cluster.AddNode("node-c");
+        TestNode nodeC = cluster.AddNode("node-c");
         await nodeC.AddPeerAsync(nodeA);
         await nodeC.AddPeerAsync(nodeB);
 
         await nodeC.ReplicateOnceAsync();
         await nodeC.ReplicateOnceAsync();
 
-        var cCustomer = await nodeC.GetCustomerAsync("cust-join-001");
+        Dictionary<string, object?>? cCustomer = await nodeC.GetCustomerAsync("cust-join-001");
         Assert.NotNull(cCustomer);
         Assert.Equal("Join Target", cCustomer!["Name"]?.ToString());
     }
@@ -60,9 +60,9 @@ public sealed class ClusterReplicationTests
     [Fact]
     public async Task DeleteReplicatesAsTombstoneAcrossNodes()
     {
-        await using var cluster = new TestCluster();
-        var nodeA = cluster.AddNode("node-a");
-        var nodeB = cluster.AddNode("node-b");
+        await using TestCluster cluster = new TestCluster();
+        TestNode nodeA = cluster.AddNode("node-a");
+        TestNode nodeB = cluster.AddNode("node-b");
 
         await cluster.ConnectAllAsync();
 
@@ -72,8 +72,8 @@ public sealed class ClusterReplicationTests
         await nodeB.DeleteCustomerAsync("cust-del-001");
         await cluster.ReplicateAllAsync(rounds: 3);
 
-        var aCustomer = await nodeA.GetCustomerAsync("cust-del-001");
-        var bCustomer = await nodeB.GetCustomerAsync("cust-del-001");
+        Dictionary<string, object?>? aCustomer = await nodeA.GetCustomerAsync("cust-del-001");
+        Dictionary<string, object?>? bCustomer = await nodeB.GetCustomerAsync("cust-del-001");
 
         Assert.Null(aCustomer);
         Assert.Null(bCustomer);
@@ -82,20 +82,20 @@ public sealed class ClusterReplicationTests
     [Fact]
     public async Task LocalWrites_AppendImmutableOperationEntries()
     {
-        await using var cluster = new TestCluster();
-        var nodeA = cluster.AddNode("node-a");
+        await using TestCluster cluster = new TestCluster();
+        TestNode nodeA = cluster.AddNode("node-a");
 
         await nodeA.UpsertCustomerAsync("cust-op-001", "Op One");
         await nodeA.UpsertCustomerAsync("cust-op-002", "Op Two");
         await nodeA.DeleteCustomerAsync("cust-op-001");
 
-        var operations = await nodeA.Store.GetOperationsAfterLogSequenceAsync(0, 100);
+        IReadOnlyList<OperationRecord> operations = await nodeA.Store.GetOperationsAfterLogSequenceAsync(0, 100);
         Assert.Equal(3, operations.Count);
         Assert.Equal(new[] { 1L, 2L, 3L }, operations.Select(x => x.LogSequence));
         Assert.Equal(3, operations.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count());
     }
 
-    private sealed class TestCluster : IAsyncDisposable
+    private class TestCluster : IAsyncDisposable
     {
         private readonly string _rootPath;
         private readonly Dictionary<string, TestNode> _nodes = new(StringComparer.Ordinal);
@@ -108,18 +108,18 @@ public sealed class ClusterReplicationTests
 
         public TestNode AddNode(string nodeId)
         {
-            var node = new TestNode(_rootPath, nodeId, ResolveNode);
+            TestNode node = new TestNode(_rootPath, nodeId, ResolveNode);
             _nodes[nodeId] = node;
             return node;
         }
 
         public async Task ConnectAllAsync()
         {
-            var nodes = _nodes.Values.ToList();
+            List<TestNode> nodes = _nodes.Values.ToList();
 
-            foreach (var source in nodes)
+            foreach (TestNode? source in nodes)
             {
-                foreach (var target in nodes)
+                foreach (TestNode? target in nodes)
                 {
                     if (source == target)
                     {
@@ -133,9 +133,9 @@ public sealed class ClusterReplicationTests
 
         public async Task ReplicateAllAsync(int rounds)
         {
-            for (var i = 0; i < rounds; i++)
+            for (int i = 0; i < rounds; i++)
             {
-                foreach (var node in _nodes.Values)
+                foreach (TestNode node in _nodes.Values)
                 {
                     await node.ReplicateOnceAsync();
                 }
@@ -144,7 +144,7 @@ public sealed class ClusterReplicationTests
 
         public async ValueTask DisposeAsync()
         {
-            foreach (var node in _nodes.Values)
+            foreach (TestNode node in _nodes.Values)
             {
                 await node.DisposeAsync();
             }
@@ -161,17 +161,14 @@ public sealed class ClusterReplicationTests
         }
     }
 
-    private sealed class TestNode : IAsyncDisposable
+    private class TestNode : IAsyncDisposable
     {
         private const string CustomerCollection = "customers";
         private readonly string _nodeId;
         private readonly IOperationIngestionService _ingestionService;
         private readonly PeerReplicationService _replicationService;
 
-        public TestNode(
-            string rootPath,
-            string nodeId,
-            Func<string, TestNode> nodeResolver)
+        public TestNode(string rootPath, string nodeId, Func<string, TestNode> nodeResolver)
         {
             _nodeId = nodeId;
 
@@ -184,8 +181,7 @@ public sealed class ClusterReplicationTests
             });
 
             IConflictResolver conflictResolver = new CriticalCollectionConflictResolver(
-                new LastWriteWinsConflictResolver(),
-                Array.Empty<string>());
+                new LastWriteWinsConflictResolver(), Array.Empty<string>());
 
             _ingestionService = new OperationIngestionService(
                 Store,
@@ -194,7 +190,7 @@ public sealed class ClusterReplicationTests
                 Store,
                 NullLogger<OperationIngestionService>.Instance);
 
-            var peerClient = new InMemoryPeerReplicationClient(nodeResolver);
+            InMemoryPeerReplicationClient peerClient = new InMemoryPeerReplicationClient(nodeResolver);
 
             _replicationService = new PeerReplicationService(
                 new ClusterNodeOptions
@@ -252,22 +248,18 @@ public sealed class ClusterReplicationTests
             return Store.GetByIdAsync<Dictionary<string, object?>>(CustomerCollection, customerId);
         }
 
-        public async Task<ReplicationPushResponse> ReceivePushAsync(
-            ReplicationPushRequest request,
-            CancellationToken cancellationToken)
+        public async Task<ReplicationPushResponse> ReceivePushAsync(ReplicationPushRequest request, CancellationToken cancellationToken)
         {
-            var result = await _ingestionService.IngestAsync(_nodeId, request.Operations, cancellationToken);
+            OperationIngestionResult result = await _ingestionService.IngestAsync(_nodeId, request.Operations, cancellationToken);
             return new ReplicationPushResponse
             {
                 AcceptedCount = result.AcceptedCount
             };
         }
 
-        public async Task<ReplicationPullResponse> ReceivePullAsync(
-            ReplicationPullRequest request,
-            CancellationToken cancellationToken)
+        public async Task<ReplicationPullResponse> ReceivePullAsync(ReplicationPullRequest request, CancellationToken cancellationToken)
         {
-            var operations = await Store.GetOperationsAfterLogSequenceAsync(
+            IReadOnlyList<OperationRecord> operations = await Store.GetOperationsAfterLogSequenceAsync(
                 request.AfterLogSequence,
                 request.BatchSize,
                 cancellationToken);
@@ -285,7 +277,7 @@ public sealed class ClusterReplicationTests
         }
     }
 
-    private sealed class InMemoryPeerReplicationClient : IPeerReplicationClient
+    private class InMemoryPeerReplicationClient : IPeerReplicationClient
     {
         private readonly Func<string, TestNode> _nodeResolver;
 
@@ -294,21 +286,17 @@ public sealed class ClusterReplicationTests
             _nodeResolver = nodeResolver;
         }
 
-        public Task<ReplicationPushResponse> PushAsync(
-            ClusterPeer peer,
-            ReplicationPushRequest request,
-            CancellationToken cancellationToken = default)
+        public Task<ReplicationPushResponse> PushAsync(ClusterPeer peer, ReplicationPushRequest request, CancellationToken cancellationToken = default)
         {
             return _nodeResolver(peer.NodeId).ReceivePushAsync(request, cancellationToken);
         }
 
-        public Task<ReplicationPullResponse> PullAsync(
-            ClusterPeer peer,
-            ReplicationPullRequest request,
-            CancellationToken cancellationToken = default)
+        public Task<ReplicationPullResponse> PullAsync(ClusterPeer peer, ReplicationPullRequest request, CancellationToken cancellationToken = default)
         {
             return _nodeResolver(peer.NodeId).ReceivePullAsync(request, cancellationToken);
         }
     }
 }
+
+
 

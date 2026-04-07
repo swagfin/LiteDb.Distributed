@@ -1,11 +1,11 @@
-using LiteDb.Distributed.Infrastructure.Replication;
+﻿using LiteDb.Distributed.Infrastructure.Replication;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
 [Route("ws/replication")]
-public sealed class ReplicationWebSocketController : ControllerBase
+public class ReplicationWebSocketController : ControllerBase
 {
     private readonly IReplicationWebSocketHandler _webSocketHandler;
     private readonly ILogger<ReplicationWebSocketController> _logger;
@@ -28,7 +28,8 @@ public sealed class ReplicationWebSocketController : ControllerBase
 
         _logger.LogDebug("Replication websocket upgrade requested. Remote={Remote}", HttpContext.Connection.RemoteIpAddress?.ToString());
 
-        using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+        using System.Net.WebSockets.WebSocket webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
         await _webSocketHandler.HandleConnectionAsync(webSocket, cancellationToken).ConfigureAwait(false);
     }
 }
+

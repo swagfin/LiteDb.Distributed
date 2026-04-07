@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Infrastructure.Configuration;
+﻿using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
@@ -7,7 +7,7 @@ namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
 [Route("node")]
-public sealed class NodeController : ControllerBase
+public class NodeController : ControllerBase
 {
     private readonly ClusterNodeOptions _nodeOptions;
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
@@ -23,8 +23,8 @@ public sealed class NodeController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetNodeInfoAsync(CancellationToken cancellationToken)
     {
-        var stopwatch = Stopwatch.StartNew();
-        var databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        IReadOnlyList<LogicalDatabaseRegistration> databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
         stopwatch.Stop();
 
         _logger.LogDebug("Node info requested. NodeId={NodeId} LogicalDatabaseCount={LogicalDatabaseCount} DurationMs={DurationMs}", _nodeOptions.NodeId, databases.Count, stopwatch.Elapsed.TotalMilliseconds);
@@ -37,3 +37,4 @@ public sealed class NodeController : ControllerBase
         });
     }
 }
+

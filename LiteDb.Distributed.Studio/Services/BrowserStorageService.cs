@@ -3,13 +3,20 @@ using Microsoft.JSInterop;
 
 namespace LiteDb.Distributed.Studio.Services;
 
-public sealed class BrowserStorageService(IJSRuntime jsRuntime)
+public class BrowserStorageService
 {
+    private readonly IJSRuntime _jsRuntime;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public BrowserStorageService(IJSRuntime jsRuntime)
+    {
+        _jsRuntime = jsRuntime;
+    }
 
     public async Task<T?> GetAsync<T>(string key)
     {
-        var raw = await jsRuntime.InvokeAsync<string?>("liteDbStudioStorage.get", key).ConfigureAwait(false);
+        string? raw = await _jsRuntime.InvokeAsync<string?>("liteDbStudioStorage.get", key).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -28,12 +35,12 @@ public sealed class BrowserStorageService(IJSRuntime jsRuntime)
 
     public Task SetAsync<T>(string key, T value)
     {
-        var raw = JsonSerializer.Serialize(value, JsonOptions);
-        return jsRuntime.InvokeVoidAsync("liteDbStudioStorage.set", key, raw).AsTask();
+        string raw = JsonSerializer.Serialize(value, JsonOptions);
+        return _jsRuntime.InvokeVoidAsync("liteDbStudioStorage.set", key, raw).AsTask();
     }
 
     public Task RemoveAsync(string key)
     {
-        return jsRuntime.InvokeVoidAsync("liteDbStudioStorage.remove", key).AsTask();
+        return _jsRuntime.InvokeVoidAsync("liteDbStudioStorage.remove", key).AsTask();
     }
 }

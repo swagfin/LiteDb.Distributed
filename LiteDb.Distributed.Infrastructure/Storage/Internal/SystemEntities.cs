@@ -1,8 +1,8 @@
-using LiteDB;
+﻿using LiteDB;
 
 namespace LiteDb.Distributed.Infrastructure.Storage.Internal;
 
-internal sealed class OperationEntity
+internal class OperationEntity
 {
     [BsonId]
     public string Id { get; set; } = string.Empty;
@@ -19,7 +19,7 @@ internal sealed class OperationEntity
     public bool IsTombstone { get; set; }
 }
 
-internal sealed class NodeMetadataEntity
+internal class NodeMetadataEntity
 {
     [BsonId]
     public string NodeId { get; set; } = string.Empty;
@@ -27,7 +27,7 @@ internal sealed class NodeMetadataEntity
     public DateTime LastWriteUtc { get; set; }
 }
 
-internal sealed class ConflictEntity
+internal class ConflictEntity
 {
     [BsonId]
     public string Id { get; set; } = string.Empty;
@@ -43,7 +43,7 @@ internal sealed class ConflictEntity
     public string? IncomingPayload { get; set; }
 }
 
-internal sealed class PeerCheckpointEntity
+internal class PeerCheckpointEntity
 {
     [BsonId]
     public string Id { get; set; } = string.Empty;
@@ -54,7 +54,7 @@ internal sealed class PeerCheckpointEntity
     public DateTime UpdatedUtc { get; set; }
 }
 
-internal sealed class ClusterPeerEntity
+internal class ClusterPeerEntity
 {
     [BsonId]
     public string NodeId { get; set; } = string.Empty;
@@ -62,4 +62,5 @@ internal sealed class ClusterPeerEntity
     public bool IsActive { get; set; }
     public DateTime UpdatedUtc { get; set; }
 }
+
 

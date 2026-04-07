@@ -1,6 +1,6 @@
-namespace LiteDb.Distributed.Studio.Models;
+﻿namespace LiteDb.Distributed.Studio.Models;
 
-public sealed class WriteResultDto
+public class WriteResultDto
 {
     public string Collection { get; set; } = string.Empty;
     public string EntityId { get; set; } = string.Empty;
@@ -8,3 +8,4 @@ public sealed class WriteResultDto
     public DateTime CommittedUtc { get; set; }
     public bool IsDeleted { get; set; }
 }
+

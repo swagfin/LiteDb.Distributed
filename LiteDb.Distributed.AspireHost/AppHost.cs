@@ -1,4 +1,4 @@
-var builder = DistributedApplication.CreateBuilder(args);
+﻿IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 
 ConfigureNode(
     AddNodeProject(builder, "node-1"),
@@ -26,9 +26,7 @@ ConfigureNode(
 
 builder.Build().Run();
 
-static IResourceBuilder<ProjectResource> AddNodeProject(
-    IDistributedApplicationBuilder builder,
-    string name)
+static IResourceBuilder<ProjectResource> AddNodeProject(IDistributedApplicationBuilder builder, string name)
 {
     return builder.AddProject<Projects.LiteDb_Distributed_Server>(
             name,
@@ -39,12 +37,7 @@ static IResourceBuilder<ProjectResource> AddNodeProject(
             });
 }
 
-static void ConfigureNode(
-    IResourceBuilder<ProjectResource> node,
-    string nodeId,
-    string url,
-    int port,
-    params (string NodeId, string BaseUrl)[] peers)
+static void ConfigureNode(IResourceBuilder<ProjectResource> node, string nodeId, string url, int port, params (string NodeId, string BaseUrl)[] peers)
 {
     node.WithEnvironment("urls", url)
         .WithHttpEndpoint(
@@ -55,11 +48,11 @@ static void ConfigureNode(
             isProxied: false)
         .WithEnvironment("Node__NodeId", nodeId);
 
-    for (var index = 0; index < peers.Length; index++)
+    for (int index = 0; index < peers.Length; index++)
     {
-        var peer = peers[index];
-        node.WithEnvironment($"Node__SeedPeers__{index}__NodeId", peer.NodeId)
-            .WithEnvironment($"Node__SeedPeers__{index}__BaseUrl", peer.BaseUrl)
-            .WithEnvironment($"Node__SeedPeers__{index}__IsActive", "true");
+        (string NodeId, string BaseUrl) peer = peers[index];
+        node.WithEnvironment($"Node__SeedPeers__{index}__NodeId", peer.NodeId) .WithEnvironment($"Node__SeedPeers__{index}__BaseUrl", peer.BaseUrl) .WithEnvironment($"Node__SeedPeers__{index}__IsActive", "true");
     }
 }
+
+

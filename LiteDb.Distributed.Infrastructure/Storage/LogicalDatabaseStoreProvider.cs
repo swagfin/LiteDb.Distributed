@@ -1,11 +1,11 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 using Microsoft.Extensions.Logging;
 
 namespace LiteDb.Distributed.Infrastructure.Storage;
 
-public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
+public class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
 {
     private readonly ClusterNodeOptions _options;
     private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
@@ -27,7 +27,7 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
     {
         ThrowIfDisposed();
 
-        var context = _databaseContextAccessor.Current;
+        DatabaseRequestContext? context = _databaseContextAccessor.Current;
         if (context is null)
         {
             throw new InvalidOperationException("No active logical database context for the current execution flow.");
@@ -40,11 +40,9 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
     {
         ThrowIfDisposed();
 
-        var registration = await _logicalDatabaseCatalog
-            .GetOrCreateAsync(databaseName, credential, cancellationToken)
-            .ConfigureAwait(false);
+        LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, credential, cancellationToken).ConfigureAwait(false);
 
-        var lazyStore = _stores.GetOrAdd(
+        Lazy<LiteDbNodeStore> lazyStore = _stores.GetOrAdd(
             registration.DatabaseName,
             _ => new Lazy<LiteDbNodeStore>(
                 () => CreateStore(registration),
@@ -67,11 +65,11 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
 
     private LiteDbNodeStore CreateStore(LogicalDatabaseRegistration registration)
     {
-        var rootDataDirectory = ResolveDataDirectory(_options.DataDirectory);
-        var nodeDataDirectory = Path.Combine(rootDataDirectory, _options.NodeId);
+        string rootDataDirectory = ResolveDataDirectory(_options.DataDirectory);
+        string nodeDataDirectory = Path.Combine(rootDataDirectory, _options.NodeId);
         Directory.CreateDirectory(nodeDataDirectory);
-        var businessPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db");
-        var metadataPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata");
+        string businessPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db");
+        string metadataPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata");
 
         _logger.LogInformation("Opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}", _options.NodeId, registration.DatabaseName, businessPath, metadataPath);
 
@@ -103,7 +101,7 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
 
         _disposed = true;
 
-        foreach (var lazyStore in _stores.Values)
+        foreach (Lazy<LiteDbNodeStore> lazyStore in _stores.Values)
         {
             if (!lazyStore.IsValueCreated)
             {
@@ -136,3 +134,5 @@ public sealed class LogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
             : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
     }
 }
+
+

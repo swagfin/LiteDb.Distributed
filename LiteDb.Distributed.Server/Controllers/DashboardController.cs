@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text;
@@ -12,7 +12,7 @@ namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
 [Route("dashboard/api")]
-public sealed class DashboardController : ControllerBase
+public class DashboardController : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly ClusterNodeOptions _nodeOptions;
@@ -33,34 +33,34 @@ public sealed class DashboardController : ControllerBase
     [HttpGet("overview")]
     public async Task<IActionResult> GetOverviewAsync(CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
-        var dataRootPath = ResolveDataDirectory(_nodeOptions.DataDirectory);
-        var nodeDataPath = Path.Combine(dataRootPath, _nodeOptions.NodeId);
-        var registrations = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var peerTargetsByNode = new Dictionary<string, DashboardPeerTarget>(StringComparer.Ordinal);
+        DateTime now = DateTime.UtcNow;
+        string dataRootPath = ResolveDataDirectory(_nodeOptions.DataDirectory);
+        string nodeDataPath = Path.Combine(dataRootPath, _nodeOptions.NodeId);
+        IReadOnlyList<LogicalDatabaseRegistration> registrations = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        Dictionary<string, DashboardPeerTarget> peerTargetsByNode = new Dictionary<string, DashboardPeerTarget>(StringComparer.Ordinal);
 
-        foreach (var seedPeer in _nodeOptions.SeedPeers)
+        foreach (ClusterPeer seedPeer in _nodeOptions.SeedPeers)
         {
             RegisterPeer(peerTargetsByNode, seedPeer);
         }
 
-        var databaseStatuses = new List<DashboardDatabaseStatusDto>(registrations.Count);
+        List<DashboardDatabaseStatusDto> databaseStatuses = new List<DashboardDatabaseStatusDto>(registrations.Count);
 
-        foreach (var registration in registrations.OrderBy(x => x.DatabaseName, StringComparer.Ordinal))
+        foreach (LogicalDatabaseRegistration? registration in registrations.OrderBy(x => x.DatabaseName, StringComparer.Ordinal))
         {
-            var businessPath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db");
-            var metadataPath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db.metadata");
-            var businessFile = BuildFileStatus(businessPath);
-            var metadataFile = BuildFileStatus(metadataPath);
+            string businessPath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db");
+            string metadataPath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db.metadata");
+            DashboardFileStatusDto businessFile = BuildFileStatus(businessPath);
+            DashboardFileStatusDto metadataFile = BuildFileStatus(metadataPath);
 
             try
             {
-                var store = await _logicalDatabaseStoreProvider.GetStoreAsync(registration.DatabaseName, registration.Credential, cancellationToken).ConfigureAwait(false);
-                var peers = await store.GetPeersAsync(cancellationToken).ConfigureAwait(false);
-                var businessCollections = await store.GetBusinessCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
-                var metadataCollections = await store.GetMetadataCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
+                LiteDbNodeStore store = await _logicalDatabaseStoreProvider.GetStoreAsync(registration.DatabaseName, registration.Credential, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<ClusterPeer> peers = await store.GetPeersAsync(cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<string> businessCollections = await store.GetBusinessCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<string> metadataCollections = await store.GetMetadataCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
 
-                foreach (var peer in peers)
+                foreach (ClusterPeer peer in peers)
                 {
                     RegisterPeer(peerTargetsByNode, peer);
                 }
@@ -95,8 +95,8 @@ public sealed class DashboardController : ControllerBase
             }
         }
 
-        var localBaseUrl = $"{Request.Scheme}://{Request.Host}";
-        var localStatus = new DashboardNodeStatusDto
+        string localBaseUrl = $"{Request.Scheme}://{Request.Host}";
+        DashboardNodeStatusDto localStatus = new DashboardNodeStatusDto
         {
             NodeId = _nodeOptions.NodeId,
             BaseUrl = localBaseUrl,
@@ -110,23 +110,16 @@ public sealed class DashboardController : ControllerBase
             LastCheckedUtc = now
         };
 
-        var peerProbeTasks = peerTargetsByNode.Values
-            .Where(x => !string.Equals(x.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal))
-            .OrderBy(x => x.NodeId, StringComparer.Ordinal)
-            .Select(peer => ProbePeerAsync(peer, cancellationToken))
-            .ToList();
+        List<Task<DashboardPeerProbeResult>> peerProbeTasks = peerTargetsByNode.Values.Where(x => !string.Equals(x.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal)).OrderBy(x => x.NodeId, StringComparer.Ordinal).Select(peer => ProbePeerAsync(peer, cancellationToken)).ToList();
 
-        var peerProbeResults = await Task.WhenAll(peerProbeTasks).ConfigureAwait(false);
-        var nodeStatuses = new List<DashboardNodeStatusDto>(1 + peerProbeResults.Length)
+        DashboardPeerProbeResult[] peerProbeResults = await Task.WhenAll(peerProbeTasks).ConfigureAwait(false);
+        List<DashboardNodeStatusDto> nodeStatuses = new List<DashboardNodeStatusDto>(1 + peerProbeResults.Length)
         {
             localStatus
         };
         nodeStatuses.AddRange(peerProbeResults.Select(x => x.NodeStatus));
 
-        var peerConnections = peerProbeResults
-            .Select(x => x.PeerConnectivity)
-            .OrderBy(x => x.PeerNodeId, StringComparer.Ordinal)
-            .ToList();
+        List<DashboardPeerConnectivityDto> peerConnections = peerProbeResults.Select(x => x.PeerConnectivity).OrderBy(x => x.PeerNodeId, StringComparer.Ordinal).ToList();
 
         return Ok(new DashboardOverviewDto
         {
@@ -142,11 +135,11 @@ public sealed class DashboardController : ControllerBase
 
     private async Task<DashboardPeerProbeResult> ProbePeerAsync(DashboardPeerTarget target, CancellationToken cancellationToken)
     {
-        var checkedAt = DateTime.UtcNow;
-        var normalizedBaseUrl = NormalizeBaseUrl(target.BaseUrl);
+        DateTime checkedAt = DateTime.UtcNow;
+        string normalizedBaseUrl = NormalizeBaseUrl(target.BaseUrl);
         if (string.IsNullOrWhiteSpace(normalizedBaseUrl))
         {
-            var error = "No base URL configured for peer.";
+            string error = "No base URL configured for peer.";
 
             return new DashboardPeerProbeResult(
                 new DashboardNodeStatusDto
@@ -177,14 +170,12 @@ public sealed class DashboardController : ControllerBase
                 });
         }
 
-        var httpProbe = await ProbeHttpAsync(target.NodeId, normalizedBaseUrl, cancellationToken).ConfigureAwait(false);
-        var wsProbe = httpProbe.IsOnline
-            ? await ProbeWebSocketAsync(normalizedBaseUrl, cancellationToken).ConfigureAwait(false)
-            : WebSocketProbeResult.Skipped("HTTP probe failed");
+        HttpProbeResult httpProbe = await ProbeHttpAsync(target.NodeId, normalizedBaseUrl, cancellationToken).ConfigureAwait(false);
+        WebSocketProbeResult wsProbe = httpProbe.IsOnline ? await ProbeWebSocketAsync(normalizedBaseUrl, cancellationToken).ConfigureAwait(false) : WebSocketProbeResult.Skipped("HTTP probe failed");
 
-        var overall = DetermineOverallStatus(httpProbe.IsOnline, wsProbe.IsOnline);
-        var nodeStatus = MapNodeStatus(overall);
-        var combinedError = CombineErrors(httpProbe.Error, wsProbe.Error);
+        string overall = DetermineOverallStatus(httpProbe.IsOnline, wsProbe.IsOnline);
+        string nodeStatus = MapNodeStatus(overall);
+        string? combinedError = CombineErrors(httpProbe.Error, wsProbe.Error);
 
         return new DashboardPeerProbeResult(
             new DashboardNodeStatusDto
@@ -217,24 +208,24 @@ public sealed class DashboardController : ControllerBase
 
     private async Task<HttpProbeResult> ProbeHttpAsync(string peerNodeId, string normalizedBaseUrl, CancellationToken cancellationToken)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-            var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"{normalizedBaseUrl}/node", UriKind.Absolute));
-            using var response = await client.SendAsync(request, timeoutCts.Token).ConfigureAwait(false);
+            HttpClient client = _httpClientFactory.CreateClient();
+            using HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, new Uri($"{normalizedBaseUrl}/node", UriKind.Absolute));
+            using HttpResponseMessage response = await client.SendAsync(request, timeoutCts.Token).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
                 return new HttpProbeResult(peerNodeId, IsOnline: false, Status: $"HTTP {(int)response.StatusCode}", Error: $"HTTP {(int)response.StatusCode}", DurationMs: stopwatch.Elapsed.TotalMilliseconds);
             }
 
-            var nodeInfo = await response.Content.ReadFromJsonAsync<NodeInfoResponse>(cancellationToken: timeoutCts.Token).ConfigureAwait(false);
-            var resolvedNodeId = string.IsNullOrWhiteSpace(nodeInfo?.NodeId) ? peerNodeId : nodeInfo.NodeId;
+            NodeInfoResponse? nodeInfo = await response.Content.ReadFromJsonAsync<NodeInfoResponse>(cancellationToken: timeoutCts.Token).ConfigureAwait(false);
+            string resolvedNodeId = string.IsNullOrWhiteSpace(nodeInfo?.NodeId) ? peerNodeId : nodeInfo.NodeId;
             return new HttpProbeResult(resolvedNodeId, IsOnline: true, Status: "Connected", Error: null, DurationMs: stopwatch.Elapsed.TotalMilliseconds);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -249,18 +240,18 @@ public sealed class DashboardController : ControllerBase
 
     private async Task<WebSocketProbeResult> ProbeWebSocketAsync(string normalizedBaseUrl, CancellationToken cancellationToken)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-            using var webSocket = new ClientWebSocket();
-            var endpoint = BuildWebSocketEndpoint(normalizedBaseUrl);
+            using ClientWebSocket webSocket = new ClientWebSocket();
+            Uri endpoint = BuildWebSocketEndpoint(normalizedBaseUrl);
             await webSocket.ConnectAsync(endpoint, timeoutCts.Token).ConfigureAwait(false);
 
-            var message = JsonSerializer.SerializeToUtf8Bytes(new DashboardWebSocketHealthCheck
+            byte[] message = JsonSerializer.SerializeToUtf8Bytes(new DashboardWebSocketHealthCheck
             {
                 Type = "health-check",
                 SourceNodeId = _nodeOptions.NodeId,
@@ -269,13 +260,13 @@ public sealed class DashboardController : ControllerBase
 
             await webSocket.SendAsync(message, WebSocketMessageType.Text, endOfMessage: true, timeoutCts.Token).ConfigureAwait(false);
 
-            var responseText = await ReceiveTextMessageAsync(webSocket, timeoutCts.Token).ConfigureAwait(false);
+            string? responseText = await ReceiveTextMessageAsync(webSocket, timeoutCts.Token).ConfigureAwait(false);
             if (responseText is null)
             {
                 return new WebSocketProbeResult(IsOnline: false, Status: "NoAck", Error: "WebSocket closed before ack.", DurationMs: stopwatch.Elapsed.TotalMilliseconds);
             }
 
-            var ack = JsonSerializer.Deserialize<DashboardWebSocketAck>(responseText, JsonOptions);
+            DashboardWebSocketAck? ack = JsonSerializer.Deserialize<DashboardWebSocketAck>(responseText, JsonOptions);
             if (ack is null || !ack.Accepted)
             {
                 return new WebSocketProbeResult(IsOnline: false, Status: "Failed", Error: ack?.Error ?? "WebSocket ack rejected.", DurationMs: stopwatch.Elapsed.TotalMilliseconds);
@@ -300,8 +291,8 @@ public sealed class DashboardController : ControllerBase
 
     private static Uri BuildWebSocketEndpoint(string baseUrl)
     {
-        var baseUri = new Uri(baseUrl, UriKind.Absolute);
-        var scheme = string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
+        Uri baseUri = new Uri(baseUrl, UriKind.Absolute);
+        string scheme = string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
 
         return new UriBuilder(baseUri)
         {
@@ -313,15 +304,15 @@ public sealed class DashboardController : ControllerBase
 
     private static async Task<string?> ReceiveTextMessageAsync(WebSocket webSocket, CancellationToken cancellationToken)
     {
-        var rented = ArrayPool<byte>.Shared.Rent(8 * 1024);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(8 * 1024);
 
         try
         {
-            using var stream = new MemoryStream();
+            using MemoryStream stream = new MemoryStream();
 
             while (true)
             {
-                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(rented), cancellationToken).ConfigureAwait(false);
+                WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(rented), cancellationToken).ConfigureAwait(false);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     return null;
@@ -369,18 +360,14 @@ public sealed class DashboardController : ControllerBase
 
     private static string? CombineErrors(params string?[] errors)
     {
-        var parts = errors
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x!.Trim())
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
+        string[] parts = errors.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()).Distinct(StringComparer.Ordinal).ToArray();
 
         return parts.Length == 0 ? null : string.Join(" | ", parts);
     }
 
     private static DashboardFileStatusDto BuildFileStatus(string path)
     {
-        var exists = System.IO.File.Exists(path);
+        bool exists = System.IO.File.Exists(path);
         if (!exists)
         {
             return new DashboardFileStatusDto
@@ -392,7 +379,7 @@ public sealed class DashboardController : ControllerBase
             };
         }
 
-        var info = new FileInfo(path);
+        FileInfo info = new FileInfo(path);
         return new DashboardFileStatusDto
         {
             Path = info.FullName,
@@ -419,15 +406,15 @@ public sealed class DashboardController : ControllerBase
             return;
         }
 
-        var normalizedBaseUrl = NormalizeBaseUrl(baseUrl);
-        if (!peersByNodeId.TryGetValue(nodeId, out var existing))
+        string normalizedBaseUrl = NormalizeBaseUrl(baseUrl);
+        if (!peersByNodeId.TryGetValue(nodeId, out DashboardPeerTarget? existing))
         {
             peersByNodeId[nodeId] = new DashboardPeerTarget(nodeId, normalizedBaseUrl, isActive);
             return;
         }
 
-        var mergedBaseUrl = string.IsNullOrWhiteSpace(existing.BaseUrl) ? normalizedBaseUrl : existing.BaseUrl;
-        var mergedActive = existing.IsActive || isActive;
+        string mergedBaseUrl = string.IsNullOrWhiteSpace(existing.BaseUrl) ? normalizedBaseUrl : existing.BaseUrl;
+        bool mergedActive = existing.IsActive || isActive;
         peersByNodeId[nodeId] = existing with { BaseUrl = mergedBaseUrl, IsActive = mergedActive };
     }
 
@@ -448,19 +435,19 @@ public sealed class DashboardController : ControllerBase
         return string.IsNullOrWhiteSpace(baseUrl) ? string.Empty : baseUrl.TrimEnd('/');
     }
 
-    private sealed class NodeInfoResponse
+    private class NodeInfoResponse
     {
         public string NodeId { get; init; } = string.Empty;
     }
 
-    private sealed class DashboardWebSocketHealthCheck
+    private class DashboardWebSocketHealthCheck
     {
         public string Type { get; init; } = string.Empty;
         public string SourceNodeId { get; init; } = string.Empty;
         public DateTime TimestampUtc { get; init; }
     }
 
-    private sealed class DashboardWebSocketAck
+    private class DashboardWebSocketAck
     {
         public bool Accepted { get; init; }
         public string? Error { get; init; }
@@ -474,7 +461,7 @@ public sealed class DashboardController : ControllerBase
         public static WebSocketProbeResult Skipped(string reason) => new(false, "Skipped", reason, null);
     }
 
-    public sealed class DashboardOverviewDto
+    public class DashboardOverviewDto
     {
         public required string NodeId { get; init; }
         public required DateTime TimestampUtc { get; init; }
@@ -485,7 +472,7 @@ public sealed class DashboardController : ControllerBase
         public IReadOnlyList<DashboardDatabaseStatusDto> Databases { get; init; } = Array.Empty<DashboardDatabaseStatusDto>();
     }
 
-    public sealed class DashboardNodeStatusDto
+    public class DashboardNodeStatusDto
     {
         public required string NodeId { get; init; }
         public required string BaseUrl { get; init; }
@@ -499,7 +486,7 @@ public sealed class DashboardController : ControllerBase
         public required DateTime LastCheckedUtc { get; init; }
     }
 
-    public sealed class DashboardPeerConnectivityDto
+    public class DashboardPeerConnectivityDto
     {
         public required string PeerNodeId { get; init; }
         public required string BaseUrl { get; init; }
@@ -513,7 +500,7 @@ public sealed class DashboardController : ControllerBase
         public required DateTime LastCheckedUtc { get; init; }
     }
 
-    public sealed class DashboardDatabaseStatusDto
+    public class DashboardDatabaseStatusDto
     {
         public required string Name { get; init; }
         public required string Status { get; init; }
@@ -525,7 +512,7 @@ public sealed class DashboardController : ControllerBase
         public IReadOnlyList<string> MetadataCollections { get; init; } = Array.Empty<string>();
     }
 
-    public sealed class DashboardFileStatusDto
+    public class DashboardFileStatusDto
     {
         public required string Path { get; init; }
         public required bool Exists { get; init; }
@@ -533,3 +520,5 @@ public sealed class DashboardController : ControllerBase
         public required DateTime? LastWriteUtc { get; init; }
     }
 }
+
+

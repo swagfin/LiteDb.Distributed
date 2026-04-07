@@ -1,4 +1,4 @@
-namespace LiteDb.Distributed.Studio.Models;
+﻿namespace LiteDb.Distributed.Studio.Models;
 
 public enum CredentialType
 {
@@ -6,7 +6,7 @@ public enum CredentialType
     Password
 }
 
-public sealed class ConnectionProfile
+public class ConnectionProfile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "Local Node";
@@ -34,3 +34,4 @@ public sealed class ConnectionProfile
 
     public static ConnectionProfile CreateDefault() => new();
 }
+

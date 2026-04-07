@@ -1,9 +1,10 @@
-namespace LiteDb.Distributed.Infrastructure.Context;
+﻿namespace LiteDb.Distributed.Infrastructure.Context;
 
-public sealed class DatabaseAuthenticationException : Exception
+public class DatabaseAuthenticationException : Exception
 {
-    public DatabaseAuthenticationException(string message)
-        : base(message)
+    public DatabaseAuthenticationException(string message) : base(message)
     {
     }
 }
+
+

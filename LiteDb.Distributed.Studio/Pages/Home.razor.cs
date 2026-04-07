@@ -49,37 +49,24 @@ public partial class Home : ComponentBase
     private string? _errorMessage;
     private string? _infoMessage;
 
-    private ConnectionProfile? ActiveProfile => _activeProfileId is null
-        ? null
-        : _profiles.FirstOrDefault(x => x.Id == _activeProfileId.Value);
+    private ConnectionProfile? ActiveProfile => _activeProfileId is null ? null : _profiles.FirstOrDefault(x => x.Id == _activeProfileId.Value);
 
-    private ConnectionProfile? SelectedProfile => _selectedProfileId is null
-        ? null
-        : _profiles.FirstOrDefault(x => x.Id == _selectedProfileId.Value);
+    private ConnectionProfile? SelectedProfile => _selectedProfileId is null ? null : _profiles.FirstOrDefault(x => x.Id == _selectedProfileId.Value);
 
-    private IReadOnlyList<ConnectionProfile> OrderedProfiles => _profiles
-        .OrderByDescending(x => x.UpdatedUtc)
-        .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-        .ToList();
+    private IReadOnlyList<ConnectionProfile> OrderedProfiles => _profiles.OrderByDescending(x => x.UpdatedUtc).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
-    private string ActiveProfileSummary => ActiveProfile is null
-        ? "Not connected. Save a profile and hit Connect."
-        : $"Connected to {ActiveProfile.Database} at {ActiveProfile.BaseUrl}";
+    private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Save a profile and hit Connect." : $"Connected to {ActiveProfile.Database} at {ActiveProfile.BaseUrl}";
 
     private IReadOnlyList<string> DisplayColumns
     {
         get
         {
-            var keys = _documents
-                .SelectMany(x => x.Keys)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            List<string> keys = _documents.SelectMany(x => x.Keys).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
 
-            var idIndex = keys.FindIndex(x => string.Equals(x, "Id", StringComparison.OrdinalIgnoreCase));
+            int idIndex = keys.FindIndex(x => string.Equals(x, "Id", StringComparison.OrdinalIgnoreCase));
             if (idIndex > 0)
             {
-                var id = keys[idIndex];
+                string id = keys[idIndex];
                 keys.RemoveAt(idIndex);
                 keys.Insert(0, id);
             }
@@ -105,11 +92,9 @@ public partial class Home : ComponentBase
 
         try
         {
-            var loaded = await ProfileStore.LoadProfilesAsync().ConfigureAwait(false);
+            IReadOnlyList<ConnectionProfile> loaded = await ProfileStore.LoadProfilesAsync().ConfigureAwait(false);
 
-            _profiles = loaded
-                .OrderByDescending(x => x.UpdatedUtc)
-                .ToList();
+            _profiles = loaded.OrderByDescending(x => x.UpdatedUtc).ToList();
 
             _activeProfileId = await ProfileStore.LoadActiveProfileIdAsync().ConfigureAwait(false);
 
@@ -120,7 +105,7 @@ public partial class Home : ComponentBase
                 return;
             }
 
-            var starterProfile = _profiles.FirstOrDefault(x => x.Id == _activeProfileId)
+            ConnectionProfile starterProfile = _profiles.FirstOrDefault(x => x.Id == _activeProfileId)
                                  ?? _profiles[0];
 
             _selectedProfileId = starterProfile.Id;
@@ -140,7 +125,7 @@ public partial class Home : ComponentBase
 
     private void SelectProfile(Guid profileId)
     {
-        var profile = _profiles.FirstOrDefault(x => x.Id == profileId);
+        ConnectionProfile? profile = _profiles.FirstOrDefault(x => x.Id == profileId);
         if (profile is null)
         {
             return;
@@ -160,7 +145,7 @@ public partial class Home : ComponentBase
 
     private async Task SaveProfileAsync()
     {
-        if (!TryNormalizeProfile(_editor, out var normalized, out var error))
+        if (!TryNormalizeProfile(_editor, out ConnectionProfile? normalized, out string? error))
         {
             _errorMessage = error;
             _infoMessage = null;
@@ -185,7 +170,7 @@ public partial class Home : ComponentBase
             return;
         }
 
-        var removed = _profiles.RemoveAll(x => x.Id == _selectedProfileId.Value);
+        int removed = _profiles.RemoveAll(x => x.Id == _selectedProfileId.Value);
         if (removed == 0)
         {
             return;
@@ -206,9 +191,7 @@ public partial class Home : ComponentBase
         }
 
         _selectedProfileId = _profiles.FirstOrDefault()?.Id;
-        _editor = _selectedProfileId is Guid nextId
-            ? _profiles.First(x => x.Id == nextId).Clone()
-            : ConnectionProfile.CreateDefault();
+        _editor = _selectedProfileId is Guid nextId ? _profiles.First(x => x.Id == nextId).Clone() : ConnectionProfile.CreateDefault();
 
         await PersistProfilesAsync().ConfigureAwait(false);
 
@@ -218,7 +201,7 @@ public partial class Home : ComponentBase
 
     private async Task ConnectUsingEditorAsync()
     {
-        if (!TryNormalizeProfile(_editor, out var normalized, out var error))
+        if (!TryNormalizeProfile(_editor, out ConnectionProfile? normalized, out string? error))
         {
             _errorMessage = error;
             _infoMessage = null;
@@ -238,7 +221,7 @@ public partial class Home : ComponentBase
 
     private async Task RefreshCollectionsAsync()
     {
-        var profile = ActiveProfile ?? SelectedProfile;
+        ConnectionProfile? profile = ActiveProfile ?? SelectedProfile;
         if (profile is null)
         {
             _errorMessage = "Pick or create a profile first.";
@@ -259,7 +242,7 @@ public partial class Home : ComponentBase
             _activeProfileId = profile.Id;
             await ProfileStore.SaveActiveProfileIdAsync(profile.Id).ConfigureAwait(false);
 
-            var overviewResult = await ApiClient.GetOverviewAsync(profile.BaseUrl).ConfigureAwait(false);
+            ApiResult<DashboardOverviewDto> overviewResult = await ApiClient.GetOverviewAsync(profile.BaseUrl).ConfigureAwait(false);
             if (!overviewResult.Success)
             {
                 _errorMessage = overviewResult.ErrorMessage;
@@ -268,7 +251,7 @@ public partial class Home : ComponentBase
 
             _overview = overviewResult.Data;
 
-            var collectionsResult = await ApiClient.GetCollectionsAsync(profile).ConfigureAwait(false);
+            ApiResult<List<string>> collectionsResult = await ApiClient.GetCollectionsAsync(profile).ConfigureAwait(false);
             if (!collectionsResult.Success)
             {
                 _errorMessage = collectionsResult.ErrorMessage;
@@ -281,9 +264,7 @@ public partial class Home : ComponentBase
             {
                 _documents = [];
                 _selectedDocument = null;
-                _selectedCollection = string.IsNullOrWhiteSpace(_collectionInput)
-                    ? null
-                    : _collectionInput.Trim();
+                _selectedCollection = string.IsNullOrWhiteSpace(_collectionInput) ? null : _collectionInput.Trim();
 
                 if (!quiet)
                 {
@@ -329,9 +310,7 @@ public partial class Home : ComponentBase
         if (!_collections.Contains(_selectedCollection, StringComparer.OrdinalIgnoreCase))
         {
             _collections.Add(_selectedCollection);
-            _collections = _collections
-                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            _collections = _collections.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         UseCollectionTemplate();
@@ -340,7 +319,7 @@ public partial class Home : ComponentBase
 
     private async Task BrowseCollectionAsync()
     {
-        var profile = ActiveProfile;
+        ConnectionProfile? profile = ActiveProfile;
         if (profile is null)
         {
             _errorMessage = "Connect a profile first.";
@@ -360,9 +339,7 @@ public partial class Home : ComponentBase
 
         try
         {
-            var result = await ApiClient
-                .ListDocumentsAsync(profile, _selectedCollection, _skip, _take)
-                .ConfigureAwait(false);
+            ApiResult<List<Dictionary<string, JsonElement>>> result = await ApiClient.ListDocumentsAsync(profile, _selectedCollection, _skip, _take).ConfigureAwait(false);
 
             if (!result.Success)
             {
@@ -396,7 +373,7 @@ public partial class Home : ComponentBase
 
     private async Task RunLiteQueryAsync()
     {
-        var profile = ActiveProfile;
+        ConnectionProfile? profile = ActiveProfile;
         if (profile is null)
         {
             _errorMessage = "Connect a profile first.";
@@ -416,9 +393,7 @@ public partial class Home : ComponentBase
 
         try
         {
-            var result = await ApiClient
-                .ExecuteQueryAsync(profile, _queryText, _queryTake)
-                .ConfigureAwait(false);
+            ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, _queryText, _queryTake).ConfigureAwait(false);
 
             if (!result.Success)
             {
@@ -427,7 +402,7 @@ public partial class Home : ComponentBase
                 return;
             }
 
-            var rows = result.Data?.Rows ?? [];
+            List<Dictionary<string, JsonElement>> rows = result.Data?.Rows ?? [];
             _documents = rows;
 
             if (_documents.Count > 0)
@@ -460,7 +435,7 @@ public partial class Home : ComponentBase
 
     private async Task LookupByIdAsync()
     {
-        var profile = ActiveProfile;
+        ConnectionProfile? profile = ActiveProfile;
         if (profile is null)
         {
             _errorMessage = "Connect a profile first.";
@@ -487,9 +462,7 @@ public partial class Home : ComponentBase
 
         try
         {
-            var result = await ApiClient
-                .GetDocumentByIdAsync(profile, _selectedCollection, _idLookup.Trim())
-                .ConfigureAwait(false);
+            ApiResult<Dictionary<string, JsonElement>> result = await ApiClient.GetDocumentByIdAsync(profile, _selectedCollection, _idLookup.Trim()).ConfigureAwait(false);
 
             if (!result.Success || result.Data is null)
             {
@@ -528,7 +501,7 @@ public partial class Home : ComponentBase
 
     private async Task SaveDocumentAsync()
     {
-        var profile = ActiveProfile;
+        ConnectionProfile? profile = ActiveProfile;
         if (profile is null)
         {
             _errorMessage = "Connect a profile first.";
@@ -547,7 +520,7 @@ public partial class Home : ComponentBase
 
         try
         {
-            using var parsed = JsonDocument.Parse(_documentJson);
+            using JsonDocument parsed = JsonDocument.Parse(_documentJson);
 
             if (parsed.RootElement.ValueKind != JsonValueKind.Object)
             {
@@ -556,9 +529,7 @@ public partial class Home : ComponentBase
                 return;
             }
 
-            documentId = string.IsNullOrWhiteSpace(_selectedDocumentId)
-                ? ExtractId(parsed.RootElement) ?? string.Empty
-                : _selectedDocumentId.Trim();
+            documentId = string.IsNullOrWhiteSpace(_selectedDocumentId) ? ExtractId(parsed.RootElement) ?? string.Empty : _selectedDocumentId.Trim();
 
             if (string.IsNullOrWhiteSpace(documentId))
             {
@@ -579,9 +550,7 @@ public partial class Home : ComponentBase
 
         try
         {
-            var result = await ApiClient
-                .PutDocumentAsync(profile, _selectedCollection, documentId, _documentJson)
-                .ConfigureAwait(false);
+            ApiResult<WriteResultDto> result = await ApiClient.PutDocumentAsync(profile, _selectedCollection, documentId, _documentJson).ConfigureAwait(false);
 
             if (!result.Success)
             {
@@ -595,9 +564,7 @@ public partial class Home : ComponentBase
             await BrowseCollectionAsync().ConfigureAwait(false);
             TrySelectDocumentById(documentId);
 
-            _infoMessage = result.Data is null
-                ? $"Document '{documentId}' saved."
-                : $"Document '{documentId}' saved. Version: {result.Data.Version}";
+            _infoMessage = result.Data is null ? $"Document '{documentId}' saved." : $"Document '{documentId}' saved. Version: {result.Data.Version}";
         }
         finally
         {
@@ -607,7 +574,7 @@ public partial class Home : ComponentBase
 
     private async Task DeleteDocumentAsync()
     {
-        var profile = ActiveProfile;
+        ConnectionProfile? profile = ActiveProfile;
         if (profile is null)
         {
             _errorMessage = "Connect a profile first.";
@@ -622,7 +589,7 @@ public partial class Home : ComponentBase
             return;
         }
 
-        var documentId = _selectedDocumentId.Trim();
+        string documentId = _selectedDocumentId.Trim();
         if (string.IsNullOrWhiteSpace(documentId))
         {
             _errorMessage = "Select a document or provide an Id before deleting.";
@@ -635,9 +602,7 @@ public partial class Home : ComponentBase
 
         try
         {
-            var result = await ApiClient
-                .DeleteDocumentAsync(profile, _selectedCollection, documentId)
-                .ConfigureAwait(false);
+            ApiResult<WriteResultDto> result = await ApiClient.DeleteDocumentAsync(profile, _selectedCollection, documentId).ConfigureAwait(false);
 
             if (!result.Success)
             {
@@ -668,7 +633,7 @@ public partial class Home : ComponentBase
 
     private string GetDocumentRowClass(Dictionary<string, JsonElement> document)
     {
-        var id = ExtractId(document);
+        string? id = ExtractId(document);
 
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(_selectedDocumentId))
         {
@@ -680,7 +645,7 @@ public partial class Home : ComponentBase
 
     private static string FormatCell(Dictionary<string, JsonElement> document, string column)
     {
-        if (!TryGetValueIgnoreCase(document, column, out var value))
+        if (!TryGetValueIgnoreCase(document, column, out JsonElement value))
         {
             return string.Empty;
         }
@@ -703,21 +668,19 @@ public partial class Home : ComponentBase
     {
         const int maxLength = 84;
 
-        return raw.Length <= maxLength
-            ? raw
-            : raw[..maxLength] + "...";
+        return raw.Length <= maxLength ? raw : raw[..maxLength] + "...";
     }
 
     private static string? ExtractId(Dictionary<string, JsonElement> document)
     {
-        if (TryGetValueIgnoreCase(document, "Id", out var value)
-            && TryReadIdValue(value, out var id))
+        if (TryGetValueIgnoreCase(document, "Id", out JsonElement value)
+            && TryReadIdValue(value, out string? id))
         {
             return id;
         }
 
-        if (TryGetValueIgnoreCase(document, "_id", out var internalId)
-            && TryReadIdValue(internalId, out var normalizedInternalId))
+        if (TryGetValueIgnoreCase(document, "_id", out JsonElement internalId)
+            && TryReadIdValue(internalId, out string? normalizedInternalId))
         {
             return normalizedInternalId;
         }
@@ -732,7 +695,7 @@ public partial class Home : ComponentBase
             return null;
         }
 
-        foreach (var property in root.EnumerateObject())
+        foreach (JsonProperty property in root.EnumerateObject())
         {
             if (!string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(property.Name, "_id", StringComparison.OrdinalIgnoreCase))
@@ -740,7 +703,7 @@ public partial class Home : ComponentBase
                 continue;
             }
 
-            if (TryReadIdValue(property.Value, out var id))
+            if (TryReadIdValue(property.Value, out string? id))
             {
                 return id;
             }
@@ -756,7 +719,7 @@ public partial class Home : ComponentBase
             return false;
         }
 
-        var document = _documents.FirstOrDefault(x => string.Equals(ExtractId(x), id, StringComparison.Ordinal));
+        Dictionary<string, JsonElement>? document = _documents.FirstOrDefault(x => string.Equals(ExtractId(x), id, StringComparison.Ordinal));
         if (document is null)
         {
             return false;
@@ -772,7 +735,7 @@ public partial class Home : ComponentBase
 
         if (element.ValueKind == JsonValueKind.String)
         {
-            var candidate = element.GetString();
+            string? candidate = element.GetString();
             if (string.IsNullOrWhiteSpace(candidate))
             {
                 return false;
@@ -791,12 +754,9 @@ public partial class Home : ComponentBase
         return false;
     }
 
-    private static bool TryGetValueIgnoreCase(
-        IReadOnlyDictionary<string, JsonElement> dictionary,
-        string key,
-        out JsonElement value)
+    private static bool TryGetValueIgnoreCase(IReadOnlyDictionary<string, JsonElement> dictionary, string key, out JsonElement value)
     {
-        foreach (var entry in dictionary)
+        foreach (KeyValuePair<string, JsonElement> entry in dictionary)
         {
             if (!string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase))
             {
@@ -818,7 +778,7 @@ public partial class Home : ComponentBase
 
     private void UpsertProfile(ConnectionProfile profile)
     {
-        var index = _profiles.FindIndex(x => x.Id == profile.Id);
+        int index = _profiles.FindIndex(x => x.Id == profile.Id);
 
         if (index >= 0)
         {
@@ -831,18 +791,16 @@ public partial class Home : ComponentBase
 
     private async Task PersistProfilesAsync()
     {
-        _profiles = _profiles
-            .OrderByDescending(x => x.UpdatedUtc)
-            .ToList();
+        _profiles = _profiles.OrderByDescending(x => x.UpdatedUtc).ToList();
 
         await ProfileStore.SaveProfilesAsync(_profiles).ConfigureAwait(false);
     }
 
     private static bool TryNormalizeProfile(ConnectionProfile input, out ConnectionProfile profile, out string? error)
     {
-        var baseUrl = (input.BaseUrl ?? string.Empty).Trim();
-        var database = (input.Database ?? string.Empty).Trim().ToLowerInvariant();
-        var credential = (input.Credential ?? string.Empty).Trim();
+        string baseUrl = (input.BaseUrl ?? string.Empty).Trim();
+        string database = (input.Database ?? string.Empty).Trim().ToLowerInvariant();
+        string credential = (input.Credential ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
@@ -857,7 +815,7 @@ public partial class Home : ComponentBase
             baseUrl = "http://" + baseUrl;
         }
 
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var serverUri)
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? serverUri)
             || (serverUri.Scheme != Uri.UriSchemeHttp && serverUri.Scheme != Uri.UriSchemeHttps))
         {
             error = "Server URL must be a valid http or https URL.";
@@ -886,7 +844,7 @@ public partial class Home : ComponentBase
             return false;
         }
 
-        var name = (input.Name ?? string.Empty).Trim();
+        string name = (input.Name ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name))
         {
             name = $"{database}@{serverUri.Host}";
@@ -909,3 +867,4 @@ public partial class Home : ComponentBase
         _infoMessage = null;
     }
 }
+

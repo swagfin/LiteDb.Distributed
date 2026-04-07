@@ -1,8 +1,8 @@
-using System.Threading;
+﻿using System.Threading;
 
 namespace LiteDb.Distributed.Infrastructure.Context;
 
-public sealed class DatabaseContextAccessor : IDatabaseContextAccessor
+public class DatabaseContextAccessor : IDatabaseContextAccessor
 {
     private static readonly AsyncLocal<ScopeHolder?> AsyncLocalHolder = new();
 
@@ -12,13 +12,13 @@ public sealed class DatabaseContextAccessor : IDatabaseContextAccessor
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var previous = AsyncLocalHolder.Value;
+        ScopeHolder? previous = AsyncLocalHolder.Value;
         AsyncLocalHolder.Value = new ScopeHolder(context);
 
         return new ScopePopper(previous);
     }
 
-    private sealed class ScopeHolder
+    private class ScopeHolder
     {
         public ScopeHolder(DatabaseRequestContext context)
         {
@@ -28,7 +28,7 @@ public sealed class DatabaseContextAccessor : IDatabaseContextAccessor
         public DatabaseRequestContext Context { get; }
     }
 
-    private sealed class ScopePopper : IDisposable
+    private class ScopePopper : IDisposable
     {
         private readonly ScopeHolder? _previous;
         private bool _disposed;
@@ -50,3 +50,4 @@ public sealed class DatabaseContextAccessor : IDatabaseContextAccessor
         }
     }
 }
+

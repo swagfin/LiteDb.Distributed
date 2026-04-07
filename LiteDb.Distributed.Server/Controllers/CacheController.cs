@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
@@ -9,7 +9,7 @@ namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
 [Route("api/cache")]
-public sealed class CacheController : ControllerBase
+public class CacheController : ControllerBase
 {
     private const string CacheCollectionName = "cache";
     private static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(5);
@@ -31,27 +31,27 @@ public sealed class CacheController : ControllerBase
     [HttpPut("{key}")]
     public async Task<IActionResult> SetAsync(string key, [FromBody] JsonElement value, [FromQuery(Name = "ttl")] string? ttl, CancellationToken cancellationToken)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        if (!TryNormalizeKey(key, out var normalizedKey, out var keyError))
+        if (!TryNormalizeKey(key, out string? normalizedKey, out string? keyError))
         {
             stopwatch.Stop();
             _logger.LogWarning("Cache set rejected due to invalid key. Key={Key} DurationMs={DurationMs}", key, stopwatch.Elapsed.TotalMilliseconds);
             return BadRequest(new { Error = keyError });
         }
 
-        if (!TryParseTtl(ttl, out var ttlValue, out var ttlError))
+        if (!TryParseTtl(ttl, out TimeSpan ttlValue, out string? ttlError))
         {
             stopwatch.Stop();
             _logger.LogWarning("Cache set rejected due to invalid ttl. Key={Key} Ttl={Ttl} DurationMs={DurationMs}", normalizedKey, ttl, stopwatch.Elapsed.TotalMilliseconds);
             return BadRequest(new { Error = ttlError });
         }
 
-        var now = DateTime.UtcNow;
-        var existing = await _reader.GetByIdAsync<CacheEntryDocument>(CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
-        var createdUtc = existing is not null && !IsExpired(existing, now) ? NormalizeUtc(existing.CreatedUtc) : now;
-        var expiresAtUtc = now.Add(ttlValue);
-        var document = new CacheEntryDocument
+        DateTime now = DateTime.UtcNow;
+        CacheEntryDocument? existing = await _reader.GetByIdAsync<CacheEntryDocument>(CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
+        DateTime createdUtc = existing is not null && !IsExpired(existing, now) ? NormalizeUtc(existing.CreatedUtc) : now;
+        DateTime expiresAtUtc = now.Add(ttlValue);
+        CacheEntryDocument document = new CacheEntryDocument
         {
             Id = normalizedKey,
             Key = normalizedKey,
@@ -63,7 +63,7 @@ public sealed class CacheController : ControllerBase
 
         try
         {
-            var result = await _writer.UpsertAsync(CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
+            Core.Models.WriteResult result = await _writer.UpsertAsync(CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
             _replicationSignalPublisher.NotifyLocalChange("cache-upsert");
             stopwatch.Stop();
 
@@ -95,16 +95,16 @@ public sealed class CacheController : ControllerBase
     [HttpGet("{key}")]
     public async Task<IActionResult> GetAsync(string key, CancellationToken cancellationToken)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        if (!TryNormalizeKey(key, out var normalizedKey, out var keyError))
+        if (!TryNormalizeKey(key, out string? normalizedKey, out string? keyError))
         {
             stopwatch.Stop();
             _logger.LogWarning("Cache get rejected due to invalid key. Key={Key} DurationMs={DurationMs}", key, stopwatch.Elapsed.TotalMilliseconds);
             return BadRequest(new { Error = keyError });
         }
 
-        var entry = await _reader.GetByIdAsync<CacheEntryDocument>(CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
+        CacheEntryDocument? entry = await _reader.GetByIdAsync<CacheEntryDocument>(CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
         if (entry is null)
         {
             stopwatch.Stop();
@@ -112,7 +112,7 @@ public sealed class CacheController : ControllerBase
             return NotFound();
         }
 
-        var now = DateTime.UtcNow;
+        DateTime now = DateTime.UtcNow;
         if (IsExpired(entry, now))
         {
             await _writer.DeleteAsync(CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -141,9 +141,9 @@ public sealed class CacheController : ControllerBase
     [HttpDelete("{key}")]
     public async Task<IActionResult> DeleteAsync(string key, CancellationToken cancellationToken)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        if (!TryNormalizeKey(key, out var normalizedKey, out var keyError))
+        if (!TryNormalizeKey(key, out string? normalizedKey, out string? keyError))
         {
             stopwatch.Stop();
             _logger.LogWarning("Cache delete rejected due to invalid key. Key={Key} DurationMs={DurationMs}", key, stopwatch.Elapsed.TotalMilliseconds);
@@ -152,7 +152,7 @@ public sealed class CacheController : ControllerBase
 
         try
         {
-            var result = await _writer.DeleteAsync(CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+            Core.Models.WriteResult result = await _writer.DeleteAsync(CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
             _replicationSignalPublisher.NotifyLocalChange("cache-delete");
             stopwatch.Stop();
 
@@ -208,7 +208,7 @@ public sealed class CacheController : ControllerBase
             return true;
         }
 
-        var input = ttl.Trim();
+        string input = ttl.Trim();
         if (!TryParseTtlInternal(input, out ttlValue))
         {
             error = "Invalid ttl format. Use values like '30s', '5m', '2h', or '1d'.";
@@ -240,13 +240,13 @@ public sealed class CacheController : ControllerBase
             return true;
         }
 
-        if (TimeSpan.TryParse(ttl, CultureInfo.InvariantCulture, out var parsed))
+        if (TimeSpan.TryParse(ttl, CultureInfo.InvariantCulture, out TimeSpan parsed))
         {
             ttlValue = parsed;
             return true;
         }
 
-        if (double.TryParse(ttl, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds))
+        if (double.TryParse(ttl, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
         {
             ttlValue = TimeSpan.FromSeconds(seconds);
             return true;
@@ -268,8 +268,8 @@ public sealed class CacheController : ControllerBase
             return false;
         }
 
-        var suffix = char.ToLowerInvariant(ttl[^1]);
-        var numericPart = ttl[..^1];
+        char suffix = char.ToLowerInvariant(ttl[^1]);
+        string numericPart = ttl[..^1];
         return suffix switch
         {
             's' => TryParseNumericDuration(numericPart, TimeSpan.FromSeconds, out ttlValue),
@@ -284,7 +284,7 @@ public sealed class CacheController : ControllerBase
     {
         ttlValue = default;
 
-        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var numericValue))
+        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double numericValue))
         {
             return false;
         }
@@ -302,7 +302,7 @@ public sealed class CacheController : ControllerBase
 
     private static string FormatTtl(TimeSpan ttl)
     {
-        var safe = ttl <= TimeSpan.Zero ? TimeSpan.Zero : ttl;
+        TimeSpan safe = ttl <= TimeSpan.Zero ? TimeSpan.Zero : ttl;
         return $"{Math.Ceiling(safe.TotalMilliseconds)}ms";
     }
 
@@ -311,7 +311,7 @@ public sealed class CacheController : ControllerBase
         return value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
     }
 
-    private sealed class CacheEntryDocument
+    private class CacheEntryDocument
     {
         public string Id { get; init; } = string.Empty;
         public string Key { get; init; } = string.Empty;
@@ -321,7 +321,7 @@ public sealed class CacheController : ControllerBase
         public DateTime ExpiresAtUtc { get; init; }
     }
 
-    private sealed class CacheSetResponse
+    private class CacheSetResponse
     {
         public required string Key { get; init; }
         public required string Version { get; init; }
@@ -330,7 +330,7 @@ public sealed class CacheController : ControllerBase
         public required string Ttl { get; init; }
     }
 
-    private sealed class CacheGetResponse
+    private class CacheGetResponse
     {
         public required string Key { get; init; }
         public required JsonElement Value { get; init; }
@@ -340,3 +340,4 @@ public sealed class CacheController : ControllerBase
         public required string RemainingTtl { get; init; }
     }
 }
+

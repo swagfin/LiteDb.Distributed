@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDB;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +7,7 @@ namespace LiteDb.Distributed.Server.Controllers;
 
 [ApiController]
 [Route("api/query")]
-public sealed class QueryController : ControllerBase
+public class QueryController : ControllerBase
 {
     private static readonly Regex FirstKeywordRegex = new("^(?<cmd>[a-zA-Z]+)", RegexOptions.Compiled);
     private static readonly Regex IntoRegex = new("\\binto\\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -29,18 +29,16 @@ public sealed class QueryController : ControllerBase
             return BadRequest(new { Error = "Query is required." });
         }
 
-        if (!TryNormalizeReadOnlyQuery(request.Query, out var normalizedQuery, out var validationError))
+        if (!TryNormalizeReadOnlyQuery(request.Query, out string? normalizedQuery, out string? validationError))
         {
             return BadRequest(new { Error = validationError });
         }
 
-        var safeTake = request.Take <= 0 ? 100 : Math.Clamp(request.Take, 1, 10_000);
+        int safeTake = request.Take <= 0 ? 100 : Math.Clamp(request.Take, 1, 10_000);
 
         try
         {
-            var rows = await _reader
-                .ExecuteQueryAsync<Dictionary<string, object?>>(normalizedQuery, safeTake, cancellationToken)
-                .ConfigureAwait(false);
+            IReadOnlyList<Dictionary<string, object?>> rows = await _reader.ExecuteQueryAsync<Dictionary<string, object?>>(normalizedQuery, safeTake, cancellationToken).ConfigureAwait(false);
 
             return Ok(new QueryResponse
             {
@@ -64,7 +62,7 @@ public sealed class QueryController : ControllerBase
 
     private static bool TryNormalizeReadOnlyQuery(string rawQuery, out string normalizedQuery, out string error)
     {
-        var query = (rawQuery ?? string.Empty).Trim();
+        string query = (rawQuery ?? string.Empty).Trim();
 
         if (query.EndsWith(';'))
         {
@@ -85,7 +83,7 @@ public sealed class QueryController : ControllerBase
             return false;
         }
 
-        var match = FirstKeywordRegex.Match(query);
+        Match match = FirstKeywordRegex.Match(query);
         if (!match.Success)
         {
             normalizedQuery = string.Empty;
@@ -93,7 +91,7 @@ public sealed class QueryController : ControllerBase
             return false;
         }
 
-        var command = match.Groups["cmd"].Value;
+        string command = match.Groups["cmd"].Value;
         if (!string.Equals(command, "select", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(command, "explain", StringComparison.OrdinalIgnoreCase))
         {
@@ -114,13 +112,13 @@ public sealed class QueryController : ControllerBase
         return true;
     }
 
-    public sealed class QueryRequest
+    public class QueryRequest
     {
         public string Query { get; init; } = string.Empty;
         public int Take { get; init; } = 200;
     }
 
-    public sealed class QueryResponse
+    public class QueryResponse
     {
         public required string Query { get; init; }
         public required int RequestedTake { get; init; }
@@ -128,3 +126,5 @@ public sealed class QueryController : ControllerBase
         public IReadOnlyList<Dictionary<string, object?>> Rows { get; init; } = Array.Empty<Dictionary<string, object?>>();
     }
 }
+
+
