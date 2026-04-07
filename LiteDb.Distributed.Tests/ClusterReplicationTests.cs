@@ -4,6 +4,8 @@ using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Conflict;
 using LiteDb.Distributed.Infrastructure.Replication;
 using LiteDb.Distributed.Infrastructure.Storage;
+using LiteDb.Distributed.Server.Controllers;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LiteDb.Distributed.Tests
@@ -94,6 +96,78 @@ namespace LiteDb.Distributed.Tests
             Assert.Equal(3, operations.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count());
         }
 
+        [Fact]
+        public async Task BulkUpdateQuery_PropagatesAcrossNodes()
+        {
+            await using TestCluster cluster = new TestCluster();
+            TestNode nodeA = cluster.AddNode("node-a");
+            TestNode nodeB = cluster.AddNode("node-b");
+            TestNode nodeC = cluster.AddNode("node-c");
+
+            await cluster.ConnectAllAsync();
+
+            await nodeA.UpsertCustomerAsync("cust-bulk-upd-001", "Bulk One");
+            await nodeA.UpsertCustomerAsync("cust-bulk-upd-002", "Bulk Two");
+            await nodeA.UpsertCustomerAsync("cust-bulk-upd-003", "Bulk Three");
+            await cluster.ReplicateAllAsync(rounds: 3);
+
+            QueryController.QueryResponse response = await nodeA.ExecuteQueryAsync("UPDATE customers SET {\"Tier\":\"vip\"} WHERE $_id = 'cust-bulk-upd-001' OR $_id = 'cust-bulk-upd-002'");
+            await cluster.ReplicateAllAsync(rounds: 3);
+
+            Assert.Equal(2, response.MatchedCount);
+            Assert.Equal(2, response.AppliedCount);
+
+            Dictionary<string, object?>? b1 = await nodeB.GetCustomerAsync("cust-bulk-upd-001");
+            Dictionary<string, object?>? b2 = await nodeB.GetCustomerAsync("cust-bulk-upd-002");
+            Dictionary<string, object?>? c1 = await nodeC.GetCustomerAsync("cust-bulk-upd-001");
+            Dictionary<string, object?>? c2 = await nodeC.GetCustomerAsync("cust-bulk-upd-002");
+            Dictionary<string, object?>? b3 = await nodeB.GetCustomerAsync("cust-bulk-upd-003");
+            Dictionary<string, object?>? c3 = await nodeC.GetCustomerAsync("cust-bulk-upd-003");
+
+            Assert.Equal("vip", b1!["Tier"]?.ToString());
+            Assert.Equal("vip", b2!["Tier"]?.ToString());
+            Assert.Equal("vip", c1!["Tier"]?.ToString());
+            Assert.Equal("vip", c2!["Tier"]?.ToString());
+            Assert.False(b3!.ContainsKey("Tier"));
+            Assert.False(c3!.ContainsKey("Tier"));
+        }
+
+        [Fact]
+        public async Task BulkDeleteQuery_PropagatesAcrossNodes()
+        {
+            await using TestCluster cluster = new TestCluster();
+            TestNode nodeA = cluster.AddNode("node-a");
+            TestNode nodeB = cluster.AddNode("node-b");
+            TestNode nodeC = cluster.AddNode("node-c");
+
+            await cluster.ConnectAllAsync();
+
+            await nodeA.UpsertCustomerAsync("cust-bulk-del-001", "Delete One");
+            await nodeA.UpsertCustomerAsync("cust-bulk-del-002", "Delete Two");
+            await nodeA.UpsertCustomerAsync("cust-bulk-del-003", "Delete Three");
+            await cluster.ReplicateAllAsync(rounds: 3);
+
+            QueryController.QueryResponse response = await nodeA.ExecuteQueryAsync("DELETE FROM customers WHERE $_id = 'cust-bulk-del-001' OR $_id = 'cust-bulk-del-002'");
+            await cluster.ReplicateAllAsync(rounds: 3);
+
+            Assert.Equal(2, response.MatchedCount);
+            Assert.Equal(2, response.AppliedCount);
+
+            Dictionary<string, object?>? b1 = await nodeB.GetCustomerAsync("cust-bulk-del-001");
+            Dictionary<string, object?>? b2 = await nodeB.GetCustomerAsync("cust-bulk-del-002");
+            Dictionary<string, object?>? c1 = await nodeC.GetCustomerAsync("cust-bulk-del-001");
+            Dictionary<string, object?>? c2 = await nodeC.GetCustomerAsync("cust-bulk-del-002");
+            Dictionary<string, object?>? b3 = await nodeB.GetCustomerAsync("cust-bulk-del-003");
+            Dictionary<string, object?>? c3 = await nodeC.GetCustomerAsync("cust-bulk-del-003");
+
+            Assert.Null(b1);
+            Assert.Null(b2);
+            Assert.Null(c1);
+            Assert.Null(c2);
+            Assert.NotNull(b3);
+            Assert.NotNull(c3);
+        }
+
         private class TestCluster : IAsyncDisposable
         {
             private readonly string _rootPath;
@@ -166,6 +240,7 @@ namespace LiteDb.Distributed.Tests
             private readonly string _nodeId;
             private readonly IOperationIngestionService _ingestionService;
             private readonly PeerReplicationService _replicationService;
+            private readonly QueryController _queryController;
 
             public TestNode(string rootPath, string nodeId, Func<string, TestNode> nodeResolver)
             {
@@ -197,6 +272,8 @@ namespace LiteDb.Distributed.Tests
                     peerClient,
                     _ingestionService,
                     NullLogger<PeerReplicationService>.Instance);
+
+                _queryController = new QueryController(Store, Store, new InMemoryReplicationSignalPublisher(), NullLogger<QueryController>.Instance);
             }
 
             public LiteDbNodeStore Store { get; }
@@ -239,6 +316,27 @@ namespace LiteDb.Distributed.Tests
             public Task<Dictionary<string, object?>?> GetCustomerAsync(string customerId)
             {
                 return Store.GetByIdAsync<Dictionary<string, object?>>(CustomerCollection, customerId);
+            }
+
+            public async Task<QueryController.QueryResponse> ExecuteQueryAsync(string query, int take = 200)
+            {
+                IActionResult result = await _queryController.ExecuteAsync(new QueryController.QueryRequest
+                {
+                    Query = query,
+                    Take = take
+                }, CancellationToken.None);
+
+                if (result is OkObjectResult okResult && okResult.Value is QueryController.QueryResponse response)
+                {
+                    return response;
+                }
+
+                if (result is ObjectResult objectResult)
+                {
+                    throw new InvalidOperationException($"Query failed with status code {objectResult.StatusCode}.");
+                }
+
+                throw new InvalidOperationException("Query failed with unexpected result type.");
             }
 
             public async Task<ReplicationPushResponse> ReceivePushAsync(ReplicationPushRequest request, CancellationToken cancellationToken)
@@ -284,6 +382,13 @@ namespace LiteDb.Distributed.Tests
             public Task<ReplicationPullResponse> PullAsync(ClusterPeer peer, ReplicationPullRequest request, CancellationToken cancellationToken = default)
             {
                 return _nodeResolver(peer.NodeId).ReceivePullAsync(request, cancellationToken);
+            }
+        }
+
+        private class InMemoryReplicationSignalPublisher : IReplicationSignalPublisher
+        {
+            public void NotifyLocalChange(string reason)
+            {
             }
         }
     }

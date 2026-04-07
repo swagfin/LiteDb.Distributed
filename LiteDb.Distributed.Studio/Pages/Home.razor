@@ -214,7 +214,7 @@
 
                     <div class="query-editor-row">
                         <label>
-                            <span>LiteQL Query (Read-Only)</span>
+                            <span>LiteQL Query</span>
                             <textarea class="query-textarea" @bind="_queryText" @bind:event="onchange" spellcheck="false"></textarea>
                         </label>
                         <div class="query-editor-actions">
@@ -369,6 +369,25 @@
             <div class="action-row">
                 <button type="button" class="btn btn-ghost" @onclick="CancelDeleteConfirmation">Cancel</button>
                 <button type="button" class="btn btn-danger" @onclick="ConfirmDeleteFromModalAsync" disabled="@(_busy || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showQueryConfirmModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CancelQueryConfirmation">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Confirm Query</div>
+                <button type="button" class="btn btn-ghost" @onclick="CancelQueryConfirmation">Close</button>
+            </div>
+
+            <p class="profile-modal-help">@_queryConfirmMessage</p>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CancelQueryConfirmation">Cancel</button>
+                <button type="button" class="btn btn-warning" @onclick="ConfirmQueryFromModalAsync" disabled="@(_busy || ActiveProfile is null)">Run Query</button>
             </div>
         </section>
     </div>

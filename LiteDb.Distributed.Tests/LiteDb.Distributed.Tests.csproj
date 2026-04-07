@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\LiteDb.Distributed.Core\LiteDb.Distributed.Core.csproj" />
     <ProjectReference Include="..\LiteDb.Distributed.Infrastructure\LiteDb.Distributed.Infrastructure.csproj" />
+    <ProjectReference Include="..\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj" />
   </ItemGroup>
 
 </Project>

@@ -58,11 +58,14 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _editingProfile;
         private bool _showDocumentEditorModal;
         private bool _showDeleteConfirmModal;
+        private bool _showQueryConfirmModal;
         private bool _showRowContextMenu;
         private double _rowContextMenuX;
         private double _rowContextMenuY;
         private Dictionary<string, JsonElement>? _rowContextMenuDocument;
         private string _pendingDeleteDocumentId = string.Empty;
+        private string _pendingQueryText = string.Empty;
+        private string _queryConfirmMessage = string.Empty;
         private string? _errorMessage;
         private string? _infoMessage;
 
@@ -152,6 +155,7 @@ namespace LiteDb.Distributed.Studio.Pages
             ClearMessages();
             CloseDocumentEditorModal();
             CancelDeleteConfirmation();
+            CancelQueryConfirmation();
             DismissRowContextMenu();
         }
 
@@ -171,6 +175,7 @@ namespace LiteDb.Distributed.Studio.Pages
             CreateDocumentTemplate();
             CloseDocumentEditorModal();
             CancelDeleteConfirmation();
+            CancelQueryConfirmation();
             DismissRowContextMenu();
             await ProfileStore.SaveActiveProfileIdAsync(null).ConfigureAwait(false);
             _infoMessage = "Disconnected. Session ended.";
@@ -225,6 +230,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 CreateDocumentTemplate();
                 CloseDocumentEditorModal();
                 CancelDeleteConfirmation();
+                CancelQueryConfirmation();
                 DismissRowContextMenu();
                 await ProfileStore.SaveActiveProfileIdAsync(null).ConfigureAwait(false);
             }
@@ -695,6 +701,11 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private async Task RunLiteQueryAsync()
         {
+            await RunLiteQueryInternalAsync(_queryText, requireConfirmation: true).ConfigureAwait(false);
+        }
+
+        private async Task RunLiteQueryInternalAsync(string queryText, bool requireConfirmation)
+        {
             ConnectionProfile? profile = ActiveProfile;
             if (profile is null)
             {
@@ -703,17 +714,19 @@ namespace LiteDb.Distributed.Studio.Pages
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(_queryText))
+            string trimmedQuery = (queryText ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(trimmedQuery))
             {
                 _errorMessage = "Enter a query first.";
                 _infoMessage = null;
                 return;
             }
 
-            if (!TryValidateQuerySafety(_queryText, out string? safetyError))
+            if (requireConfirmation && TryGetRiskyQueryConfirmationMessage(trimmedQuery, out string? confirmationMessage))
             {
-                _errorMessage = safetyError;
-                _infoMessage = null;
+                _pendingQueryText = trimmedQuery;
+                _queryConfirmMessage = confirmationMessage;
+                _showQueryConfirmModal = true;
                 return;
             }
 
@@ -722,7 +735,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             try
             {
-                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, _queryText, 10_000).ConfigureAwait(false);
+                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, trimmedQuery, 10_000).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -750,6 +763,54 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 _busy = false;
             }
+        }
+
+        private void CancelQueryConfirmation()
+        {
+            _showQueryConfirmModal = false;
+            _pendingQueryText = string.Empty;
+            _queryConfirmMessage = string.Empty;
+        }
+
+        private async Task ConfirmQueryFromModalAsync()
+        {
+            string query = _pendingQueryText;
+            CancelQueryConfirmation();
+            await RunLiteQueryInternalAsync(query, requireConfirmation: false).ConfigureAwait(false);
+        }
+
+        private static bool TryGetRiskyQueryConfirmationMessage(string queryText, out string message)
+        {
+            message = string.Empty;
+            string normalized = (queryText ?? string.Empty).Trim();
+            Match commandMatch = Regex.Match(normalized, "^(?<cmd>[a-zA-Z]+)", RegexOptions.IgnoreCase);
+            if (!commandMatch.Success)
+            {
+                return false;
+            }
+
+            string command = commandMatch.Groups["cmd"].Value;
+            bool hasWhere = Regex.IsMatch(normalized, "\\bwhere\\b", RegexOptions.IgnoreCase);
+
+            if (string.Equals(command, "update", StringComparison.OrdinalIgnoreCase) && !hasWhere)
+            {
+                message = "UPDATE query has no WHERE clause. This may update many records. Continue?";
+                return true;
+            }
+
+            if (string.Equals(command, "delete", StringComparison.OrdinalIgnoreCase) && !hasWhere)
+            {
+                message = "DELETE query has no WHERE clause. This may delete many records. Continue?";
+                return true;
+            }
+
+            if (string.Equals(command, "select", StringComparison.OrdinalIgnoreCase) && !hasWhere)
+            {
+                message = "SELECT query has no WHERE clause. This may scan a large table. Continue?";
+                return true;
+            }
+
+            return false;
         }
 
         private void UseCollectionTemplate()
@@ -818,37 +879,6 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             return !string.IsNullOrWhiteSpace(key)
                 && key.StartsWith("_", StringComparison.Ordinal);
-        }
-
-        private static bool TryValidateQuerySafety(string queryText, out string? error)
-        {
-            string normalized = (queryText ?? string.Empty).Trim();
-            if (normalized.Length == 0)
-            {
-                error = "Enter a query first.";
-                return false;
-            }
-
-            if (!normalized.StartsWith("select", StringComparison.OrdinalIgnoreCase))
-            {
-                error = null;
-                return true;
-            }
-
-            bool hasWhere = normalized.Contains(" where ", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("\nwhere ", StringComparison.OrdinalIgnoreCase)
-                || normalized.Contains("\twhere ", StringComparison.OrdinalIgnoreCase);
-            bool hasLimit = normalized.Contains(" limit ", StringComparison.OrdinalIgnoreCase)
-                || normalized.EndsWith(" limit", StringComparison.OrdinalIgnoreCase);
-
-            if (!hasWhere && !hasLimit)
-            {
-                error = "SELECT queries without a WHERE clause must include LIMIT.";
-                return false;
-            }
-
-            error = null;
-            return true;
         }
 
         private void SelectDocument(Dictionary<string, JsonElement> document)

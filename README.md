@@ -17,12 +17,20 @@ Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
 - `ApiKey` (required): validated against the logical database catalog.
 
-Read-only query endpoint:
+Query endpoint:
 
 - `POST /api/query`
   - Body: `{ "query": "SELECT $ FROM OrderTransactions LIMIT 200", "take": 200 }`
-  - Only `SELECT` and `EXPLAIN` are allowed.
-  - `SELECT INTO` and multi-statement queries are blocked.
+  - Supports only: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
+  - `INSERT` / `UPDATE` / `DELETE` are executed in safe mode through the document writer pipeline (operation-log append + replication signaling).
+  - Safe write-query syntax:
+    - `INSERT INTO <collection> VALUES <json-object>` (payload must include `Id` or `_id`)
+    - `UPDATE <collection> SET <json-object> [WHERE <filterExpr>]` (affects matching docs through operation-log pipeline, up to `take`)
+    - `DELETE FROM <collection> [WHERE <filterExpr>]` (affects matching docs through operation-log pipeline, up to `take`)
+  - Only one statement is allowed per request (multi-statement queries are blocked).
+  - Response counters:
+    - `MatchedCount`: number of documents matched by query filter.
+    - `AppliedCount`: number of documents actually mutated (write queries only).
 
 ## Cache (Replicated TTL Key/Value)
 
@@ -65,7 +73,7 @@ Use LiteDb.Distributed when you need:
 - Simpler self-hosted footprint for branch/edge deployments: no separate central in-memory tier required.
 - No migration burden for day-to-day changes: schema-flexible documents let you evolve fields without rigid table migration pipelines.
 - Reserved replicated cache with TTL in the same platform: no extra Redis dependency just to add distributed cache semantics.
-- Read-only query guardrails by default (`SELECT` / `EXPLAIN` only): safer operational access from tools like Studio.
+- Safe write-query guardrails: query writes (`INSERT` / `UPDATE` / `DELETE`) are routed through operation-log-aware writer APIs so replication remains consistent.
 - Tenant-ready request model: `Database` + `ApiKey` headers make logical database routing and isolation explicit per request.
 - Efficient peer sync model: nodes exchange operations and checkpoints, not full DB files.
 
@@ -226,7 +234,7 @@ Then register peers per logical database using `POST /api/cluster/peers` with `D
 - saving connection profiles (server URL, database, ApiKey),
 - browsing collections and paged documents,
 - looking up documents by `Id`,
-- running read-only LiteQL queries (`SELECT`/`EXPLAIN`),
+- running LiteQL queries,
 - editing/saving/deleting documents as JSON.
 
 Run it with:
