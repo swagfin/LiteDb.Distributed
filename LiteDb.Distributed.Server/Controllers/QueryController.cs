@@ -16,6 +16,9 @@ namespace LiteDb.Distributed.Server.Controllers
 
         private static readonly Regex FirstKeywordRegex = new("^(?<cmd>[a-zA-Z]+)", RegexOptions.Compiled);
         private static readonly Regex IdentifierRegex = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
+        private static readonly Regex DollarIdAliasRegex = new("(?<![A-Za-z0-9_])\\$_id(?![A-Za-z0-9_])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex IdAliasRegex = new("(?<![A-Za-z0-9_])id(?![A-Za-z0-9_])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex IdEqualityLiteralRegex = new("_id\\s*=\\s*('([^']*)'|\"([^\"]*)\"|([A-Za-z0-9_\\-]+))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly ILocalDocumentReader _reader;
         private readonly ILocalDocumentWriter _writer;
@@ -497,9 +500,10 @@ namespace LiteDb.Distributed.Server.Controllers
         private async Task<IReadOnlyList<string>> ResolveEntityIdsByWhereAsync(string collection, string whereClause, int take, CancellationToken cancellationToken)
         {
             // Resolve target ids via SELECT first, then apply writes through writer APIs for replication safety.
+            string normalizedWhereClause = NormalizeWhereClause(whereClause);
             string lookupQuery = string.IsNullOrWhiteSpace(whereClause)
-                ? $"SELECT $_id FROM {collection} LIMIT {take}"
-                : $"SELECT $_id FROM {collection} WHERE {whereClause} LIMIT {take}";
+                ? $"SELECT _id FROM {collection} LIMIT {take}"
+                : $"SELECT _id FROM {collection} WHERE {normalizedWhereClause} LIMIT {take}";
             IReadOnlyList<Dictionary<string, object?>> rows = await _reader.ExecuteQueryAsync<Dictionary<string, object?>>(lookupQuery, take, cancellationToken).ConfigureAwait(false);
             List<string> ids = new List<string>(rows.Count);
 
@@ -516,6 +520,84 @@ namespace LiteDb.Distributed.Server.Controllers
                 }
 
                 ids.Add(entityId);
+            }
+
+            if (ids.Count == 0 && !string.IsNullOrWhiteSpace(normalizedWhereClause))
+            {
+                List<string> idPredicates = ExtractIdEqualityPredicates(normalizedWhereClause);
+                if (idPredicates.Count > 0)
+                {
+                    foreach (string candidateId in idPredicates)
+                    {
+                        Dictionary<string, object?>? entity = await _reader.GetByIdAsync<Dictionary<string, object?>>(collection, candidateId, cancellationToken).ConfigureAwait(false);
+                        if (entity is null)
+                        {
+                            continue;
+                        }
+
+                        if (ids.Contains(candidateId, StringComparer.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        ids.Add(candidateId);
+
+                        if (ids.Count >= take)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return ids;
+        }
+
+        private static string NormalizeWhereClause(string whereClause)
+        {
+            string normalized = (whereClause ?? string.Empty).Trim();
+            if (normalized.Length == 0)
+            {
+                return normalized;
+            }
+
+            normalized = DollarIdAliasRegex.Replace(normalized, "_id");
+            normalized = IdAliasRegex.Replace(normalized, "_id");
+            return normalized;
+        }
+
+        private static List<string> ExtractIdEqualityPredicates(string whereClause)
+        {
+            List<string> ids = new List<string>();
+            MatchCollection matches = IdEqualityLiteralRegex.Matches(whereClause ?? string.Empty);
+            foreach (Match match in matches)
+            {
+                string value = string.Empty;
+                if (match.Groups[2].Success)
+                {
+                    value = match.Groups[2].Value;
+                }
+                else if (match.Groups[3].Success)
+                {
+                    value = match.Groups[3].Value;
+                }
+                else if (match.Groups[4].Success)
+                {
+                    value = match.Groups[4].Value;
+                }
+
+                value = value.Trim();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                if (ids.Contains(value, StringComparer.Ordinal))
+                {
+                    continue;
+                }
+
+                ids.Add(value);
             }
 
             return ids;
