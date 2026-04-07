@@ -1,4 +1,4 @@
-﻿using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Infrastructure.Cache;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Conflict;
@@ -52,3 +52,4 @@ namespace LiteDb.Distributed.Infrastructure
     }
 
 }
+

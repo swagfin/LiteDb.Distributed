@@ -1,10 +1,7 @@
-﻿
-
 namespace LiteDb.Distributed.Infrastructure.Context
 {
-    public sealed record DatabaseRequestContext
+    public class ApiKeyAccess
     {
-        public required string DatabaseName { get; init; }
         public required string ApiKey { get; init; }
         public required bool IsRoot { get; init; }
         public required bool CanAddDatabase { get; init; }
@@ -14,5 +11,4 @@ namespace LiteDb.Distributed.Infrastructure.Context
         public required bool CanUpdateDocument { get; init; }
         public required bool CanDeleteDocument { get; init; }
     }
-
 }

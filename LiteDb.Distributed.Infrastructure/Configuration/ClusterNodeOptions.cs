@@ -2,9 +2,10 @@
 
 namespace LiteDb.Distributed.Infrastructure.Configuration
 {
-    public sealed record ClusterNodeOptions
+    public record ClusterNodeOptions
     {
         public required string NodeId { get; init; }
+        public string ReplicationApiKey { get; init; } = "I_AM_ONE_OF_YOU";
         public string DataDirectory { get; init; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
         public int ReplicationBatchSize { get; init; } = 1000;
         public int ReplicationPeerConcurrency { get; init; } = 4;

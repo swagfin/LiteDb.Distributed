@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 using Microsoft.Extensions.Logging;
@@ -34,20 +34,17 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                 throw new InvalidOperationException("No active logical database context for the current execution flow.");
             }
 
-            return await GetStoreAsync(context.DatabaseName, context.Credential, cancellationToken).ConfigureAwait(false);
+            return await GetStoreAsync(context.DatabaseName, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task<LiteDbNodeStore> GetStoreAsync(string databaseName, string credential, CancellationToken cancellationToken = default)
+        public async Task<LiteDbNodeStore> GetStoreAsync(string databaseName, CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
 
-            LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, credential, cancellationToken).ConfigureAwait(false);
-
+            LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, cancellationToken).ConfigureAwait(false);
             Lazy<LiteDbNodeStore> lazyStore = _stores.GetOrAdd(
                 registration.DatabaseName,
-                _ => new Lazy<LiteDbNodeStore>(
-                    () => CreateStore(registration),
-                    LazyThreadSafetyMode.ExecutionAndPublication));
+                _ => new Lazy<LiteDbNodeStore>(() => CreateStore(registration), LazyThreadSafetyMode.ExecutionAndPublication));
 
             try
             {
@@ -57,9 +54,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             {
                 // If creation failed, remove this lazy entry so the next request can retry.
                 _stores.TryRemove(new KeyValuePair<string, Lazy<LiteDbNodeStore>>(registration.DatabaseName, lazyStore));
-
                 _logger.LogError(ex, "Failed opening logical database store after retry-safe lazy initialization. NodeId={NodeId} Database={Database}", _options.NodeId, registration.DatabaseName);
-
                 throw;
             }
         }
@@ -88,7 +83,6 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}", _options.NodeId, registration.DatabaseName, businessPath, metadataPath);
-
                 throw;
             }
         }
@@ -130,10 +124,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                 return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
             }
 
-            return Path.IsPathRooted(dataDirectory)
-                ? Path.GetFullPath(dataDirectory)
-                : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
+            return Path.IsPathRooted(dataDirectory) ? Path.GetFullPath(dataDirectory) : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
         }
     }
-
 }

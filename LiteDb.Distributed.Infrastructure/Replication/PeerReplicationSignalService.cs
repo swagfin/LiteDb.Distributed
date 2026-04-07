@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
@@ -53,8 +53,8 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             DateTime now = DateTime.UtcNow;
             ScheduledDispatch scheduled = _scheduledDispatches.AddOrUpdate(
                 context.DatabaseName,
-                _ => new ScheduledDispatch(context.DatabaseName, context.Credential, reason, 0, now, now),
-                (_, existing) => existing with { Credential = context.Credential, Reason = reason, Attempt = 0, DueUtc = now, UpdatedUtc = now });
+                _ => new ScheduledDispatch(context.DatabaseName, reason, 0, now, now),
+                (_, existing) => existing with { Reason = reason, Attempt = 0, DueUtc = now, UpdatedUtc = now });
 
             _dispatchSignal.Release();
             _logger.LogDebug("Replication dispatch scheduled. Database={Database} Reason={Reason} DueUtc={DueUtc}", scheduled.DatabaseName, scheduled.Reason, scheduled.DueUtc);
@@ -104,7 +104,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
                 try
                 {
-                    await _replicationOrchestrator.ReplicateDatabaseAsync(message.Database, message.Credential, $"websocket:{message.SourceNodeId}", cancellationToken).ConfigureAwait(false);
+                    await _replicationOrchestrator.ReplicateDatabaseAsync(message.Database, _nodeOptions.ReplicationApiKey, $"websocket:{message.SourceNodeId}", cancellationToken).ConfigureAwait(false);
                     applyStopwatch.Stop();
 
                     _logger.LogDebug("Replication websocket signal applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, message.SourceNodeId, message.Database, applyStopwatch.Elapsed.TotalMilliseconds);
@@ -182,7 +182,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
             try
             {
-                await _replicationOrchestrator.ReplicateDatabaseAsync(dispatch.DatabaseName, dispatch.Credential, $"local-dispatch:{dispatch.Reason}", cancellationToken).ConfigureAwait(false);
+                await _replicationOrchestrator.ReplicateDatabaseAsync(dispatch.DatabaseName, _nodeOptions.ReplicationApiKey, $"local-dispatch:{dispatch.Reason}", cancellationToken).ConfigureAwait(false);
                 dispatchStopwatch.Stop();
 
                 _logger.LogDebug("Replication dispatch applied. Database={Database} Attempt={Attempt} DurationMs={DurationMs}", dispatch.DatabaseName, dispatch.Attempt, dispatchStopwatch.Elapsed.TotalMilliseconds);
@@ -210,10 +210,17 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
         private async Task BroadcastSignalToPeersAsync(ScheduledDispatch dispatch, CancellationToken cancellationToken)
         {
-            using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
-            {
-                DatabaseName = dispatch.DatabaseName,
-                Credential = dispatch.Credential
+                using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+                {
+                    DatabaseName = dispatch.DatabaseName,
+                    ApiKey = _nodeOptions.ReplicationApiKey,
+                    IsRoot = true,
+                CanAddDatabase = true,
+                CanDeleteDatabase = true,
+                CanReadDocument = true,
+                CanWriteDocument = true,
+                CanUpdateDocument = true,
+                CanDeleteDocument = true
             });
 
             IReadOnlyList<ClusterPeer> peers = await _clusterPeerRegistry.GetPeersAsync(cancellationToken).ConfigureAwait(false);
@@ -230,7 +237,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 Type = "sync-request",
                 SourceNodeId = _nodeOptions.NodeId,
                 Database = dispatch.DatabaseName,
-                Credential = dispatch.Credential,
+                ReplicationApiKey = _nodeOptions.ReplicationApiKey,
                 Reason = dispatch.Reason,
                 TimestampUtc = DateTime.UtcNow
             };
@@ -259,6 +266,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             {
                 using ClientWebSocket webSocket = new ClientWebSocket();
                 webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+                webSocket.Options.SetRequestHeader("ReplicationApiKey", _nodeOptions.ReplicationApiKey);
 
                 using CancellationTokenSource ackTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 ackTimeout.CancelAfter(WebSocketAckTimeout);
@@ -318,7 +326,8 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                    && string.Equals(message.Type, "sync-request", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(message.SourceNodeId)
                    && !string.IsNullOrWhiteSpace(message.Database)
-                   && !string.IsNullOrWhiteSpace(message.Credential)
+                   && !string.IsNullOrWhiteSpace(message.ReplicationApiKey)
+                   && string.Equals(message.ReplicationApiKey, _nodeOptions.ReplicationApiKey, StringComparison.Ordinal)
                    && !string.Equals(message.SourceNodeId, _nodeOptions.NodeId, StringComparison.Ordinal);
         }
 
@@ -415,20 +424,19 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
             DateTime dueUtc = existing.DueUtc <= retry.DueUtc ? existing.DueUtc : retry.DueUtc;
             int attempt = existing.Attempt == 0 ? 0 : Math.Max(existing.Attempt, retry.Attempt);
-            string credential = string.IsNullOrWhiteSpace(existing.Credential) ? retry.Credential : existing.Credential;
             string reason = string.IsNullOrWhiteSpace(existing.Reason) ? retry.Reason : existing.Reason;
 
-            return existing with { Credential = credential, Reason = reason, Attempt = attempt, DueUtc = dueUtc, UpdatedUtc = DateTime.UtcNow };
+            return existing with { Reason = reason, Attempt = attempt, DueUtc = dueUtc, UpdatedUtc = DateTime.UtcNow };
         }
 
-        private sealed record ScheduledDispatch(string DatabaseName, string Credential, string Reason, int Attempt, DateTime DueUtc, DateTime UpdatedUtc);
+        private sealed record ScheduledDispatch(string DatabaseName, string Reason, int Attempt, DateTime DueUtc, DateTime UpdatedUtc);
 
         private sealed record ReplicationSignalMessage
         {
             public string Type { get; init; } = string.Empty;
             public string SourceNodeId { get; init; } = string.Empty;
             public string Database { get; init; } = string.Empty;
-            public string Credential { get; init; } = string.Empty;
+            public string ReplicationApiKey { get; init; } = string.Empty;
             public string Reason { get; init; } = string.Empty;
             public DateTime TimestampUtc { get; init; }
         }
@@ -441,3 +449,4 @@ namespace LiteDb.Distributed.Infrastructure.Replication
     }
 
 }
+

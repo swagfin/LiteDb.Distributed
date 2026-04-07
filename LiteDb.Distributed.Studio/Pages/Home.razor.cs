@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using LiteDb.Distributed.Studio.Models;
 using LiteDb.Distributed.Studio.Services;
@@ -1388,7 +1388,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 normalized.Name = (normalized.Name ?? string.Empty).Trim();
                 normalized.BaseUrl = BuildServerEndpointLabel(normalized.BaseUrl);
                 normalized.Database = (normalized.Database ?? string.Empty).Trim().ToLowerInvariant();
-                normalized.Credential = (normalized.Credential ?? string.Empty).Trim();
+                normalized.ApiKey = (normalized.ApiKey ?? string.Empty).Trim();
                 if (normalized.UpdatedUtc == default)
                 {
                     normalized.UpdatedUtc = DateTime.UtcNow;
@@ -1441,7 +1441,7 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             string baseUrl = (input.BaseUrl ?? string.Empty).Trim();
             string database = (input.Database ?? string.Empty).Trim().ToLowerInvariant();
-            string credential = (input.Credential ?? string.Empty).Trim();
+            string apiKey = (input.ApiKey ?? string.Empty).Trim();
 
             if (string.IsNullOrWhiteSpace(baseUrl))
             {
@@ -1478,7 +1478,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(credential))
+            if (string.IsNullOrWhiteSpace(apiKey))
             {
                 error = "ApiKey is required.";
                 profile = input;
@@ -1491,7 +1491,7 @@ namespace LiteDb.Distributed.Studio.Pages
             profile.Name = name;
             profile.BaseUrl = BuildServerEndpointLabel(serverUri.ToString());
             profile.Database = database;
-            profile.Credential = credential;
+            profile.ApiKey = apiKey;
             profile.UpdatedUtc = DateTime.UtcNow;
 
             error = null;
@@ -1506,3 +1506,4 @@ namespace LiteDb.Distributed.Studio.Pages
     }
 
 }
+

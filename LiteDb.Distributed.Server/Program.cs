@@ -1,4 +1,4 @@
-﻿using LiteDb.Distributed.Core.Models;
+using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
@@ -35,6 +35,7 @@ builder.Services.AddCors(options => { options.AddPolicy("StudioCors", policy => 
 ClusterNodeOptions nodeOptions = new ClusterNodeOptions
 {
     NodeId = builder.Configuration["Node:NodeId"] ?? "node-1",
+    ReplicationApiKey = builder.Configuration["Node:ReplicationApiKey"] ?? "I_AM_ONE_OF_YOU",
     ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 1000,
     ReplicationPeerConcurrency = builder.Configuration.GetValue<int?>("Node:ReplicationPeerConcurrency") ?? 4,
     CacheCleanupIntervalSeconds = builder.Configuration.GetValue<int?>("Node:CacheCleanupIntervalSeconds") ?? 30,
@@ -45,6 +46,14 @@ ClusterNodeOptions nodeOptions = new ClusterNodeOptions
 };
 
 builder.Services.AddLiteDbDistributedNode(nodeOptions);
+
+builder.Services.AddSingleton(sp =>
+{
+    ApiKeyAuthorizationOptions authOptions = new ApiKeyAuthorizationOptions();
+    builder.Configuration.GetSection("Auth").Bind(authOptions);
+    return authOptions;
+});
+builder.Services.AddSingleton<IApiKeyAuthorizationService, ApiKeyAuthorizationService>();
 
 WebApplication app = builder.Build();
 ILogger logger = app.Logger;
@@ -57,7 +66,63 @@ app.UseCors("StudioCors");
 
 app.Use(async (httpContext, next) =>
 {
-    if (!httpContext.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+    bool isReplicationApiPath = httpContext.Request.Path.StartsWithSegments("/api/replication", StringComparison.OrdinalIgnoreCase);
+    bool isClusterApiPath = httpContext.Request.Path.StartsWithSegments("/api/cluster", StringComparison.OrdinalIgnoreCase);
+    bool isReplicationWebSocketPath = httpContext.Request.Path.StartsWithSegments("/ws/replication", StringComparison.OrdinalIgnoreCase);
+    if (!isReplicationApiPath && !isClusterApiPath && !isReplicationWebSocketPath)
+    {
+        await next().ConfigureAwait(false);
+        return;
+    }
+
+    string providedReplicationApiKey = httpContext.Request.Headers["ReplicationApiKey"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(providedReplicationApiKey) || !string.Equals(providedReplicationApiKey, nodeOptions.ReplicationApiKey, StringComparison.Ordinal))
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await httpContext.Response.WriteAsJsonAsync(new { Error = "ReplicationApiKey is invalid." }, httpContext.RequestAborted).ConfigureAwait(false);
+        return;
+    }
+
+    if (!isReplicationApiPath)
+    {
+        await next().ConfigureAwait(false);
+        return;
+    }
+
+    try
+    {
+        string rawDatabaseName = httpContext.Request.Headers["Database"].ToString();
+        string normalizedDatabaseName = DatabaseNameNormalizer.Normalize(rawDatabaseName);
+        IDatabaseContextAccessor contextAccessor = httpContext.RequestServices.GetRequiredService<IDatabaseContextAccessor>();
+
+        using IDisposable scope = contextAccessor.BeginScope(new DatabaseRequestContext
+        {
+            DatabaseName = normalizedDatabaseName,
+            ApiKey = nodeOptions.ReplicationApiKey,
+            IsRoot = true,
+            CanAddDatabase = true,
+            CanDeleteDatabase = true,
+            CanReadDocument = true,
+            CanWriteDocument = true,
+            CanUpdateDocument = true,
+            CanDeleteDocument = true
+        });
+
+        await next().ConfigureAwait(false);
+    }
+    catch (ArgumentException ex)
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await httpContext.Response.WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
+    }
+});
+
+app.Use(async (httpContext, next) =>
+{
+    bool isApiPath = httpContext.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
+    bool isReplicationApiPath = httpContext.Request.Path.StartsWithSegments("/api/replication", StringComparison.OrdinalIgnoreCase);
+    bool isClusterApiPath = httpContext.Request.Path.StartsWithSegments("/api/cluster", StringComparison.OrdinalIgnoreCase);
+    if (!isApiPath || isReplicationApiPath || isClusterApiPath)
     {
         await next().ConfigureAwait(false);
         return;
@@ -77,13 +142,12 @@ app.Use(async (httpContext, next) =>
         using IDisposable scope = contextAccessor.BeginScope(databaseContext);
         await next().ConfigureAwait(false);
     }
-    catch (DatabaseAuthenticationException ex)
+    catch (UnauthorizedAccessException ex)
     {
-        logger.LogWarning(ex, "Database authentication failed. Method={Method} Path={Path}", httpContext.Request.Method, httpContext.Request.Path.Value);
+        logger.LogWarning(ex, "Database authorization failed. Method={Method} Path={Path}", httpContext.Request.Method, httpContext.Request.Path.Value);
 
-        httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await httpContext.Response
-            .WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
+        httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await httpContext.Response.WriteAsJsonAsync(new { Error = ex.Message }, httpContext.RequestAborted).ConfigureAwait(false);
     }
     catch (ArgumentException ex)
     {
@@ -98,3 +162,4 @@ app.Use(async (httpContext, next) =>
 app.MapControllers();
 
 app.Run();
+

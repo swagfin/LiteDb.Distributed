@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text;
@@ -55,7 +55,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
                 try
                 {
-                    LiteDbNodeStore store = await _logicalDatabaseStoreProvider.GetStoreAsync(registration.DatabaseName, registration.Credential, cancellationToken).ConfigureAwait(false);
+                    LiteDbNodeStore store = await _logicalDatabaseStoreProvider.GetStoreAsync(registration.DatabaseName, cancellationToken).ConfigureAwait(false);
                     IReadOnlyList<ClusterPeer> peers = await store.GetPeersAsync(cancellationToken).ConfigureAwait(false);
                     IReadOnlyList<string> businessCollections = await store.GetBusinessCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
                     IReadOnlyList<string> metadataCollections = await store.GetMetadataCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
@@ -248,6 +248,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
                 using ClientWebSocket webSocket = new ClientWebSocket();
+                webSocket.Options.SetRequestHeader("ReplicationApiKey", _nodeOptions.ReplicationApiKey);
                 Uri endpoint = BuildWebSocketEndpoint(normalizedBaseUrl);
                 await webSocket.ConnectAsync(endpoint, timeoutCts.Token).ConfigureAwait(false);
 
@@ -522,3 +523,4 @@ namespace LiteDb.Distributed.Server.Controllers
     }
 
 }
+

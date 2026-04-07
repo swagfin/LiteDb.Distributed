@@ -93,7 +93,7 @@
                 </article>
                 <article>
                     <span>ApiKey</span>
-                    <strong>@MaskApiKey(ActiveProfile?.Credential)</strong>
+                    <strong>@MaskApiKey(ActiveProfile?.ApiKey)</strong>
                 </article>
                 <div class="connected-profile-actions">
                     <button type="button" class="btn btn-warning" @onclick="DisconnectAsync" disabled="@_busy">Disconnect</button>
@@ -290,7 +290,7 @@
                 </label>
                 <label>
                     <span>ApiKey</span>
-                    <input @bind="_editor.Credential" placeholder="sample-local-key" disabled="@(_busy || IsProfileActionBusy)" />
+                    <input @bind="_editor.ApiKey" placeholder="root" disabled="@(_busy || IsProfileActionBusy)" />
                 </label>
                 <label>
                     <span>Profile Name (Optional)</span>

@@ -1,4 +1,4 @@
-﻿using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
@@ -71,14 +71,21 @@ namespace LiteDb.Distributed.Infrastructure.Cache
                 return;
             }
 
-            foreach (LogicalDatabaseRegistration? registration in registrations.OrderBy(x => x.DatabaseName, StringComparer.Ordinal))
+            foreach (LogicalDatabaseRegistration registration in registrations.OrderBy(x => x.DatabaseName, StringComparer.Ordinal))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
                 {
                     DatabaseName = registration.DatabaseName,
-                    Credential = registration.Credential
+                    ApiKey = "root",
+                    IsRoot = true,
+                    CanAddDatabase = true,
+                    CanDeleteDatabase = true,
+                    CanReadDocument = true,
+                    CanWriteDocument = true,
+                    CanUpdateDocument = true,
+                    CanDeleteDocument = true
                 });
 
                 int deleted = await SweepDatabaseAsync(registration.DatabaseName, cancellationToken).ConfigureAwait(false);
@@ -178,5 +185,4 @@ namespace LiteDb.Distributed.Infrastructure.Cache
             public DateTime ExpiresAtUtc { get; init; }
         }
     }
-
 }

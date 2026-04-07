@@ -15,7 +15,57 @@ This MVP supports multiple logical databases selected from HTTP headers.
 
 Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
-- `ApiKey` (required): validated against the logical database catalog.
+- `ApiKey` (required): API key used for database scope and role authorization.
+
+Additional header required for node-to-node endpoints:
+- `ReplicationApiKey` (required for `/api/replication/*`, `/api/cluster/*`, and `/ws/replication`): shared cluster key configured by `Node:ReplicationApiKey`.
+
+## Authentication And Authorization
+
+Authentication uses server-level API key authorization (not per-database shared secret matching).
+
+How it works:
+- API keys can be scoped to one database, many databases, or all databases (`*`).
+- A server root key is configured in `appsettings.json` as `Auth:RootApiKey` and defaults to `"root"`.
+- The root key has access to all databases and all roles.
+- Non-root keys must be declared in `Auth:ApiKeys` with explicit database scope and role flags.
+
+Example config:
+
+```json
+"Auth": {
+  "RootApiKey": "root",
+  "ApiKeys": [
+    {
+      "Name": "studio-dev",
+      "Key": "dev-123",
+      "Databases": [ "testapp", "orders" ],
+      "Roles": {
+        "ADD_DB": false,
+        "DELETE_DB": false,
+        "READ_DOCUMENT": true,
+        "WRITE_DOCUMENT": true,
+        "UPDATE_DOCUMENT": true,
+        "DELETE_DOCUMENT": true
+      }
+    }
+  ]
+}
+```
+
+Role behavior:
+- `ADD_DB`: required when the requested `Database` does not exist and must be created.
+- `DELETE_DB`: required for database deletion endpoints/flows.
+- `READ_DOCUMENT`: required for read/query select operations.
+- `WRITE_DOCUMENT`: required for insert/create operations.
+- `UPDATE_DOCUMENT`: required for update/replace operations.
+- `DELETE_DOCUMENT`: required for delete operations.
+
+Important notes:
+- Per-database credential matching is not part of this authentication model.
+- Clients without `ADD_DB` cannot auto-create missing databases.
+- Studio and tests should use the root key (`root`) when full access is required.
+- Node-to-node sync and peer registration require `Node:ReplicationApiKey`; unauthorized nodes cannot join/sync without it.
 
 Query endpoint:
 
@@ -225,7 +275,7 @@ Configured node URLs:
 - `node-2`: `http://localhost:17002`
 - `node-3`: `http://localhost:17003`
 
-Then register peers per logical database using `POST /api/cluster/peers` with `Database` and `ApiKey` headers.
+Then register peers per logical database using `POST /api/cluster/peers` with `ReplicationApiKey` (and optional `Database` when you want the request bound to a specific logical DB context).
 
 ## LiteDb.Distributed.Studio (Blazor WASM)
 
@@ -258,3 +308,5 @@ The server allows Studio browser calls via CORS. Configure origins in:
 - Peer replication is bounded-parallel per cycle (`Node:ReplicationPeerConcurrency`, default `4`) for better multi-peer latency.
 - Conflict resolution is pluggable (default includes LWW with optional conflict recording for critical collections).
 - Credentials are catalog-based (MVP) and independent of LiteDB file encryption, so resetting a DB credential does not require re-encrypting data files.
+
+

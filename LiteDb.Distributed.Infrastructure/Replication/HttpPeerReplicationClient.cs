@@ -1,5 +1,6 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using LiteDb.Distributed.Core.Models;
+using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 
 namespace LiteDb.Distributed.Infrastructure.Replication
@@ -7,11 +8,13 @@ namespace LiteDb.Distributed.Infrastructure.Replication
     public class HttpPeerReplicationClient : IPeerReplicationClient
     {
         private readonly HttpClient _httpClient;
+        private readonly ClusterNodeOptions _nodeOptions;
         private readonly IDatabaseContextAccessor _databaseContextAccessor;
 
-        public HttpPeerReplicationClient(HttpClient httpClient, IDatabaseContextAccessor databaseContextAccessor)
+        public HttpPeerReplicationClient(HttpClient httpClient, ClusterNodeOptions nodeOptions, IDatabaseContextAccessor databaseContextAccessor)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
             _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
         }
 
@@ -64,7 +67,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             };
 
             request.Headers.Add("Database", context.DatabaseName);
-            request.Headers.Add("ApiKey", context.Credential);
+            request.Headers.Add("ReplicationApiKey", _nodeOptions.ReplicationApiKey);
 
             return await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         }
@@ -75,5 +78,4 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             return new Uri($"{normalizedBase}{relativePath}", UriKind.Absolute);
         }
     }
-
 }

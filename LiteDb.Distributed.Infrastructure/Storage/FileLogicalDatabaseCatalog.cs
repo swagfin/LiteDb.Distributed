@@ -1,5 +1,3 @@
-﻿using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
@@ -29,24 +27,16 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             _catalogPath = Path.Combine(nodeDataDirectory, "_logical_databases.catalog.json");
         }
 
-        public async Task<LogicalDatabaseRegistration> GetOrCreateAsync(string databaseName, string credential, CancellationToken cancellationToken = default)
+        public async Task<LogicalDatabaseRegistration> GetOrCreateAsync(string databaseName, CancellationToken cancellationToken = default)
         {
             string normalizedName = DatabaseNameNormalizer.Normalize(databaseName);
-            string normalizedCredential = NormalizeCredential(credential);
 
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                // Load the current snapshot, mutate it in-memory, then persist once.
                 Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
-
                 if (catalog.TryGetValue(normalizedName, out CatalogEntry? existing))
                 {
-                    if (!SecureEquals(existing.Credential, normalizedCredential))
-                    {
-                        throw new DatabaseAuthenticationException($"Credential is invalid for database '{normalizedName}'.");
-                    }
-
                     return ToRegistration(existing);
                 }
 
@@ -54,16 +44,30 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                 CatalogEntry entry = new CatalogEntry
                 {
                     DatabaseName = normalizedName,
-                    Credential = normalizedCredential,
                     CreatedUtc = now,
                     UpdatedUtc = now
                 };
 
-                // TODO: Move credentials to encrypted at-rest storage or a dedicated secret provider.
                 catalog[normalizedName] = entry;
                 await WriteInternalAsync(catalog, cancellationToken).ConfigureAwait(false);
 
                 return ToRegistration(entry);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        public async Task<bool> ExistsAsync(string databaseName, CancellationToken cancellationToken = default)
+        {
+            string normalizedName = DatabaseNameNormalizer.Normalize(databaseName);
+
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
+                return catalog.ContainsKey(normalizedName);
             }
             finally
             {
@@ -94,8 +98,6 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
             await using FileStream stream = File.OpenRead(_catalogPath);
             CatalogWrapper? wrapper = await JsonSerializer.DeserializeAsync<CatalogWrapper>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
-
-            // Missing/empty wrapper is treated as an empty catalog to keep startup resilient.
             List<CatalogEntry> entries = wrapper?.Databases ?? new List<CatalogEntry>();
             return entries.ToDictionary(x => x.DatabaseName, x => x, StringComparer.Ordinal);
         }
@@ -104,9 +106,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         {
             CatalogWrapper wrapper = new CatalogWrapper
             {
-                Databases = catalog.Values
-                    .OrderBy(x => x.DatabaseName, StringComparer.Ordinal)
-                    .ToList()
+                Databases = catalog.Values.OrderBy(x => x.DatabaseName, StringComparer.Ordinal).ToList()
             };
 
             string? directory = Path.GetDirectoryName(_catalogPath);
@@ -119,32 +119,11 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             await JsonSerializer.SerializeAsync(stream, wrapper, JsonOptions, cancellationToken).ConfigureAwait(false);
         }
 
-        private static string NormalizeCredential(string credential)
-        {
-            if (string.IsNullOrWhiteSpace(credential))
-            {
-                throw new ArgumentException("ApiKey header is required.", nameof(credential));
-            }
-
-            return credential.Trim();
-        }
-
-        private static bool SecureEquals(string left, string right)
-        {
-            byte[] leftBytes = Encoding.UTF8.GetBytes(left);
-            byte[] rightBytes = Encoding.UTF8.GetBytes(right);
-
-            // Use constant-time comparison semantics to avoid timing side-channel leaks.
-            return leftBytes.Length == rightBytes.Length
-                   && CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
-        }
-
         private static LogicalDatabaseRegistration ToRegistration(CatalogEntry entry)
         {
             return new LogicalDatabaseRegistration
             {
                 DatabaseName = entry.DatabaseName,
-                Credential = entry.Credential,
                 CreatedUtc = entry.CreatedUtc,
                 UpdatedUtc = entry.UpdatedUtc
             };
@@ -170,10 +149,8 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         private class CatalogEntry
         {
             public string DatabaseName { get; init; } = string.Empty;
-            public string Credential { get; init; } = string.Empty;
             public DateTime CreatedUtc { get; set; }
             public DateTime UpdatedUtc { get; set; }
         }
     }
-
 }

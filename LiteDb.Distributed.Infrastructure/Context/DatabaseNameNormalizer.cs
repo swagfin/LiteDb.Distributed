@@ -2,7 +2,7 @@
 
 namespace LiteDb.Distributed.Infrastructure.Context
 {
-    internal static class DatabaseNameNormalizer
+    public static class DatabaseNameNormalizer
     {
         private static readonly Regex AllowedPattern = new("^[a-z0-9][a-z0-9_-]{0,62}$", RegexOptions.Compiled);
 

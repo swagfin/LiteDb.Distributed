@@ -1,4 +1,5 @@
-﻿using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.Extensions.Logging;
@@ -8,6 +9,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 {
     public class ReplicationOrchestrator : IReplicationOrchestrator
     {
+        private readonly ClusterNodeOptions _nodeOptions;
         private readonly IClusterReplicationService _clusterReplicationService;
         private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
         private readonly IDatabaseContextAccessor _databaseContextAccessor;
@@ -15,8 +17,9 @@ namespace LiteDb.Distributed.Infrastructure.Replication
         // Prevent overlapping replication runs that could race on the same logical databases.
         private readonly SemaphoreSlim _replicationGate = new(1, 1);
 
-        public ReplicationOrchestrator(IClusterReplicationService clusterReplicationService, ILogicalDatabaseCatalog logicalDatabaseCatalog, IDatabaseContextAccessor databaseContextAccessor, ILogger<ReplicationOrchestrator> logger)
+        public ReplicationOrchestrator(ClusterNodeOptions nodeOptions, IClusterReplicationService clusterReplicationService, ILogicalDatabaseCatalog logicalDatabaseCatalog, IDatabaseContextAccessor databaseContextAccessor, ILogger<ReplicationOrchestrator> logger)
         {
+            _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
             _clusterReplicationService = clusterReplicationService ?? throw new ArgumentNullException(nameof(clusterReplicationService));
             _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
             _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
@@ -41,7 +44,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 foreach (LogicalDatabaseRegistration database in databases)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await ReplicateDatabaseCoreAsync(database, reason, suppressExceptions: true, cancellationToken).ConfigureAwait(false);
+                    await ReplicateDatabaseCoreAsync(database.DatabaseName, _nodeOptions.ReplicationApiKey, reason, suppressExceptions: true, cancellationToken).ConfigureAwait(false);
                 }
 
                 totalStopwatch.Stop();
@@ -53,19 +56,19 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             }
         }
 
-        public async Task ReplicateDatabaseAsync(string databaseName, string credential, string reason, CancellationToken cancellationToken = default)
+        public async Task ReplicateDatabaseAsync(string databaseName, string apiKey, string reason, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(reason))
             {
                 throw new ArgumentException("Replication reason is required.", nameof(reason));
             }
 
-            LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, credential, cancellationToken).ConfigureAwait(false);
+            string normalizedDatabase = DatabaseNameNormalizer.Normalize(databaseName);
 
             await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await ReplicateDatabaseCoreAsync(registration, reason, suppressExceptions: false, cancellationToken).ConfigureAwait(false);
+                await ReplicateDatabaseCoreAsync(normalizedDatabase, apiKey, reason, suppressExceptions: false, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -73,7 +76,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             }
         }
 
-        private async Task ReplicateDatabaseCoreAsync(LogicalDatabaseRegistration database, string reason, bool suppressExceptions, CancellationToken cancellationToken)
+        private async Task ReplicateDatabaseCoreAsync(string databaseName, string apiKey, string reason, bool suppressExceptions, CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
 
@@ -81,21 +84,28 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             {
                 using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
                 {
-                    DatabaseName = database.DatabaseName,
-                    Credential = database.Credential
+                    DatabaseName = databaseName,
+                    ApiKey = string.IsNullOrWhiteSpace(apiKey) ? _nodeOptions.ReplicationApiKey : apiKey,
+                    IsRoot = true,
+                    CanAddDatabase = true,
+                    CanDeleteDatabase = true,
+                    CanReadDocument = true,
+                    CanWriteDocument = true,
+                    CanUpdateDocument = true,
+                    CanDeleteDocument = true
                 });
 
-                _logger.LogDebug("Database replication started. Reason={Reason} Database={Database}", reason, database.DatabaseName);
+                _logger.LogDebug("Database replication started. Reason={Reason} Database={Database}", reason, databaseName);
 
                 await _clusterReplicationService.ReplicateOnceAsync(cancellationToken).ConfigureAwait(false);
                 stopwatch.Stop();
 
-                _logger.LogDebug("Database replication completed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, database.DatabaseName, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Database replication completed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, databaseName, stopwatch.Elapsed.TotalMilliseconds);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 stopwatch.Stop();
-                _logger.LogWarning(ex, "Database replication failed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, database.DatabaseName, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogWarning(ex, "Database replication failed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, databaseName, stopwatch.Elapsed.TotalMilliseconds);
 
                 if (!suppressExceptions)
                 {
@@ -104,5 +114,4 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             }
         }
     }
-
 }
