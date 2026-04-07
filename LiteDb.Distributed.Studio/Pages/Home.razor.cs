@@ -55,6 +55,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _connectingProfile;
         private bool _showProfileManagement = true;
         private bool _showProfileModal;
+        private bool _showProfileDeleteConfirmModal;
         private bool _editingProfile;
         private bool _showDocumentEditorModal;
         private bool _showDeleteConfirmModal;
@@ -64,6 +65,8 @@ namespace LiteDb.Distributed.Studio.Pages
         private double _rowContextMenuY;
         private Dictionary<string, JsonElement>? _rowContextMenuDocument;
         private string _pendingDeleteDocumentId = string.Empty;
+        private Guid? _pendingDeleteProfileId;
+        private string _pendingDeleteProfileName = string.Empty;
         private string _pendingQueryText = string.Empty;
         private string _queryConfirmMessage = string.Empty;
         private string? _errorMessage;
@@ -128,19 +131,6 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 _busy = false;
             }
-        }
-
-        private void SelectProfile(Guid profileId)
-        {
-            ConnectionProfile? profile = _profiles.FirstOrDefault(x => x.Id == profileId);
-            if (profile is null)
-            {
-                return;
-            }
-
-            _selectedProfileId = profile.Id;
-            _editor = profile.Clone();
-            ClearMessages();
         }
 
         private void StartNewProfile()
@@ -248,6 +238,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             _errorMessage = null;
             _infoMessage = $"Profile '{GetProfileDisplayName(deletedProfile)}' deleted.";
+            CancelProfileDeleteConfirmation();
         }
 
         private async Task ConnectUsingEditorAsync()
@@ -283,6 +274,39 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             _showProfileModal = false;
             _editingProfile = false;
+        }
+
+        private void OpenProfileDeleteConfirmation(Guid profileId)
+        {
+            ConnectionProfile? profile = _profiles.FirstOrDefault(x => x.Id == profileId);
+            if (profile is null)
+            {
+                return;
+            }
+
+            _pendingDeleteProfileId = profile.Id;
+            _pendingDeleteProfileName = GetProfileDisplayName(profile);
+            _showProfileDeleteConfirmModal = true;
+            ClearMessages();
+        }
+
+        private void CancelProfileDeleteConfirmation()
+        {
+            _showProfileDeleteConfirmModal = false;
+            _pendingDeleteProfileId = null;
+            _pendingDeleteProfileName = string.Empty;
+        }
+
+        private async Task ConfirmProfileDeleteAsync()
+        {
+            Guid? profileId = _pendingDeleteProfileId;
+            if (profileId is null)
+            {
+                CancelProfileDeleteConfirmation();
+                return;
+            }
+
+            await DeleteProfileAsync(profileId.Value).ConfigureAwait(false);
         }
 
         private async Task SaveProfileFromModalAsync()

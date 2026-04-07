@@ -64,10 +64,9 @@
                             <div class="profile-chip-meta">Updated: @profile.UpdatedUtc.ToLocalTime().ToString("g")</div>
 
                             <div class="profile-card-actions">
-                                <button type="button" class="btn btn-ghost" @onclick="() => SelectProfile(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">Select</button>
                                 <button type="button" class="btn btn-ghost" @onclick="() => OpenEditProfileModal(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">Edit</button>
                                 <button type="button" class="btn btn-success" @onclick="() => ConnectProfileAsync(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile && _selectedProfileId == profile.Id ? "Connecting..." : "Connect")</button>
-                                <button type="button" class="btn btn-danger" @onclick="() => DeleteProfileAsync(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">Delete</button>
+                                <button type="button" class="btn btn-danger" @onclick="() => OpenProfileDeleteConfirmation(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">Delete</button>
                             </div>
                         </article>
                     }
@@ -302,6 +301,25 @@
                 <button type="button" class="btn btn-ghost" @onclick="CloseProfileModal" disabled="@(_busy || IsProfileActionBusy)">Cancel</button>
                 <button type="button" class="btn btn-primary" @onclick="SaveProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_savingProfile ? "Saving..." : "Save")</button>
                 <button type="button" class="btn btn-success" @onclick="SaveAndConnectProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile ? "Connecting..." : "Save & Connect")</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showProfileDeleteConfirmModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CancelProfileDeleteConfirmation">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Confirm Delete Profile</div>
+                <button type="button" class="btn btn-ghost" @onclick="CancelProfileDeleteConfirmation" disabled="@(_busy || IsProfileActionBusy)">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Delete profile '@_pendingDeleteProfileName'? This cannot be undone.</p>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CancelProfileDeleteConfirmation" disabled="@(_busy || IsProfileActionBusy)">Cancel</button>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmProfileDeleteAsync" disabled="@(_busy || IsProfileActionBusy)">Delete</button>
             </div>
         </section>
     </div>
