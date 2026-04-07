@@ -106,6 +106,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
             lock (_gate)
             {
+                // Business write and operation-log append must commit together for replication correctness.
                 BeginCombinedTransaction();
 
                 try
@@ -183,6 +184,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
             lock (_gate)
             {
+                // Delete is represented as a tombstone so downstream peers can observe and replay removal.
                 BeginCombinedTransaction();
 
                 try
@@ -335,6 +337,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                     }
 
                     BsonValue current = reader.Current;
+                    // Scalar query results are wrapped so callers can consume a consistent document shape.
                     BsonDocument document = current.IsDocument ? current.AsDocument : new BsonDocument { ["[value]"] = current };
 
                     string json = LiteDB.JsonSerializer.Serialize(document);
@@ -613,6 +616,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             {
                 if (ContainsOperationInternal(operation.Id))
                 {
+                    // Idempotency guard: replication retries may re-send already ingested operations.
                     return Task.FromResult(false);
                 }
 
@@ -625,6 +629,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
                     if (operation.OperationType == OperationType.Delete || operation.IsTombstone)
                     {
+                        // Preserve a tombstone rather than hard delete so deletes replicate deterministically.
                         BsonDocument tombstone = existing ?? new BsonDocument();
                         ClearBusinessFields(tombstone);
                         tombstone["_id"] = operation.EntityId;
@@ -738,6 +743,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
         private void BeginCombinedTransaction()
         {
+            // Metadata is started first so sequence reservation and data writes share one critical section.
             _metadataDatabase.BeginTrans();
             _businessDatabase.BeginTrans();
         }
@@ -813,6 +819,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
         private long ReserveNextLocalSequence(DateTime writeUtc)
         {
+            // Sequence is per-node monotonic and drives causal ordering during push/pull replication.
             ILiteCollection<NodeMetadataEntity> nodeMetadata = NodeMetadataCollection();
             NodeMetadataEntity existing = nodeMetadata.FindById(_nodeId) ?? new NodeMetadataEntity
             {
@@ -927,6 +934,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
         private static void ReplacePayload(BsonDocument target, BsonDocument payload, string entityId)
         {
+            // Keep system metadata untouched and only replace business fields.
             ClearBusinessFields(target);
             target["_id"] = entityId;
 
@@ -984,6 +992,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                 && materialized.TryGetValue("_id", out BsonValue? idValue)
                 && idValue.IsString)
             {
+                // Preserve common DTO expectations where "Id" mirrors LiteDB "_id".
                 payload["Id"] = idValue.AsString;
             }
 
@@ -1117,7 +1126,4 @@ namespace LiteDb.Distributed.Infrastructure.Storage
     }
 
 
-
-
 }
-

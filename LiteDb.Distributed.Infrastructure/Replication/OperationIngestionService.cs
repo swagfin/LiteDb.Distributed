@@ -37,6 +37,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
             _logger.LogDebug("Starting operation ingestion. LocalNodeId={LocalNodeId} IncomingOperationCount={IncomingOperationCount}", localNodeId, operations.Count);
 
+            // Process in log-sequence order to keep conflict decisions deterministic across nodes.
             foreach (OperationRecord? operation in operations.OrderBy(x => x.LogSequence))
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -76,6 +77,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 {
                     conflictCount += 1;
 
+                    // Persist enough context for later reconciliation tooling or manual inspection.
                     await _conflictStore.RecordConflictAsync(
                             new ConflictRecord
                             {
@@ -114,9 +116,4 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             };
         }
     }
-
-
-
-
 }
-

@@ -10,7 +10,4 @@ namespace LiteDb.Distributed.Core.Exceptions
     }
 
 
-
-
 }
-

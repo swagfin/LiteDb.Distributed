@@ -191,6 +191,3 @@ public sealed record OrderTransaction
     public required DateTime OccurredUtc { get; init; }
     public required string Source { get; init; }
 }
-
-
-

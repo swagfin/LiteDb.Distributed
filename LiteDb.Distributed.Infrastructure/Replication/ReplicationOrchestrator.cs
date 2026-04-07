@@ -12,6 +12,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
         private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
         private readonly IDatabaseContextAccessor _databaseContextAccessor;
         private readonly ILogger<ReplicationOrchestrator> _logger;
+        // Prevent overlapping replication runs that could race on the same logical databases.
         private readonly SemaphoreSlim _replicationGate = new(1, 1);
 
         public ReplicationOrchestrator(IClusterReplicationService clusterReplicationService, ILogicalDatabaseCatalog logicalDatabaseCatalog, IDatabaseContextAccessor databaseContextAccessor, ILogger<ReplicationOrchestrator> logger)
@@ -32,6 +33,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                // Replicate each registered logical database in isolation via scoped request context.
                 Stopwatch totalStopwatch = Stopwatch.StartNew();
                 IReadOnlyList<LogicalDatabaseRegistration> databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
                 _logger.LogDebug("Cluster replication batch started. Reason={Reason} DatabaseCount={DatabaseCount}", reason, databases.Count);
@@ -105,4 +107,3 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
 
 }
-

@@ -11,6 +11,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
         private readonly IDatabaseContextAccessor _databaseContextAccessor;
         private readonly ILogger<LogicalDatabaseStoreProvider> _logger;
+        // Lazy factory avoids opening every database file upfront and keeps one store per logical database.
         private readonly ConcurrentDictionary<string, Lazy<LiteDbNodeStore>> _stores = new(StringComparer.Ordinal);
 
         private bool _disposed;
@@ -136,6 +137,4 @@ namespace LiteDb.Distributed.Infrastructure.Storage
     }
 
 
-
 }
-

@@ -15,6 +15,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         };
 
         private readonly string _catalogPath;
+        // Guards in-process access so read/modify/write cycles stay atomic for this node instance.
         private readonly SemaphoreSlim _gate = new(1, 1);
 
         public FileLogicalDatabaseCatalog(ClusterNodeOptions options)
@@ -36,6 +37,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                // Load the current snapshot, mutate it in-memory, then persist once.
                 Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
 
                 if (catalog.TryGetValue(normalizedName, out CatalogEntry? existing))
@@ -94,6 +96,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             await using FileStream stream = File.OpenRead(_catalogPath);
             CatalogWrapper? wrapper = await JsonSerializer.DeserializeAsync<CatalogWrapper>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
 
+            // Missing/empty wrapper is treated as an empty catalog to keep startup resilient.
             List<CatalogEntry> entries = wrapper?.Databases ?? new List<CatalogEntry>();
             return entries.ToDictionary(x => x.DatabaseName, x => x, StringComparer.Ordinal);
         }
@@ -132,6 +135,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             byte[] leftBytes = Encoding.UTF8.GetBytes(left);
             byte[] rightBytes = Encoding.UTF8.GetBytes(right);
 
+            // Use constant-time comparison semantics to avoid timing side-channel leaks.
             return leftBytes.Length == rightBytes.Length
                    && CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
         }
@@ -174,6 +178,4 @@ namespace LiteDb.Distributed.Infrastructure.Storage
     }
 
 
-
 }
-

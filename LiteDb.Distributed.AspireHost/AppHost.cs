@@ -54,5 +54,3 @@ static void ConfigureNode(IResourceBuilder<ProjectResource> node, string nodeId,
         node.WithEnvironment($"Node__SeedPeers__{index}__NodeId", peer.NodeId) .WithEnvironment($"Node__SeedPeers__{index}__BaseUrl", peer.BaseUrl) .WithEnvironment($"Node__SeedPeers__{index}__IsActive", "true");
     }
 }
-
-

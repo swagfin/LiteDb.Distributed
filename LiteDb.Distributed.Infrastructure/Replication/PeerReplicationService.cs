@@ -58,6 +58,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             }
 
             ConcurrentBag<string> failedPeers = new ConcurrentBag<string>();
+            // Throttle peer fan-out so one cycle does not exhaust sockets/threads under large cluster sizes.
             using SemaphoreSlim throttler = new SemaphoreSlim(maxConcurrency, maxConcurrency);
             List<Task> tasks = activePeers.Select(peer => ReplicatePeerWithThrottleAsync(peer, throttler, failedPeers, cancellationToken)).ToList();
 
@@ -124,6 +125,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                     .ConfigureAwait(false);
                 pushAcceptedCount = pushResponse.AcceptedCount;
 
+                // Advance the push checkpoint only after a successful peer acknowledgement.
                 checkpoint = checkpoint with
                 {
                     LastPushedLocalLogSequence = pendingForPush.Max(x => x.LogSequence),
@@ -156,6 +158,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 pulledAcceptedCount = ingestionResult.AcceptedCount;
                 pulledConflictCount = ingestionResult.ConflictCount;
 
+                // Pull checkpoint tracks the furthest peer log position we have observed and processed.
                 checkpoint = checkpoint with
                 {
                     LastPulledPeerLogSequence = Math.Max(
@@ -176,7 +179,4 @@ namespace LiteDb.Distributed.Infrastructure.Replication
     }
 
 
-
-
 }
-

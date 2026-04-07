@@ -34,6 +34,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 return BadRequest(new { Error = validationError });
             }
 
+            // Hard cap protects server memory from unbounded result-set requests.
             int safeTake = request.Take <= 0 ? 100 : Math.Clamp(request.Take, 1, 10_000);
 
             try
@@ -64,6 +65,7 @@ namespace LiteDb.Distributed.Server.Controllers
         {
             string query = (rawQuery ?? string.Empty).Trim();
 
+            // Allow optional trailing semicolon while still enforcing single-statement execution.
             if (query.EndsWith(';'))
             {
                 query = query[..^1].TrimEnd();
@@ -102,6 +104,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             if (IntoRegex.IsMatch(query))
             {
+                // SELECT INTO writes data, so it is blocked for this read-only endpoint.
                 normalizedQuery = string.Empty;
                 error = "SELECT INTO is not allowed in this endpoint.";
                 return false;
@@ -128,6 +131,4 @@ namespace LiteDb.Distributed.Server.Controllers
     }
 
 
-
 }
-

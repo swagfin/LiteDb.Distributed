@@ -14,6 +14,4 @@ namespace LiteDb.Distributed.Core.Abstractions
     }
 
 
-
 }
-
