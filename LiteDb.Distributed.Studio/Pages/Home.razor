@@ -153,25 +153,40 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                         }
                         else
                         {
-                            @foreach (string collection in _collections)
-                            {
-                                <button type="button"
-                                        class="table-item @(string.Equals(collection, _selectedCollection, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty)"
-                                        @onclick="() => SelectCollectionAsync(collection)">
-                                    <span class="table-item-content">
-                                        <span>@collection</span>
-                                        @if (IsReservedCollection(collection))
+                            <div class="tables-grid-wrap">
+                                <table class="tables-grid">
+                                    <thead>
+                                        <tr>
+                                            <th>Table</th>
+                                            <th>Type</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (string collection in _collections)
                                         {
-                                            <span class="table-badge">system</span>
+                                            <tr class="@(string.Equals(collection, _selectedCollection, StringComparison.OrdinalIgnoreCase) ? "selected" : string.Empty)"
+                                                @onclick="() => SelectCollectionAsync(collection)">
+                                                <td>@collection</td>
+                                                <td>
+                                                    @if (IsReservedCollection(collection))
+                                                    {
+                                                        <span class="table-badge">system</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="table-badge standard">standard</span>
+                                                    }
+                                                </td>
+                                            </tr>
                                         }
-                                    </span>
-                                </button>
-                            }
+                                    </tbody>
+                                </table>
+                            </div>
                         }
                     </div>
                 </aside>
 
-                <section class="query-results-pane">
+                <section class="query-results-pane" @onclick="DismissRowContextMenu">
                     @if (SelectedCollectionIsSystem)
                     {
                         <div class="status-strip status-info system-collection-note">
@@ -179,33 +194,9 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                         </div>
                     }
 
-                    <div class="query-toolbar">
-                        <label>
-                            <span>Active Table</span>
-                            <input value="@(_selectedCollection ?? string.Empty)" readonly />
-                        </label>
-                        <label>
-                            <span>Skip</span>
-                            <input type="number" min="0" step="1" @bind="_skip" />
-                        </label>
-                        <label>
-                            <span>Take</span>
-                            <input type="number" min="1" max="10000" step="1" @bind="_take" />
-                        </label>
-                        <div class="toolbar-buttons">
-                            <button type="button" class="btn btn-primary" @onclick="BrowseCollectionAsync" disabled="@(ActiveProfile is null || string.IsNullOrWhiteSpace(_selectedCollection))">Run Table Query</button>
-                        </div>
-                    </div>
-
-                    <div class="id-query-row">
-                        <label>
-                            <span>@(SelectedCollectionIsSystem ? "Lookup by Key" : "Lookup by Id")</span>
-                            <div class="inline-input">
-                                <input @bind="_idLookup" placeholder="@(SelectedCollectionIsSystem ? "cache-key" : "ordtx-20260407123456000001")" />
-                                <button type="button" class="btn btn-ghost" @onclick="LookupByIdAsync" disabled="@(ActiveProfile is null)">Find</button>
-                                <button type="button" class="btn btn-ghost" @onclick="ClearIdFilterAsync" disabled="@(ActiveProfile is null)">Clear</button>
-                            </div>
-                        </label>
+                    <div class="active-table-hint">
+                        <span>Active Table:</span>
+                        <strong>@(_selectedCollection ?? "-")</strong>
                     </div>
 
                     <div class="query-editor-row">
@@ -244,7 +235,11 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                                 {
                                     @foreach (Dictionary<string, JsonElement> document in _documents)
                                     {
-                                        <tr class="@GetDocumentRowClass(document)" @onclick="() => SelectDocument(document)">
+                                        <tr class="@GetDocumentRowClass(document)"
+                                            @onclick="() => SelectDocument(document)"
+                                            @ondblclick="() => OpenDocumentEditorModal(document)"
+                                            @oncontextmenu="(e => ShowRowContextMenu(e, document))"
+                                            @oncontextmenu:preventDefault="true">
                                             @foreach (string column in DisplayColumns)
                                             {
                                                 <td>@FormatCell(document, column)</td>
@@ -254,27 +249,6 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                                 }
                             </tbody>
                         </table>
-                    </div>
-
-                    <div class="document-editor">
-                        <div class="editor-head">
-                            <div>
-                                <div class="h3">Document Editor</div>
-                                <p>Use JSON payloads and save directly to the distributed node.</p>
-                            </div>
-                            <div class="action-row compact">
-                                <button type="button" class="btn btn-ghost" @onclick="CreateDocumentTemplate" disabled="@SelectedCollectionIsSystem">New Document</button>
-                                <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem)">Save</button>
-                                <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
-                            </div>
-                        </div>
-
-                        <label class="id-field">
-                            <span>Document Id</span>
-                            <input @bind="_selectedDocumentId" placeholder="Id used for PUT/DELETE" readonly="@SelectedCollectionIsSystem" />
-                        </label>
-
-                        <textarea @bind="_documentJson" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
                     </div>
                 </section>
             </div>
@@ -318,5 +292,42 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                 <button type="button" class="btn btn-success" @onclick="SaveAndConnectProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile ? "Connecting..." : "Save & Connect")</button>
             </div>
         </section>
+    </div>
+}
+
+@if (_showDocumentEditorModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CloseDocumentEditorModal">
+        <section class="profile-modal document-editor-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Document Editor</div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseDocumentEditorModal">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Edit JSON payload and save changes.</p>
+
+            <label class="id-field">
+                <span>Document Id</span>
+                <input @bind="_selectedDocumentId" placeholder="Id used for PUT/DELETE" readonly="@SelectedCollectionIsSystem" />
+            </label>
+
+            <textarea class="document-editor-textarea" @bind="_documentJson" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CreateDocumentTemplate" disabled="@SelectedCollectionIsSystem">New Document</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem)">Save</button>
+                <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showRowContextMenu)
+{
+    <div class="row-context-menu"
+         style="left:@($"{_rowContextMenuX}px"); top:@($"{_rowContextMenuY}px");"
+         @onclick:stopPropagation="true">
+        <button type="button" @onclick="EditFromRowContextMenuAsync">Edit</button>
+        <button type="button" @onclick="DeleteFromRowContextMenuAsync" disabled="@(SelectedCollectionIsSystem)">Delete</button>
     </div>
 }

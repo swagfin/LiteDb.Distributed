@@ -169,6 +169,18 @@
     gap: 0.75rem;
 }
 
+.document-editor-modal {
+    width: min(860px, 100%);
+}
+
+.document-editor-textarea {
+    min-height: 420px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    resize: vertical;
+}
+
 .profile-modal-head {
     display: flex;
     align-items: center;
@@ -410,43 +422,55 @@ textarea:focus {
 }
 
 .tables-list {
-    display: grid;
-    gap: 0.2rem;
+    display: block;
     max-height: 620px;
     overflow: auto;
     padding-right: 0.2rem;
 }
 
-.table-item {
-    text-align: left;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 7px;
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--text-main);
-    padding: 0.22rem 0.45rem;
+.tables-grid-wrap {
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.tables-grid {
+    width: 100%;
+    border-collapse: collapse;
     font-size: 0.78rem;
-    line-height: 1.15;
-    min-height: 1.72rem;
+}
+
+.tables-grid th {
+    text-align: left;
+    padding: 0.38rem 0.45rem;
+    background: rgba(9, 17, 26, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.tables-grid td {
+    padding: 0.34rem 0.45rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tables-grid tbody tr {
     cursor: pointer;
-    transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    transition: background 120ms ease;
 }
 
-.table-item:hover {
-    border-color: var(--accent-cyan);
+.tables-grid tbody tr:hover {
     background: rgba(78, 168, 222, 0.08);
-    box-shadow: inset 0 0 0 1px rgba(78, 168, 222, 0.18);
 }
 
-.table-item.active {
-    border-color: var(--accent-orange);
+.tables-grid tbody tr.selected {
     background: rgba(238, 150, 75, 0.14);
-}
-
-.table-item-content {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
 }
 
 .table-badge {
@@ -459,10 +483,28 @@ textarea:focus {
     text-transform: uppercase;
 }
 
+.table-badge.standard {
+    border-color: rgba(78, 168, 222, 0.25);
+    color: rgba(158, 206, 238, 0.86);
+}
+
 .query-results-pane {
     display: grid;
     gap: 0.8rem;
     min-width: 0;
+}
+
+.active-table-hint {
+    display: flex;
+    gap: 0.45rem;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.active-table-hint strong {
+    color: var(--text-main);
+    font-size: 0.88rem;
 }
 
 .system-collection-note {
@@ -496,11 +538,46 @@ textarea:focus {
 }
 
 .query-textarea {
-    min-height: 108px;
+    min-height: 220px;
     font-family: "IBM Plex Mono", monospace;
     font-size: 0.8rem;
     line-height: 1.4;
     resize: vertical;
+}
+
+.row-context-menu {
+    position: fixed;
+    z-index: 1400;
+    min-width: 130px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    background: rgba(5, 10, 16, 0.96);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+    padding: 0.2rem;
+    display: grid;
+    gap: 0.2rem;
+}
+
+.row-context-menu button {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    text-align: left;
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.32rem 0.45rem;
+    cursor: pointer;
+}
+
+.row-context-menu button:hover:not(:disabled) {
+    border-color: rgba(78, 168, 222, 0.45);
+    background: rgba(78, 168, 222, 0.16);
+}
+
+.row-context-menu button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .query-editor-actions {

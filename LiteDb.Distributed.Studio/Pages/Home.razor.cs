@@ -3,12 +3,13 @@ using System.Text.RegularExpressions;
 using LiteDb.Distributed.Studio.Models;
 using LiteDb.Distributed.Studio.Services;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 
 namespace LiteDb.Distributed.Studio.Pages
 {
     public partial class Home : ComponentBase
     {
-        private const string CacheCollectionName = "cache";
+        private const int DefaultBrowseTake = 200;
 
         [Inject]
         public required ProfileStore ProfileStore { get; init; }
@@ -38,10 +39,6 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _creatingCollection;
         private bool _includeSystemCollections;
 
-        private int _skip;
-        private int _take = 100;
-        private string _idLookup = string.Empty;
-
         private int _queryTake = 200;
         private string _queryText = "SELECT $ FROM OrderTransactions LIMIT 200";
 
@@ -57,6 +54,11 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _showProfileManagement = true;
         private bool _showProfileModal;
         private bool _editingProfile;
+        private bool _showDocumentEditorModal;
+        private bool _showRowContextMenu;
+        private double _rowContextMenuX;
+        private double _rowContextMenuY;
+        private Dictionary<string, JsonElement>? _rowContextMenuDocument;
         private string? _errorMessage;
         private string? _infoMessage;
 
@@ -164,6 +166,8 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             _showProfileManagement = true;
             ClearMessages();
+            CloseDocumentEditorModal();
+            DismissRowContextMenu();
         }
 
         private void OpenDataExplorer()
@@ -211,6 +215,8 @@ namespace LiteDb.Distributed.Studio.Pages
                 _selectedDocument = null;
                 _selectedDocumentId = string.Empty;
                 CreateDocumentTemplate();
+                CloseDocumentEditorModal();
+                DismissRowContextMenu();
                 await ProfileStore.SaveActiveProfileIdAsync(null).ConfigureAwait(false);
             }
 
@@ -518,7 +524,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             try
             {
-                ApiResult<List<Dictionary<string, JsonElement>>> result = await ApiClient.ListDocumentsAsync(profile, _selectedCollection, _skip, _take).ConfigureAwait(false);
+                ApiResult<List<Dictionary<string, JsonElement>>> result = await ApiClient.ListDocumentsAsync(profile, _selectedCollection, 0, DefaultBrowseTake).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -557,7 +563,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             try
             {
-                int safeTake = Math.Clamp(_take, 1, 10_000);
+                int safeTake = Math.Clamp(DefaultBrowseTake, 1, 10_000);
                 string query = $"SELECT $ FROM {_selectedCollection} LIMIT {safeTake}";
                 ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, query, safeTake).ConfigureAwait(false);
 
@@ -718,86 +724,67 @@ namespace LiteDb.Distributed.Studio.Pages
             _queryText = $"SELECT $ FROM {_selectedCollection} LIMIT {_queryTake}";
         }
 
-        private async Task LookupByIdAsync()
-        {
-            ConnectionProfile? profile = ActiveProfile;
-            if (profile is null)
-            {
-                _errorMessage = "Connect a profile first.";
-                _infoMessage = null;
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(_selectedCollection))
-            {
-                _errorMessage = "Select or enter a collection first.";
-                _infoMessage = null;
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(_idLookup))
-            {
-                _errorMessage = "Enter an Id to look up.";
-                _infoMessage = null;
-                return;
-            }
-
-            _busy = true;
-            ClearMessages();
-
-            try
-            {
-                if (SelectedCollectionIsSystem && string.Equals(_selectedCollection, CacheCollectionName, StringComparison.OrdinalIgnoreCase))
-                {
-                    ApiResult<Dictionary<string, JsonElement>> cacheResult = await ApiClient.GetCacheEntryAsync(profile, _idLookup.Trim()).ConfigureAwait(false);
-                    if (!cacheResult.Success || cacheResult.Data is null)
-                    {
-                        _errorMessage = cacheResult.ErrorMessage ?? "Cache entry not found.";
-                        _documents = [];
-                        return;
-                    }
-
-                    _documents = [cacheResult.Data];
-                    SelectDocument(cacheResult.Data);
-                    _infoMessage = "Cache entry loaded by key.";
-                    return;
-                }
-
-                ApiResult<Dictionary<string, JsonElement>> result = await ApiClient.GetDocumentByIdAsync(profile, _selectedCollection, _idLookup.Trim()).ConfigureAwait(false);
-
-                if (!result.Success || result.Data is null)
-                {
-                    _errorMessage = result.ErrorMessage ?? "Document not found.";
-                    _documents = [];
-                    return;
-                }
-
-                _documents = [result.Data];
-                SelectDocument(result.Data);
-                _infoMessage = "Document loaded by Id.";
-            }
-            finally
-            {
-                _busy = false;
-            }
-        }
-
-        private async Task ClearIdFilterAsync()
-        {
-            _idLookup = string.Empty;
-            await BrowseCollectionAsync().ConfigureAwait(false);
-        }
-
         private void SelectDocument(Dictionary<string, JsonElement> document)
         {
             _selectedDocument = document;
             _documentJson = JsonSerializer.Serialize(document, PrettyJsonOptions);
 
             _selectedDocumentId = ExtractId(document) ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(_selectedDocumentId))
+        }
+
+        private void OpenDocumentEditorModal(Dictionary<string, JsonElement> document)
+        {
+            SelectDocument(document);
+            _showDocumentEditorModal = true;
+            DismissRowContextMenu();
+        }
+
+        private void CloseDocumentEditorModal()
+        {
+            _showDocumentEditorModal = false;
+        }
+
+        private void ShowRowContextMenu(MouseEventArgs args, Dictionary<string, JsonElement> document)
+        {
+            SelectDocument(document);
+            _rowContextMenuDocument = document;
+            _rowContextMenuX = args.ClientX;
+            _rowContextMenuY = args.ClientY;
+            _showRowContextMenu = true;
+        }
+
+        private void DismissRowContextMenu()
+        {
+            _showRowContextMenu = false;
+            _rowContextMenuDocument = null;
+        }
+
+        private Task EditFromRowContextMenuAsync()
+        {
+            Dictionary<string, JsonElement>? document = _rowContextMenuDocument;
+            DismissRowContextMenu();
+
+            if (document is null)
             {
-                _idLookup = _selectedDocumentId;
+                return Task.CompletedTask;
             }
+
+            OpenDocumentEditorModal(document);
+            return Task.CompletedTask;
+        }
+
+        private async Task DeleteFromRowContextMenuAsync()
+        {
+            Dictionary<string, JsonElement>? document = _rowContextMenuDocument;
+            DismissRowContextMenu();
+
+            if (document is null)
+            {
+                return;
+            }
+
+            SelectDocument(document);
+            await DeleteDocumentAsync().ConfigureAwait(false);
         }
 
         private async Task SaveDocumentAsync()
@@ -867,7 +854,6 @@ namespace LiteDb.Distributed.Studio.Pages
                 }
 
                 _selectedDocumentId = documentId;
-                _idLookup = documentId;
 
                 await BrowseCollectionAsync().ConfigureAwait(false);
                 TrySelectDocumentById(documentId);
@@ -926,7 +912,6 @@ namespace LiteDb.Distributed.Studio.Pages
                 }
 
                 _selectedDocumentId = string.Empty;
-                _idLookup = string.Empty;
                 CreateDocumentTemplate();
 
                 await BrowseCollectionAsync().ConfigureAwait(false);

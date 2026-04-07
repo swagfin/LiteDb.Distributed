@@ -1,31 +1,35 @@
-﻿using System.Text.Json;
-using Microsoft.JSInterop;
+using Blazored.LocalStorage;
 
 namespace LiteDb.Distributed.Studio.Services
 {
     public class BrowserStorageService
     {
-        private readonly IJSRuntime _jsRuntime;
+        private const string KeyPrefix = "litedb.distributed.studio";
+        private readonly ILocalStorageService _localStorage;
 
-        private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
-        public BrowserStorageService(IJSRuntime jsRuntime)
+        public BrowserStorageService(ILocalStorageService localStorage)
         {
-            _jsRuntime = jsRuntime;
+            _localStorage = localStorage;
         }
 
         public async Task<T?> GetAsync<T>(string key)
         {
-            string? raw = await _jsRuntime.InvokeAsync<string?>("liteDbStudioStorage.get", key).ConfigureAwait(false);
-
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return default;
-            }
-
             try
             {
-                return JsonSerializer.Deserialize<T>(raw, JsonOptions);
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    return default;
+                }
+
+                string scopedKey = BuildScopedKey(key);
+                bool exists = await _localStorage.ContainKeyAsync(scopedKey).ConfigureAwait(false);
+                if (!exists)
+                {
+                    return default;
+                }
+
+                StorageRecord<T>? record = await _localStorage.GetItemAsync<StorageRecord<T>>(scopedKey).ConfigureAwait(false);
+                return record is null ? default : record.Value;
             }
             catch
             {
@@ -33,15 +37,41 @@ namespace LiteDb.Distributed.Studio.Services
             }
         }
 
-        public Task SetAsync<T>(string key, T value)
+        public async Task SetAsync<T>(string key, T value)
         {
-            string raw = JsonSerializer.Serialize(value, JsonOptions);
-            return _jsRuntime.InvokeVoidAsync("liteDbStudioStorage.set", key, raw).AsTask();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException("Storage key is required.", nameof(key));
+            }
+
+            StorageRecord<T> record = new StorageRecord<T>
+            {
+                Value = value,
+                SavedAtUtc = DateTime.UtcNow
+            };
+
+            await _localStorage.SetItemAsync(BuildScopedKey(key), record).ConfigureAwait(false);
         }
 
-        public Task RemoveAsync(string key)
+        public async Task RemoveAsync(string key)
         {
-            return _jsRuntime.InvokeVoidAsync("liteDbStudioStorage.remove", key).AsTask();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            await _localStorage.RemoveItemAsync(BuildScopedKey(key)).ConfigureAwait(false);
+        }
+
+        private static string BuildScopedKey(string key)
+        {
+            return $"{KeyPrefix}:{key}";
+        }
+
+        private class StorageRecord<T>
+        {
+            public T? Value { get; init; }
+            public DateTime SavedAtUtc { get; init; }
         }
     }
 
