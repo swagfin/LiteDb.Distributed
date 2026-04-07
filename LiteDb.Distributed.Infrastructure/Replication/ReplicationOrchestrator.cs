@@ -4,102 +4,105 @@ using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
-namespace LiteDb.Distributed.Infrastructure.Replication;
-
-public class ReplicationOrchestrator : IReplicationOrchestrator
+namespace LiteDb.Distributed.Infrastructure.Replication
 {
-    private readonly IClusterReplicationService _clusterReplicationService;
-    private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
-    private readonly IDatabaseContextAccessor _databaseContextAccessor;
-    private readonly ILogger<ReplicationOrchestrator> _logger;
-    private readonly SemaphoreSlim _replicationGate = new(1, 1);
-
-    public ReplicationOrchestrator(IClusterReplicationService clusterReplicationService, ILogicalDatabaseCatalog logicalDatabaseCatalog, IDatabaseContextAccessor databaseContextAccessor, ILogger<ReplicationOrchestrator> logger)
+    public class ReplicationOrchestrator : IReplicationOrchestrator
     {
-        _clusterReplicationService = clusterReplicationService ?? throw new ArgumentNullException(nameof(clusterReplicationService));
-        _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
-        _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+        private readonly IClusterReplicationService _clusterReplicationService;
+        private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
+        private readonly IDatabaseContextAccessor _databaseContextAccessor;
+        private readonly ILogger<ReplicationOrchestrator> _logger;
+        private readonly SemaphoreSlim _replicationGate = new(1, 1);
 
-    public async Task ReplicateAllDatabasesAsync(string reason, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(reason))
+        public ReplicationOrchestrator(IClusterReplicationService clusterReplicationService, ILogicalDatabaseCatalog logicalDatabaseCatalog, IDatabaseContextAccessor databaseContextAccessor, ILogger<ReplicationOrchestrator> logger)
         {
-            throw new ArgumentException("Replication reason is required.", nameof(reason));
+            _clusterReplicationService = clusterReplicationService ?? throw new ArgumentNullException(nameof(clusterReplicationService));
+            _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
+            _databaseContextAccessor = databaseContextAccessor ?? throw new ArgumentNullException(nameof(databaseContextAccessor));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        public async Task ReplicateAllDatabasesAsync(string reason, CancellationToken cancellationToken = default)
         {
-            Stopwatch totalStopwatch = Stopwatch.StartNew();
-            IReadOnlyList<LogicalDatabaseRegistration> databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogDebug("Cluster replication batch started. Reason={Reason} DatabaseCount={DatabaseCount}", reason, databases.Count);
-
-            foreach (LogicalDatabaseRegistration database in databases)
+            if (string.IsNullOrWhiteSpace(reason))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await ReplicateDatabaseCoreAsync(database, reason, suppressExceptions: true, cancellationToken).ConfigureAwait(false);
+                throw new ArgumentException("Replication reason is required.", nameof(reason));
             }
 
-            totalStopwatch.Stop();
-            _logger.LogDebug("Cluster replication batch completed. Reason={Reason} DatabaseCount={DatabaseCount} DurationMs={DurationMs}", reason, databases.Count, totalStopwatch.Elapsed.TotalMilliseconds);
-        }
-        finally
-        {
-            _replicationGate.Release();
-        }
-    }
-
-    public async Task ReplicateDatabaseAsync(string databaseName, string credential, string reason, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            throw new ArgumentException("Replication reason is required.", nameof(reason));
-        }
-
-        LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, credential, cancellationToken).ConfigureAwait(false);
-
-        await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await ReplicateDatabaseCoreAsync(registration, reason, suppressExceptions: false, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _replicationGate.Release();
-        }
-    }
-
-    private async Task ReplicateDatabaseCoreAsync(LogicalDatabaseRegistration database, string reason, bool suppressExceptions, CancellationToken cancellationToken)
-    {
-        Stopwatch stopwatch = Stopwatch.StartNew();
-
-        try
-        {
-            using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+            await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                DatabaseName = database.DatabaseName,
-                Credential = database.Credential
-            });
+                Stopwatch totalStopwatch = Stopwatch.StartNew();
+                IReadOnlyList<LogicalDatabaseRegistration> databases = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
+                _logger.LogDebug("Cluster replication batch started. Reason={Reason} DatabaseCount={DatabaseCount}", reason, databases.Count);
 
-            _logger.LogDebug("Database replication started. Reason={Reason} Database={Database}", reason, database.DatabaseName);
+                foreach (LogicalDatabaseRegistration database in databases)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await ReplicateDatabaseCoreAsync(database, reason, suppressExceptions: true, cancellationToken).ConfigureAwait(false);
+                }
 
-            await _clusterReplicationService.ReplicateOnceAsync(cancellationToken).ConfigureAwait(false);
-            stopwatch.Stop();
-
-            _logger.LogDebug("Database replication completed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, database.DatabaseName, stopwatch.Elapsed.TotalMilliseconds);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            stopwatch.Stop();
-            _logger.LogWarning(ex, "Database replication failed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, database.DatabaseName, stopwatch.Elapsed.TotalMilliseconds);
-
-            if (!suppressExceptions)
+                totalStopwatch.Stop();
+                _logger.LogDebug("Cluster replication batch completed. Reason={Reason} DatabaseCount={DatabaseCount} DurationMs={DurationMs}", reason, databases.Count, totalStopwatch.Elapsed.TotalMilliseconds);
+            }
+            finally
             {
-                throw;
+                _replicationGate.Release();
+            }
+        }
+
+        public async Task ReplicateDatabaseAsync(string databaseName, string credential, string reason, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                throw new ArgumentException("Replication reason is required.", nameof(reason));
+            }
+
+            LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(databaseName, credential, cancellationToken).ConfigureAwait(false);
+
+            await _replicationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await ReplicateDatabaseCoreAsync(registration, reason, suppressExceptions: false, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _replicationGate.Release();
+            }
+        }
+
+        private async Task ReplicateDatabaseCoreAsync(LogicalDatabaseRegistration database, string reason, bool suppressExceptions, CancellationToken cancellationToken)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+                {
+                    DatabaseName = database.DatabaseName,
+                    Credential = database.Credential
+                });
+
+                _logger.LogDebug("Database replication started. Reason={Reason} Database={Database}", reason, database.DatabaseName);
+
+                await _clusterReplicationService.ReplicateOnceAsync(cancellationToken).ConfigureAwait(false);
+                stopwatch.Stop();
+
+                _logger.LogDebug("Database replication completed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, database.DatabaseName, stopwatch.Elapsed.TotalMilliseconds);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                stopwatch.Stop();
+                _logger.LogWarning(ex, "Database replication failed. Reason={Reason} Database={Database} DurationMs={DurationMs}", reason, database.DatabaseName, stopwatch.Elapsed.TotalMilliseconds);
+
+                if (!suppressExceptions)
+                {
+                    throw;
+                }
             }
         }
     }
+
+
 }
 

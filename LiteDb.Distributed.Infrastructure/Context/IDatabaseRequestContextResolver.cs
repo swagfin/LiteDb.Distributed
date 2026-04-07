@@ -1,9 +1,12 @@
 ﻿using Microsoft.AspNetCore.Http;
 
-namespace LiteDb.Distributed.Infrastructure.Context;
-
-public interface IDatabaseRequestContextResolver
+namespace LiteDb.Distributed.Infrastructure.Context
 {
-    Task<DatabaseRequestContext> ResolveAsync(IHeaderDictionary headers, CancellationToken cancellationToken = default);
+    public interface IDatabaseRequestContextResolver
+    {
+        Task<DatabaseRequestContext> ResolveAsync(IHeaderDictionary headers, CancellationToken cancellationToken = default);
+    }
+
+
 }
 

@@ -1,7 +1,12 @@
-namespace LiteDb.Distributed.Core.Abstractions;
+﻿
 
-public interface IClusterReplicationService
+namespace LiteDb.Distributed.Core.Abstractions
 {
-    Task ReplicateOnceAsync(CancellationToken cancellationToken = default);
+    public interface IClusterReplicationService
+    {
+        Task ReplicateOnceAsync(CancellationToken cancellationToken = default);
+    }
+
+
 }
 

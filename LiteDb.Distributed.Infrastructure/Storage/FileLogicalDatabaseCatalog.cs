@@ -4,173 +4,176 @@ using System.Text.Json;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
 
-namespace LiteDb.Distributed.Infrastructure.Storage;
-
-public class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
+namespace LiteDb.Distributed.Infrastructure.Storage
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    public class FileLogicalDatabaseCatalog : ILogicalDatabaseCatalog
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
-    };
-
-    private readonly string _catalogPath;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-
-    public FileLogicalDatabaseCatalog(ClusterNodeOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-
-        string rootDataDirectory = ResolveDataDirectory(options.DataDirectory);
-        string nodeDataDirectory = Path.Combine(rootDataDirectory, options.NodeId);
-        Directory.CreateDirectory(nodeDataDirectory);
-
-        _catalogPath = Path.Combine(nodeDataDirectory, "_logical_databases.catalog.json");
-    }
-
-    public async Task<LogicalDatabaseRegistration> GetOrCreateAsync(string databaseName, string credential, CancellationToken cancellationToken = default)
-    {
-        string normalizedName = DatabaseNameNormalizer.Normalize(databaseName);
-        string normalizedCredential = NormalizeCredential(credential);
-
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        private static readonly JsonSerializerOptions JsonOptions = new()
         {
-            Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true
+        };
 
-            if (catalog.TryGetValue(normalizedName, out CatalogEntry? existing))
+        private readonly string _catalogPath;
+        private readonly SemaphoreSlim _gate = new(1, 1);
+
+        public FileLogicalDatabaseCatalog(ClusterNodeOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+
+            string rootDataDirectory = ResolveDataDirectory(options.DataDirectory);
+            string nodeDataDirectory = Path.Combine(rootDataDirectory, options.NodeId);
+            Directory.CreateDirectory(nodeDataDirectory);
+
+            _catalogPath = Path.Combine(nodeDataDirectory, "_logical_databases.catalog.json");
+        }
+
+        public async Task<LogicalDatabaseRegistration> GetOrCreateAsync(string databaseName, string credential, CancellationToken cancellationToken = default)
+        {
+            string normalizedName = DatabaseNameNormalizer.Normalize(databaseName);
+            string normalizedCredential = NormalizeCredential(credential);
+
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                if (!SecureEquals(existing.Credential, normalizedCredential))
+                Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
+
+                if (catalog.TryGetValue(normalizedName, out CatalogEntry? existing))
                 {
-                    throw new DatabaseAuthenticationException(
-                        $"Credential is invalid for database '{normalizedName}'.");
+                    if (!SecureEquals(existing.Credential, normalizedCredential))
+                    {
+                        throw new DatabaseAuthenticationException(
+                            $"Credential is invalid for database '{normalizedName}'.");
+                    }
+
+                    return ToRegistration(existing);
                 }
 
-                return ToRegistration(existing);
+                DateTime now = DateTime.UtcNow;
+                CatalogEntry entry = new CatalogEntry
+                {
+                    DatabaseName = normalizedName,
+                    Credential = normalizedCredential,
+                    CreatedUtc = now,
+                    UpdatedUtc = now
+                };
+
+                // TODO: Move credentials to encrypted at-rest storage or a dedicated secret provider.
+                catalog[normalizedName] = entry;
+                await WriteInternalAsync(catalog, cancellationToken).ConfigureAwait(false);
+
+                return ToRegistration(entry);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        public async Task<IReadOnlyList<LogicalDatabaseRegistration>> GetAllAsync(CancellationToken cancellationToken = default)
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
+                return catalog.Values.OrderBy(x => x.DatabaseName, StringComparer.Ordinal).Select(ToRegistration).ToList();
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        private async Task<Dictionary<string, CatalogEntry>> ReadInternalAsync(CancellationToken cancellationToken)
+        {
+            if (!File.Exists(_catalogPath))
+            {
+                return new Dictionary<string, CatalogEntry>(StringComparer.Ordinal);
             }
 
-            DateTime now = DateTime.UtcNow;
-            CatalogEntry entry = new CatalogEntry
+            await using FileStream stream = File.OpenRead(_catalogPath);
+            CatalogWrapper? wrapper = await JsonSerializer.DeserializeAsync<CatalogWrapper>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
+
+            List<CatalogEntry> entries = wrapper?.Databases ?? new List<CatalogEntry>();
+            return entries.ToDictionary(x => x.DatabaseName, x => x, StringComparer.Ordinal);
+        }
+
+        private async Task WriteInternalAsync(Dictionary<string, CatalogEntry> catalog, CancellationToken cancellationToken)
+        {
+            CatalogWrapper wrapper = new CatalogWrapper
             {
-                DatabaseName = normalizedName,
-                Credential = normalizedCredential,
-                CreatedUtc = now,
-                UpdatedUtc = now
+                Databases = catalog.Values
+                    .OrderBy(x => x.DatabaseName, StringComparer.Ordinal)
+                    .ToList()
             };
 
-            // TODO: Move credentials to encrypted at-rest storage or a dedicated secret provider.
-            catalog[normalizedName] = entry;
-            await WriteInternalAsync(catalog, cancellationToken).ConfigureAwait(false);
+            string? directory = Path.GetDirectoryName(_catalogPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
 
-            return ToRegistration(entry);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    public async Task<IReadOnlyList<LogicalDatabaseRegistration>> GetAllAsync(CancellationToken cancellationToken = default)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            Dictionary<string, CatalogEntry> catalog = await ReadInternalAsync(cancellationToken).ConfigureAwait(false);
-            return catalog.Values.OrderBy(x => x.DatabaseName, StringComparer.Ordinal).Select(ToRegistration).ToList();
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    private async Task<Dictionary<string, CatalogEntry>> ReadInternalAsync(CancellationToken cancellationToken)
-    {
-        if (!File.Exists(_catalogPath))
-        {
-            return new Dictionary<string, CatalogEntry>(StringComparer.Ordinal);
+            await using FileStream stream = File.Create(_catalogPath);
+            await JsonSerializer.SerializeAsync(stream, wrapper, JsonOptions, cancellationToken).ConfigureAwait(false);
         }
 
-        await using FileStream stream = File.OpenRead(_catalogPath);
-        CatalogWrapper? wrapper = await JsonSerializer.DeserializeAsync<CatalogWrapper>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
-
-        List<CatalogEntry> entries = wrapper?.Databases ?? new List<CatalogEntry>();
-        return entries.ToDictionary(x => x.DatabaseName, x => x, StringComparer.Ordinal);
-    }
-
-    private async Task WriteInternalAsync(Dictionary<string, CatalogEntry> catalog, CancellationToken cancellationToken)
-    {
-        CatalogWrapper wrapper = new CatalogWrapper
+        private static string NormalizeCredential(string credential)
         {
-            Databases = catalog.Values
-                .OrderBy(x => x.DatabaseName, StringComparer.Ordinal)
-                .ToList()
-        };
+            if (string.IsNullOrWhiteSpace(credential))
+            {
+                throw new ArgumentException("Password or ApiKey header is required.", nameof(credential));
+            }
 
-        string? directory = Path.GetDirectoryName(_catalogPath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
+            return credential.Trim();
         }
 
-        await using FileStream stream = File.Create(_catalogPath);
-        await JsonSerializer.SerializeAsync(stream, wrapper, JsonOptions, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static string NormalizeCredential(string credential)
-    {
-        if (string.IsNullOrWhiteSpace(credential))
+        private static bool SecureEquals(string left, string right)
         {
-            throw new ArgumentException("Password or ApiKey header is required.", nameof(credential));
+            byte[] leftBytes = Encoding.UTF8.GetBytes(left);
+            byte[] rightBytes = Encoding.UTF8.GetBytes(right);
+
+            return leftBytes.Length == rightBytes.Length
+                   && CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
         }
 
-        return credential.Trim();
-    }
-
-    private static bool SecureEquals(string left, string right)
-    {
-        byte[] leftBytes = Encoding.UTF8.GetBytes(left);
-        byte[] rightBytes = Encoding.UTF8.GetBytes(right);
-
-        return leftBytes.Length == rightBytes.Length
-               && CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
-    }
-
-    private static LogicalDatabaseRegistration ToRegistration(CatalogEntry entry)
-    {
-        return new LogicalDatabaseRegistration
+        private static LogicalDatabaseRegistration ToRegistration(CatalogEntry entry)
         {
-            DatabaseName = entry.DatabaseName,
-            Credential = entry.Credential,
-            CreatedUtc = entry.CreatedUtc,
-            UpdatedUtc = entry.UpdatedUtc
-        };
-    }
-
-    private static string ResolveDataDirectory(string dataDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(dataDirectory))
-        {
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+            return new LogicalDatabaseRegistration
+            {
+                DatabaseName = entry.DatabaseName,
+                Credential = entry.Credential,
+                CreatedUtc = entry.CreatedUtc,
+                UpdatedUtc = entry.UpdatedUtc
+            };
         }
 
-        return Path.IsPathRooted(dataDirectory)
-            ? Path.GetFullPath(dataDirectory)
-            : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
+        private static string ResolveDataDirectory(string dataDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(dataDirectory))
+            {
+                return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+            }
+
+            return Path.IsPathRooted(dataDirectory)
+                ? Path.GetFullPath(dataDirectory)
+                : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDirectory));
+        }
+
+        private class CatalogWrapper
+        {
+            public List<CatalogEntry> Databases { get; init; } = new();
+        }
+
+        private class CatalogEntry
+        {
+            public string DatabaseName { get; init; } = string.Empty;
+            public string Credential { get; init; } = string.Empty;
+            public DateTime CreatedUtc { get; set; }
+            public DateTime UpdatedUtc { get; set; }
+        }
     }
 
-    private class CatalogWrapper
-    {
-        public List<CatalogEntry> Databases { get; init; } = new();
-    }
 
-    private class CatalogEntry
-    {
-        public string DatabaseName { get; init; } = string.Empty;
-        public string Credential { get; init; } = string.Empty;
-        public DateTime CreatedUtc { get; set; }
-        public DateTime UpdatedUtc { get; set; }
-    }
+
 }
-
 

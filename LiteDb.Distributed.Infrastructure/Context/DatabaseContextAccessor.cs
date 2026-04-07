@@ -1,53 +1,56 @@
 ﻿using System.Threading;
 
-namespace LiteDb.Distributed.Infrastructure.Context;
-
-public class DatabaseContextAccessor : IDatabaseContextAccessor
+namespace LiteDb.Distributed.Infrastructure.Context
 {
-    private static readonly AsyncLocal<ScopeHolder?> AsyncLocalHolder = new();
-
-    public DatabaseRequestContext? Current => AsyncLocalHolder.Value?.Context;
-
-    public IDisposable BeginScope(DatabaseRequestContext context)
+    public class DatabaseContextAccessor : IDatabaseContextAccessor
     {
-        ArgumentNullException.ThrowIfNull(context);
+        private static readonly AsyncLocal<ScopeHolder?> AsyncLocalHolder = new();
 
-        ScopeHolder? previous = AsyncLocalHolder.Value;
-        AsyncLocalHolder.Value = new ScopeHolder(context);
+        public DatabaseRequestContext? Current => AsyncLocalHolder.Value?.Context;
 
-        return new ScopePopper(previous);
-    }
-
-    private class ScopeHolder
-    {
-        public ScopeHolder(DatabaseRequestContext context)
+        public IDisposable BeginScope(DatabaseRequestContext context)
         {
-            Context = context;
+            ArgumentNullException.ThrowIfNull(context);
+
+            ScopeHolder? previous = AsyncLocalHolder.Value;
+            AsyncLocalHolder.Value = new ScopeHolder(context);
+
+            return new ScopePopper(previous);
         }
 
-        public DatabaseRequestContext Context { get; }
-    }
-
-    private class ScopePopper : IDisposable
-    {
-        private readonly ScopeHolder? _previous;
-        private bool _disposed;
-
-        public ScopePopper(ScopeHolder? previous)
+        private class ScopeHolder
         {
-            _previous = previous;
-        }
-
-        public void Dispose()
-        {
-            if (_disposed)
+            public ScopeHolder(DatabaseRequestContext context)
             {
-                return;
+                Context = context;
             }
 
-            AsyncLocalHolder.Value = _previous;
-            _disposed = true;
+            public DatabaseRequestContext Context { get; }
+        }
+
+        private class ScopePopper : IDisposable
+        {
+            private readonly ScopeHolder? _previous;
+            private bool _disposed;
+
+            public ScopePopper(ScopeHolder? previous)
+            {
+                _previous = previous;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                AsyncLocalHolder.Value = _previous;
+                _disposed = true;
+            }
         }
     }
+
+
 }
 

@@ -2,63 +2,66 @@
 using LiteDb.Distributed.Infrastructure.Context;
 using LiteDb.Distributed.Infrastructure.Storage;
 
-namespace LiteDb.Distributed.Tests;
-
-public class LogicalDatabaseCatalogTests
+namespace LiteDb.Distributed.Tests
 {
-    [Fact]
-    public async Task GetOrCreate_NormalizesDatabaseNameToLowercase()
+    public class LogicalDatabaseCatalogTests
     {
-        await using TestCatalogScope scope = new TestCatalogScope();
-
-        LogicalDatabaseRegistration created = await scope.Catalog.GetOrCreateAsync("TestApp", "secret-1");
-        Assert.Equal("testapp", created.DatabaseName);
-
-        IReadOnlyList<LogicalDatabaseRegistration> all = await scope.Catalog.GetAllAsync();
-        Assert.Contains(all, x => x.DatabaseName == "testapp");
-    }
-
-    [Fact]
-    public async Task GetOrCreate_ThrowsWhenCredentialDiffersForExistingDatabase()
-    {
-        await using TestCatalogScope scope = new TestCatalogScope();
-
-        await scope.Catalog.GetOrCreateAsync("TestApp", "secret-1");
-
-        await Assert.ThrowsAsync<DatabaseAuthenticationException>(async () =>
+        [Fact]
+        public async Task GetOrCreate_NormalizesDatabaseNameToLowercase()
         {
-            await scope.Catalog.GetOrCreateAsync("testapp", "secret-2");
-        });
-    }
+            await using TestCatalogScope scope = new TestCatalogScope();
 
-    private class TestCatalogScope : IAsyncDisposable
-    {
-        private readonly string _rootPath;
+            LogicalDatabaseRegistration created = await scope.Catalog.GetOrCreateAsync("TestApp", "secret-1");
+            Assert.Equal("testapp", created.DatabaseName);
 
-        public TestCatalogScope()
+            IReadOnlyList<LogicalDatabaseRegistration> all = await scope.Catalog.GetAllAsync();
+            Assert.Contains(all, x => x.DatabaseName == "testapp");
+        }
+
+        [Fact]
+        public async Task GetOrCreate_ThrowsWhenCredentialDiffersForExistingDatabase()
         {
-            _rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(_rootPath);
+            await using TestCatalogScope scope = new TestCatalogScope();
 
-            Catalog = new FileLogicalDatabaseCatalog(new ClusterNodeOptions
+            await scope.Catalog.GetOrCreateAsync("TestApp", "secret-1");
+
+            await Assert.ThrowsAsync<DatabaseAuthenticationException>(async () =>
             {
-                NodeId = "node-test",
-                DataDirectory = _rootPath,
-                ReplicationBatchSize = 100
+                await scope.Catalog.GetOrCreateAsync("testapp", "secret-2");
             });
         }
 
-        public FileLogicalDatabaseCatalog Catalog { get; }
-
-        public ValueTask DisposeAsync()
+        private class TestCatalogScope : IAsyncDisposable
         {
-            if (Directory.Exists(_rootPath))
+            private readonly string _rootPath;
+
+            public TestCatalogScope()
             {
-                Directory.Delete(_rootPath, recursive: true);
+                _rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(_rootPath);
+
+                Catalog = new FileLogicalDatabaseCatalog(new ClusterNodeOptions
+                {
+                    NodeId = "node-test",
+                    DataDirectory = _rootPath,
+                    ReplicationBatchSize = 100
+                });
             }
 
-            return ValueTask.CompletedTask;
+            public FileLogicalDatabaseCatalog Catalog { get; }
+
+            public ValueTask DisposeAsync()
+            {
+                if (Directory.Exists(_rootPath))
+                {
+                    Directory.Delete(_rootPath, recursive: true);
+                }
+
+                return ValueTask.CompletedTask;
+            }
         }
     }
+
+
 }
 

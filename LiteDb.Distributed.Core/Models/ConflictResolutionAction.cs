@@ -1,9 +1,14 @@
-namespace LiteDb.Distributed.Core.Models;
+﻿
 
-public enum ConflictResolutionAction
+namespace LiteDb.Distributed.Core.Models
 {
-    ApplyIncoming = 1,
-    KeepLocal = 2,
-    KeepLocalAndRecordConflict = 3
+    public enum ConflictResolutionAction
+    {
+        ApplyIncoming = 1,
+        KeepLocal = 2,
+        KeepLocalAndRecordConflict = 3
+    }
+
+
 }
 

@@ -2,47 +2,50 @@
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
-namespace LiteDb.Distributed.Infrastructure.Replication;
-
-public class ClusterReplicationBackgroundService : BackgroundService
+namespace LiteDb.Distributed.Infrastructure.Replication
 {
-    private static readonly TimeSpan CatchUpInterval = TimeSpan.FromMinutes(1);
-    private readonly IReplicationOrchestrator _replicationOrchestrator;
-    private readonly ILogger<ClusterReplicationBackgroundService> _logger;
-    private readonly TimeSpan _interval;
-
-    public ClusterReplicationBackgroundService(IReplicationOrchestrator replicationOrchestrator, ILogger<ClusterReplicationBackgroundService> logger)
+    public class ClusterReplicationBackgroundService : BackgroundService
     {
-        _replicationOrchestrator = replicationOrchestrator ?? throw new ArgumentNullException(nameof(replicationOrchestrator));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _interval = CatchUpInterval;
-    }
+        private static readonly TimeSpan CatchUpInterval = TimeSpan.FromMinutes(1);
+        private readonly IReplicationOrchestrator _replicationOrchestrator;
+        private readonly ILogger<ClusterReplicationBackgroundService> _logger;
+        private readonly TimeSpan _interval;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        _logger.LogInformation("Cluster replication worker started. IntervalMs={IntervalMs}", _interval.TotalMilliseconds);
-
-        while (!stoppingToken.IsCancellationRequested)
+        public ClusterReplicationBackgroundService(IReplicationOrchestrator replicationOrchestrator, ILogger<ClusterReplicationBackgroundService> logger)
         {
-            Stopwatch iterationStopwatch = Stopwatch.StartNew();
+            _replicationOrchestrator = replicationOrchestrator ?? throw new ArgumentNullException(nameof(replicationOrchestrator));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _interval = CatchUpInterval;
+        }
 
-            try
-            {
-                await _replicationOrchestrator.ReplicateAllDatabasesAsync("safety-sweep", stoppingToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Cluster replication iteration failed.");
-            }
-            finally
-            {
-                iterationStopwatch.Stop();
-                _logger.LogDebug("Cluster replication iteration finished. DurationMs={DurationMs}", iterationStopwatch.Elapsed.TotalMilliseconds);
-            }
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Cluster replication worker started. IntervalMs={IntervalMs}", _interval.TotalMilliseconds);
 
-            await Task.Delay(_interval, stoppingToken).ConfigureAwait(false);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                Stopwatch iterationStopwatch = Stopwatch.StartNew();
+
+                try
+                {
+                    await _replicationOrchestrator.ReplicateAllDatabasesAsync("safety-sweep", stoppingToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Cluster replication iteration failed.");
+                }
+                finally
+                {
+                    iterationStopwatch.Stop();
+                    _logger.LogDebug("Cluster replication iteration finished. DurationMs={DurationMs}", iterationStopwatch.Elapsed.TotalMilliseconds);
+                }
+
+                await Task.Delay(_interval, stoppingToken).ConfigureAwait(false);
+            }
         }
     }
-}
 
+
+
+}
 

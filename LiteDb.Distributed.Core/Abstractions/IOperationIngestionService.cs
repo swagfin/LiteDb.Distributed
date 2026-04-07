@@ -1,10 +1,13 @@
 ﻿using LiteDb.Distributed.Core.Models;
 
-namespace LiteDb.Distributed.Core.Abstractions;
-
-public interface IOperationIngestionService
+namespace LiteDb.Distributed.Core.Abstractions
 {
-    Task<OperationIngestionResult> IngestAsync(string localNodeId, IReadOnlyList<OperationRecord> operations, CancellationToken cancellationToken = default);
-}
+    public interface IOperationIngestionService
+    {
+        Task<OperationIngestionResult> IngestAsync(string localNodeId, IReadOnlyList<OperationRecord> operations, CancellationToken cancellationToken = default);
+    }
 
+
+
+}
 

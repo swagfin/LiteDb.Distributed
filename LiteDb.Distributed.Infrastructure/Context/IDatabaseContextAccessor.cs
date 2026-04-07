@@ -1,8 +1,13 @@
-namespace LiteDb.Distributed.Infrastructure.Context;
+﻿
 
-public interface IDatabaseContextAccessor
+namespace LiteDb.Distributed.Infrastructure.Context
 {
-    DatabaseRequestContext? Current { get; }
+    public interface IDatabaseContextAccessor
+    {
+        DatabaseRequestContext? Current { get; }
 
-    IDisposable BeginScope(DatabaseRequestContext context);
+        IDisposable BeginScope(DatabaseRequestContext context);
+    }
+
 }
+

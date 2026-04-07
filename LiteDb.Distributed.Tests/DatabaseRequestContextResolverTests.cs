@@ -4,73 +4,76 @@ using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace LiteDb.Distributed.Tests;
-
-public class DatabaseRequestContextResolverTests
+namespace LiteDb.Distributed.Tests
 {
-    [Fact]
-    public async Task ResolveAsync_UsesApiKeyAndNormalizesDatabaseName()
+    public class DatabaseRequestContextResolverTests
     {
-        await using TestResolverScope scope = new TestResolverScope();
-
-        HeaderDictionary headers = new HeaderDictionary
+        [Fact]
+        public async Task ResolveAsync_UsesApiKeyAndNormalizesDatabaseName()
         {
-            ["Database"] = "TestApp",
-            ["ApiKey"] = "key-123"
-        };
+            await using TestResolverScope scope = new TestResolverScope();
 
-        DatabaseRequestContext context = await scope.Resolver.ResolveAsync(headers);
-
-        Assert.Equal("testapp", context.DatabaseName);
-        Assert.Equal("key-123", context.Credential);
-    }
-
-    [Fact]
-    public async Task ResolveAsync_ThrowsWhenPasswordAndApiKeyMismatch()
-    {
-        await using TestResolverScope scope = new TestResolverScope();
-
-        HeaderDictionary headers = new HeaderDictionary
-        {
-            ["Database"] = "testapp",
-            ["Password"] = "pass-a",
-            ["ApiKey"] = "pass-b"
-        };
-
-        await Assert.ThrowsAsync<ArgumentException>(() => scope.Resolver.ResolveAsync(headers));
-    }
-
-    private class TestResolverScope : IAsyncDisposable
-    {
-        private readonly string _rootPath;
-
-        public TestResolverScope()
-        {
-            _rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(_rootPath);
-
-            FileLogicalDatabaseCatalog catalog = new FileLogicalDatabaseCatalog(new ClusterNodeOptions
+            HeaderDictionary headers = new HeaderDictionary
             {
-                NodeId = "resolver-node",
-                DataDirectory = _rootPath
-            });
+                ["Database"] = "TestApp",
+                ["ApiKey"] = "key-123"
+            };
 
-            Resolver = new DatabaseRequestContextResolver(
-                catalog,
-                NullLogger<DatabaseRequestContextResolver>.Instance);
+            DatabaseRequestContext context = await scope.Resolver.ResolveAsync(headers);
+
+            Assert.Equal("testapp", context.DatabaseName);
+            Assert.Equal("key-123", context.Credential);
         }
 
-        public DatabaseRequestContextResolver Resolver { get; }
-
-        public ValueTask DisposeAsync()
+        [Fact]
+        public async Task ResolveAsync_ThrowsWhenPasswordAndApiKeyMismatch()
         {
-            if (Directory.Exists(_rootPath))
+            await using TestResolverScope scope = new TestResolverScope();
+
+            HeaderDictionary headers = new HeaderDictionary
             {
-                Directory.Delete(_rootPath, recursive: true);
+                ["Database"] = "testapp",
+                ["Password"] = "pass-a",
+                ["ApiKey"] = "pass-b"
+            };
+
+            await Assert.ThrowsAsync<ArgumentException>(() => scope.Resolver.ResolveAsync(headers));
+        }
+
+        private class TestResolverScope : IAsyncDisposable
+        {
+            private readonly string _rootPath;
+
+            public TestResolverScope()
+            {
+                _rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(_rootPath);
+
+                FileLogicalDatabaseCatalog catalog = new FileLogicalDatabaseCatalog(new ClusterNodeOptions
+                {
+                    NodeId = "resolver-node",
+                    DataDirectory = _rootPath
+                });
+
+                Resolver = new DatabaseRequestContextResolver(
+                    catalog,
+                    NullLogger<DatabaseRequestContextResolver>.Instance);
             }
 
-            return ValueTask.CompletedTask;
+            public DatabaseRequestContextResolver Resolver { get; }
+
+            public ValueTask DisposeAsync()
+            {
+                if (Directory.Exists(_rootPath))
+                {
+                    Directory.Delete(_rootPath, recursive: true);
+                }
+
+                return ValueTask.CompletedTask;
+            }
         }
     }
+
+
 }
 

@@ -1,10 +1,13 @@
 ﻿using LiteDb.Distributed.Core.Models;
 
-namespace LiteDb.Distributed.Core.Abstractions;
-
-public interface IDocumentStateReader
+namespace LiteDb.Distributed.Core.Abstractions
 {
-    Task<DocumentState?> GetStateAsync(string collection, string entityId, CancellationToken cancellationToken = default);
-}
+    public interface IDocumentStateReader
+    {
+        Task<DocumentState?> GetStateAsync(string collection, string entityId, CancellationToken cancellationToken = default);
+    }
 
+
+
+}
 
