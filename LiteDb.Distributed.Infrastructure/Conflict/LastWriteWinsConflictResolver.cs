@@ -39,5 +39,4 @@ namespace LiteDb.Distributed.Infrastructure.Conflict
         }
     }
 
-
 }

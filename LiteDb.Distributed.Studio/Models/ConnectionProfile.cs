@@ -37,5 +37,4 @@ namespace LiteDb.Distributed.Studio.Models
         public static ConnectionProfile CreateDefault() => new();
     }
 
-
 }

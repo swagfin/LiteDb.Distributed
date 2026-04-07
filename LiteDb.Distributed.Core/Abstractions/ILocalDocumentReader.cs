@@ -11,5 +11,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task<IReadOnlyList<TDocument>> ExecuteQueryAsync<TDocument>(string query, int take = 100, CancellationToken cancellationToken = default);
     }
 
-
 }

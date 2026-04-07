@@ -69,16 +69,8 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             EnsureParentDirectory(businessFullPath);
             EnsureParentDirectory(metadataFullPath);
 
-            _businessDatabase = OpenDatabase(
-                businessFullPath,
-                options.DatabaseName,
-                _nodeId,
-                logicalFileKind: "business");
-            _metadataDatabase = OpenDatabase(
-                metadataFullPath,
-                options.DatabaseName,
-                _nodeId,
-                logicalFileKind: "metadata");
+            _businessDatabase = OpenDatabase(businessFullPath, options.DatabaseName, _nodeId, logicalFileKind: "business");
+            _metadataDatabase = OpenDatabase(metadataFullPath, options.DatabaseName, _nodeId, logicalFileKind: "metadata");
 
             EnsureSystemIndexes();
             SeedPeers(options.SeedPeers);
@@ -862,8 +854,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
             if (!string.Equals(currentVersion, parentVersion, StringComparison.Ordinal))
             {
-                throw new VersionMismatchException(
-                    $"Version mismatch for {collection}/{entityId}. Expected '{parentVersion}', current is '{currentVersion ?? "<null>"}'.");
+                throw new VersionMismatchException($"Version mismatch for {collection}/{entityId}. Expected '{parentVersion}', current is '{currentVersion ?? "<null>"}'.");
             }
         }
 
@@ -1124,6 +1115,5 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             return baseUrl.TrimEnd('/');
         }
     }
-
 
 }

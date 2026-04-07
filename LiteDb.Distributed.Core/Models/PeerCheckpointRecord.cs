@@ -11,5 +11,4 @@ namespace LiteDb.Distributed.Core.Models
         public DateTime UpdatedUtc { get; init; }
     }
 
-
 }

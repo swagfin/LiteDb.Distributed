@@ -179,15 +179,9 @@ namespace LiteDb.Distributed.Tests
                     MetadataDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db.metadata")
                 });
 
-                IConflictResolver conflictResolver = new CriticalCollectionConflictResolver(
-                    new LastWriteWinsConflictResolver(), Array.Empty<string>());
+                IConflictResolver conflictResolver = new CriticalCollectionConflictResolver(new LastWriteWinsConflictResolver(), Array.Empty<string>());
 
-                _ingestionService = new OperationIngestionService(
-                    Store,
-                    conflictResolver,
-                    Store,
-                    Store,
-                    NullLogger<OperationIngestionService>.Instance);
+                _ingestionService = new OperationIngestionService(Store, conflictResolver, Store, Store, NullLogger<OperationIngestionService>.Instance);
 
                 InMemoryPeerReplicationClient peerClient = new InMemoryPeerReplicationClient(nodeResolver);
 
@@ -258,10 +252,7 @@ namespace LiteDb.Distributed.Tests
 
             public async Task<ReplicationPullResponse> ReceivePullAsync(ReplicationPullRequest request, CancellationToken cancellationToken)
             {
-                IReadOnlyList<OperationRecord> operations = await Store.GetOperationsAfterLogSequenceAsync(
-                    request.AfterLogSequence,
-                    request.BatchSize,
-                    cancellationToken);
+                IReadOnlyList<OperationRecord> operations = await Store.GetOperationsAfterLogSequenceAsync(request.AfterLogSequence, request.BatchSize, cancellationToken);
 
                 return new ReplicationPullResponse
                 {
@@ -296,6 +287,5 @@ namespace LiteDb.Distributed.Tests
             }
         }
     }
-
 
 }

@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         Task<IReadOnlyList<LogicalDatabaseRegistration>> GetAllAsync(CancellationToken cancellationToken = default);
     }
 
-
 }

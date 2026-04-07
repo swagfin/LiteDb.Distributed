@@ -7,5 +7,4 @@ namespace LiteDb.Distributed.Core.Models
         public required IReadOnlyList<OperationRecord> Operations { get; init; }
     }
 
-
 }

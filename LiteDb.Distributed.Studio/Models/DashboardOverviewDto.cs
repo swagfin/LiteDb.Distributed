@@ -61,5 +61,4 @@ namespace LiteDb.Distributed.Studio.Models
         public DateTime? LastWriteUtc { get; set; }
     }
 
-
 }

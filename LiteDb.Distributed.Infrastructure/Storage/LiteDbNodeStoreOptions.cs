@@ -11,5 +11,4 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         public IReadOnlyList<ClusterPeer> SeedPeers { get; init; } = Array.Empty<ClusterPeer>();
     }
 
-
 }

@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task<WriteResult> DeleteAsync(string collection, string entityId, string? parentVersion = null, CancellationToken cancellationToken = default);
     }
 
-
 }

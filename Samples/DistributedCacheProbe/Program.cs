@@ -15,10 +15,7 @@ Console.CancelKeyPress += (_, args) =>
     cancellation.Cancel();
 };
 
-List<CacheProbeNode> nodes = settings.Nodes
-    .Select((baseUrl, index) => new CacheProbeNode(
-        Name: $"node-{index + 1}",
-        BaseUrl: NormalizeBaseUrl(baseUrl), Client: CreateNodeClient(baseUrl, settings))) .ToList();
+List<CacheProbeNode> nodes = settings.Nodes.Select((baseUrl, index) => new CacheProbeNode(Name: $"node-{index + 1}", BaseUrl: NormalizeBaseUrl(baseUrl), Client: CreateNodeClient(baseUrl, settings))).ToList();
 
 Console.WriteLine("Distributed Cache Probe");
 Console.WriteLine($"Database: {settings.Database}");

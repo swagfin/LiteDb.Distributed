@@ -55,9 +55,7 @@ namespace LiteDb.Distributed.Tests
                     DataDirectory = _rootPath
                 });
 
-                Resolver = new DatabaseRequestContextResolver(
-                    catalog,
-                    NullLogger<DatabaseRequestContextResolver>.Instance);
+                Resolver = new DatabaseRequestContextResolver(catalog, NullLogger<DatabaseRequestContextResolver>.Instance);
             }
 
             public DatabaseRequestContextResolver Resolver { get; }
@@ -73,6 +71,5 @@ namespace LiteDb.Distributed.Tests
             }
         }
     }
-
 
 }

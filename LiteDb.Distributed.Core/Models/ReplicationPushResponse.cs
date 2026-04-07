@@ -7,5 +7,4 @@ namespace LiteDb.Distributed.Core.Models
         public required int AcceptedCount { get; init; }
     }
 
-
 }

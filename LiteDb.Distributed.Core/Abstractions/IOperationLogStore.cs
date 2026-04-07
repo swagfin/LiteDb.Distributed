@@ -13,5 +13,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task<bool> ContainsOperationAsync(string operationId, CancellationToken cancellationToken = default);
     }
 
-
 }

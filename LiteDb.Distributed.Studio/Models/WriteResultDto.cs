@@ -11,5 +11,4 @@ namespace LiteDb.Distributed.Studio.Models
         public bool IsDeleted { get; set; }
     }
 
-
 }

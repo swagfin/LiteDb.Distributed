@@ -8,5 +8,4 @@ namespace LiteDb.Distributed.Core.Models
         public string Reason { get; init; } = string.Empty;
     }
 
-
 }

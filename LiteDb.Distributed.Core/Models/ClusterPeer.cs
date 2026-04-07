@@ -9,6 +9,4 @@ namespace LiteDb.Distributed.Core.Models
         public bool IsActive { get; init; } = true;
         public DateTime UpdatedUtc { get; init; }
     }
-
-
 }

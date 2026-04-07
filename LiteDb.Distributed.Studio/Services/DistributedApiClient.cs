@@ -1,8 +1,8 @@
-﻿using System.Net;
+﻿using LiteDb.Distributed.Studio.Models;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using LiteDb.Distributed.Studio.Models;
 
 namespace LiteDb.Distributed.Studio.Services
 {
@@ -32,16 +32,12 @@ namespace LiteDb.Distributed.Studio.Services
 
             if (!overviewResult.Success)
             {
-                return ApiResult<List<string>>.Fail(
-                    overviewResult.ErrorMessage ?? "Failed loading server overview.",
-                    overviewResult.StatusCode,
-                    overviewResult.RawBody);
+                return ApiResult<List<string>>.Fail(overviewResult.ErrorMessage ?? "Failed loading server overview.", overviewResult.StatusCode, overviewResult.RawBody);
             }
 
             DashboardDatabaseStatusDto? database = overviewResult.Data?.Databases.FirstOrDefault(x => string.Equals(x.Name, profile.Database, StringComparison.OrdinalIgnoreCase));
 
-            List<string> collections = database?.BusinessCollections
-                ?.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList() ?? [];
+            List<string> collections = database?.BusinessCollections?.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList() ?? [];
 
             return ApiResult<List<string>>.Ok(collections, overviewResult.StatusCode);
         }
@@ -72,9 +68,7 @@ namespace LiteDb.Distributed.Studio.Services
             string? parentVersion = null,
             CancellationToken cancellationToken = default)
         {
-            string path = BuildVersionedPath(
-                $"api/{Uri.EscapeDataString(collection)}/{Uri.EscapeDataString(id)}",
-                parentVersion);
+            string path = BuildVersionedPath($"api/{Uri.EscapeDataString(collection)}/{Uri.EscapeDataString(id)}", parentVersion);
 
             using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Put, profile, path);
             request.Content = CreateJsonContent(payloadJson);
@@ -84,9 +78,7 @@ namespace LiteDb.Distributed.Studio.Services
 
         public Task<ApiResult<WriteResultDto>> DeleteDocumentAsync(ConnectionProfile profile, string collection, string id, string? parentVersion = null, CancellationToken cancellationToken = default)
         {
-            string path = BuildVersionedPath(
-                $"api/{Uri.EscapeDataString(collection)}/{Uri.EscapeDataString(id)}",
-                parentVersion);
+            string path = BuildVersionedPath($"api/{Uri.EscapeDataString(collection)}/{Uri.EscapeDataString(id)}", parentVersion);
 
             using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Delete, profile, path);
             return SendAsync<WriteResultDto>(request, cancellationToken);
@@ -207,6 +199,5 @@ namespace LiteDb.Distributed.Studio.Services
             public int Take { get; set; }
         }
     }
-
 
 }

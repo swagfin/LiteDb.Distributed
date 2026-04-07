@@ -10,5 +10,4 @@ namespace LiteDb.Distributed.Studio.Models
         public List<Dictionary<string, JsonElement>> Rows { get; set; } = [];
     }
 
-
 }

@@ -62,5 +62,4 @@ namespace LiteDb.Distributed.Tests
         }
     }
 
-
 }

@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Core.Models
         KeepLocalAndRecordConflict = 3
     }
 
-
 }

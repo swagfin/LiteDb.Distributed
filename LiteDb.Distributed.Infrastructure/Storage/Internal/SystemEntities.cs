@@ -63,5 +63,4 @@ namespace LiteDb.Distributed.Infrastructure.Storage.Internal
         public DateTime UpdatedUtc { get; set; }
     }
 
-
 }

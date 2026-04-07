@@ -44,8 +44,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                 {
                     if (!SecureEquals(existing.Credential, normalizedCredential))
                     {
-                        throw new DatabaseAuthenticationException(
-                            $"Credential is invalid for database '{normalizedName}'.");
+                        throw new DatabaseAuthenticationException($"Credential is invalid for database '{normalizedName}'.");
                     }
 
                     return ToRegistration(existing);
@@ -176,6 +175,5 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             public DateTime UpdatedUtc { get; set; }
         }
     }
-
 
 }

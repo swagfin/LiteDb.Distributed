@@ -19,5 +19,4 @@ namespace LiteDb.Distributed.Core.Models
         public bool IsTombstone { get; init; }
     }
 
-
 }

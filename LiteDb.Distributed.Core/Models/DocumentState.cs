@@ -13,5 +13,4 @@ namespace LiteDb.Distributed.Core.Models
         public required string Payload { get; init; }
     }
 
-
 }

@@ -440,5 +440,4 @@ namespace LiteDb.Distributed.Infrastructure.Replication
         }
     }
 
-
 }

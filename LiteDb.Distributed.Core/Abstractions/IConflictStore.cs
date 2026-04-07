@@ -7,5 +7,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task RecordConflictAsync(ConflictRecord conflict, CancellationToken cancellationToken = default);
     }
 
-
 }

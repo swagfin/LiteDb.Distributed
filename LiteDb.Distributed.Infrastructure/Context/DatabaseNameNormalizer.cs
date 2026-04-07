@@ -17,9 +17,7 @@ namespace LiteDb.Distributed.Infrastructure.Context
 
             if (!AllowedPattern.IsMatch(normalized))
             {
-                throw new ArgumentException(
-                    "Database name contains invalid characters. Use lowercase letters, numbers, '-' or '_' only.",
-                    nameof(rawName));
+                throw new ArgumentException("Database name contains invalid characters. Use lowercase letters, numbers, '-' or '_' only.", nameof(rawName));
             }
 
             return normalized;

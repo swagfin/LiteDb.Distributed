@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Core.Collections
         public const string Conflicts = "_sys_conflicts";
     }
 
-
 }

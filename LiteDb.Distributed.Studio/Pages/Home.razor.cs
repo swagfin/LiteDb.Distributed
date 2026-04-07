@@ -868,5 +868,4 @@ namespace LiteDb.Distributed.Studio.Pages
         }
     }
 
-
 }

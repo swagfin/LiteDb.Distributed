@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Infrastructure.Replication
         Task<ReplicationPullResponse> PullAsync(ClusterPeer peer, ReplicationPullRequest request, CancellationToken cancellationToken = default);
     }
 
-
 }

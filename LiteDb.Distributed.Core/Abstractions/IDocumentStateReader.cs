@@ -7,5 +7,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task<DocumentState?> GetStateAsync(string collection, string entityId, CancellationToken cancellationToken = default);
     }
 
-
 }

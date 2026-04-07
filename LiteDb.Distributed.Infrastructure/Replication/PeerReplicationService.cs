@@ -100,12 +100,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
             PeerCheckpointRecord checkpoint = await _peerCheckpointStore.GetOrCreatePeerCheckpointAsync(_localNodeId, peer.NodeId, cancellationToken).ConfigureAwait(false);
 
-            IReadOnlyList<OperationRecord> pendingForPush = await _operationLogStore
-                .GetOperationsAfterLogSequenceAsync(
-                    checkpoint.LastPushedLocalLogSequence,
-                    _batchSize,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            IReadOnlyList<OperationRecord> pendingForPush = await _operationLogStore.GetOperationsAfterLogSequenceAsync(checkpoint.LastPushedLocalLogSequence, _batchSize, cancellationToken).ConfigureAwait(false);
 
             int pushedCount = 0;
             int pushAcceptedCount = 0;
@@ -161,9 +156,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 // Pull checkpoint tracks the furthest peer log position we have observed and processed.
                 checkpoint = checkpoint with
                 {
-                    LastPulledPeerLogSequence = Math.Max(
-                        checkpoint.LastPulledPeerLogSequence,
-                        pulled.Operations.Max(x => x.LogSequence)),
+                    LastPulledPeerLogSequence = Math.Max(checkpoint.LastPulledPeerLogSequence, pulled.Operations.Max(x => x.LogSequence)),
                     UpdatedUtc = DateTime.UtcNow
                 };
             }
@@ -177,6 +170,5 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             _logger.Log(logLevel, "Peer replication completed. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Pushed={Pushed} PushAccepted={PushAccepted} Pulled={Pulled} PullAccepted={PullAccepted} PullConflicts={PullConflicts} CheckpointPush={CheckpointPush} CheckpointPull={CheckpointPull} DurationMs={DurationMs}", _localNodeId, peer.NodeId, pushedCount, pushAcceptedCount, pulledCount, pulledAcceptedCount, pulledConflictCount, checkpoint.LastPushedLocalLogSequence, checkpoint.LastPulledPeerLogSequence, peerStopwatch.Elapsed.TotalMilliseconds);
         }
     }
-
 
 }

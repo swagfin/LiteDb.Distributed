@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task SavePeerCheckpointAsync(PeerCheckpointRecord checkpoint, CancellationToken cancellationToken = default);
     }
 
-
 }

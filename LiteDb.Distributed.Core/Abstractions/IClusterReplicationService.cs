@@ -7,5 +7,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task ReplicateOnceAsync(CancellationToken cancellationToken = default);
     }
 
-
 }

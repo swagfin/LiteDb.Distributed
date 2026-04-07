@@ -7,5 +7,4 @@ namespace LiteDb.Distributed.Infrastructure.Context
         Task<DatabaseRequestContext> ResolveAsync(IHeaderDictionary headers, CancellationToken cancellationToken = default);
     }
 
-
 }

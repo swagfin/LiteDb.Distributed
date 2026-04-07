@@ -28,24 +28,17 @@ builder.Build().Run();
 
 static IResourceBuilder<ProjectResource> AddNodeProject(IDistributedApplicationBuilder builder, string name)
 {
-    return builder.AddProject<Projects.LiteDb_Distributed_Server>(
-            name,
-            options =>
-            {
-                options.ExcludeLaunchProfile = true;
-                options.ExcludeKestrelEndpoints = true;
-            });
+    return builder.AddProject<Projects.LiteDb_Distributed_Server>(name, options =>
+    {
+        options.ExcludeLaunchProfile = true;
+        options.ExcludeKestrelEndpoints = true;
+    });
 }
 
 static void ConfigureNode(IResourceBuilder<ProjectResource> node, string nodeId, string url, int port, params (string NodeId, string BaseUrl)[] peers)
 {
     node.WithEnvironment("urls", url)
-        .WithHttpEndpoint(
-            targetPort: port,
-            port: port,
-            name: "http",
-            env: null,
-            isProxied: false)
+        .WithHttpEndpoint(targetPort: port, port: port, name: "http", env: null, isProxied: false)
         .WithEnvironment("Node__NodeId", nodeId);
 
     for (int index = 0; index < peers.Length; index++)

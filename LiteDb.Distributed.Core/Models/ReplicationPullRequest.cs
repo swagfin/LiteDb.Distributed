@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Core.Models
         public int BatchSize { get; init; } = 200;
     }
 
-
 }

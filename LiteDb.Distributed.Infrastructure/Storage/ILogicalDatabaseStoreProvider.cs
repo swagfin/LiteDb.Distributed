@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Infrastructure.Storage
         Task<LiteDbNodeStore> GetStoreAsync(string databaseName, string credential, CancellationToken cancellationToken = default);
     }
 
-
 }

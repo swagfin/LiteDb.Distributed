@@ -11,9 +11,7 @@ namespace LiteDb.Distributed.Infrastructure.Conflict
         public CriticalCollectionConflictResolver(IConflictResolver inner, IEnumerable<string> criticalCollections)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-            _criticalCollections = new HashSet<string>(
-                criticalCollections ?? Enumerable.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
+            _criticalCollections = new HashSet<string>(criticalCollections ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
         }
 
         public async Task<ConflictResolutionResult> ResolveAsync(ConflictResolutionContext context, CancellationToken cancellationToken = default)
@@ -42,6 +40,5 @@ namespace LiteDb.Distributed.Infrastructure.Conflict
             };
         }
     }
-
 
 }

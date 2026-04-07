@@ -9,5 +9,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task UpsertPeerAsync(ClusterPeer peer, CancellationToken cancellationToken = default);
     }
 
-
 }

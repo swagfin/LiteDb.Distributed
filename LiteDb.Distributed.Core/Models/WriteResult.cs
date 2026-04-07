@@ -11,6 +11,4 @@ namespace LiteDb.Distributed.Core.Models
         public required bool IsDeleted { get; init; }
         public required OperationRecord Operation { get; init; }
     }
-
-
 }

@@ -7,5 +7,4 @@ namespace LiteDb.Distributed.Core.Abstractions
         Task<bool> ApplyRemoteOperationAsync(OperationRecord operation, CancellationToken cancellationToken = default);
     }
 
-
 }
