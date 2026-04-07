@@ -96,7 +96,7 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                     <strong>@MaskApiKey(ActiveProfile?.Credential)</strong>
                 </article>
                 <div class="connected-profile-actions">
-                    <button type="button" class="btn btn-ghost" @onclick="OpenProfileManagement">Manage Profiles</button>
+                    <button type="button" class="btn btn-warning" @onclick="DisconnectAsync" disabled="@_busy">Disconnect</button>
                 </div>
             </div>
 
@@ -116,10 +116,6 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                 <article>
                     <span>Online Nodes</span>
                     <strong>@(_overview?.Nodes.Count(n => n.IsOnline) ?? 0)</strong>
-                </article>
-                <article>
-                    <span>Logical DBs</span>
-                    <strong>@(_overview?.Databases.Count ?? 0)</strong>
                 </article>
                 <article>
                     <span>Tables</span>
@@ -142,8 +138,7 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                     </div>
 
                     <div class="table-create-row">
-                        <input @bind="_newCollectionName" placeholder="new_table_name" />
-                        <button type="button" class="btn btn-primary" @onclick="CreateCollectionAsync" disabled="@(_busy || _creatingCollection || ActiveProfile is null)">@(_creatingCollection ? "Creating..." : "Create")</button>
+                        <button type="button" class="btn btn-primary" @onclick="OpenTableModal" disabled="@(_busy || _creatingCollection || ActiveProfile is null)">Add Table</button>
                     </div>
 
                     <div class="tables-list">
@@ -205,10 +200,6 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                             <textarea class="query-textarea" @bind="_queryText" spellcheck="false"></textarea>
                         </label>
                         <div class="query-editor-actions">
-                            <label>
-                                <span>Max Rows</span>
-                                <input type="number" min="1" max="10000" step="1" @bind="_queryTake" />
-                            </label>
                             <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Use Table Template</button>
                             <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run LiteQL</button>
                         </div>
@@ -290,6 +281,28 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                 <button type="button" class="btn btn-ghost" @onclick="CloseProfileModal" disabled="@(_busy || IsProfileActionBusy)">Cancel</button>
                 <button type="button" class="btn btn-primary" @onclick="SaveProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_savingProfile ? "Saving..." : "Save")</button>
                 <button type="button" class="btn btn-success" @onclick="SaveAndConnectProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile ? "Connecting..." : "Save & Connect")</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showTableModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CloseTableModal">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Add Table</div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseTableModal">Close</button>
+            </div>
+
+            <label>
+                <span>Table Name</span>
+                <input @bind="_newCollectionName" placeholder="new_table_name" />
+            </label>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CloseTableModal" disabled="@(_busy || _creatingCollection)">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="CreateCollectionFromModalAsync" disabled="@(_busy || _creatingCollection || ActiveProfile is null)">@(_creatingCollection ? "Creating..." : "Create")</button>
             </div>
         </section>
     </div>

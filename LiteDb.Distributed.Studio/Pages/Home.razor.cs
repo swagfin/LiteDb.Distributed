@@ -37,9 +37,9 @@ namespace LiteDb.Distributed.Studio.Pages
         private string? _selectedCollection;
         private string _newCollectionName = string.Empty;
         private bool _creatingCollection;
+        private bool _showTableModal;
         private bool _includeSystemCollections;
 
-        private int _queryTake = 200;
         private string _queryText = "SELECT $ FROM OrderTransactions LIMIT 200";
 
         private List<Dictionary<string, JsonElement>> _documents = [];
@@ -165,9 +165,31 @@ namespace LiteDb.Distributed.Studio.Pages
         private void OpenProfileManagement()
         {
             _showProfileManagement = true;
+            _showTableModal = false;
             ClearMessages();
             CloseDocumentEditorModal();
             DismissRowContextMenu();
+        }
+
+        private async Task DisconnectAsync()
+        {
+            _activeProfileId = null;
+            _showProfileManagement = true;
+            _overview = null;
+            _discoveredCollections = [];
+            _collections = [];
+            _selectedCollection = null;
+            _documents = [];
+            _selectedDocument = null;
+            _selectedDocumentId = string.Empty;
+            _newCollectionName = string.Empty;
+            _showTableModal = false;
+            CreateDocumentTemplate();
+            CloseDocumentEditorModal();
+            DismissRowContextMenu();
+            await ProfileStore.SaveActiveProfileIdAsync(null).ConfigureAwait(false);
+            _infoMessage = "Disconnected. Session ended.";
+            _errorMessage = null;
         }
 
         private void OpenDataExplorer()
@@ -211,6 +233,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 _collections = [];
                 _selectedCollection = null;
                 _newCollectionName = string.Empty;
+                _showTableModal = false;
                 _documents = [];
                 _selectedDocument = null;
                 _selectedDocumentId = string.Empty;
@@ -662,6 +685,28 @@ namespace LiteDb.Distributed.Studio.Pages
             }
         }
 
+        private void OpenTableModal()
+        {
+            _showTableModal = true;
+            _newCollectionName = string.Empty;
+            ClearMessages();
+        }
+
+        private void CloseTableModal()
+        {
+            _showTableModal = false;
+        }
+
+        private async Task CreateCollectionFromModalAsync()
+        {
+            await CreateCollectionAsync().ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                _showTableModal = false;
+            }
+        }
+
         private async Task RunLiteQueryAsync()
         {
             ConnectionProfile? profile = ActiveProfile;
@@ -679,12 +724,19 @@ namespace LiteDb.Distributed.Studio.Pages
                 return;
             }
 
+            if (!TryValidateQuerySafety(_queryText, out string? safetyError))
+            {
+                _errorMessage = safetyError;
+                _infoMessage = null;
+                return;
+            }
+
             _busy = true;
             ClearMessages();
 
             try
             {
-                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, _queryText, _queryTake).ConfigureAwait(false);
+                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, _queryText, 10_000).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -721,7 +773,38 @@ namespace LiteDb.Distributed.Studio.Pages
                 return;
             }
 
-            _queryText = $"SELECT $ FROM {_selectedCollection} LIMIT {_queryTake}";
+            _queryText = $"SELECT $ FROM {_selectedCollection} LIMIT {DefaultBrowseTake}";
+        }
+
+        private static bool TryValidateQuerySafety(string queryText, out string? error)
+        {
+            string normalized = (queryText ?? string.Empty).Trim();
+            if (normalized.Length == 0)
+            {
+                error = "Enter a query first.";
+                return false;
+            }
+
+            if (!normalized.StartsWith("select", StringComparison.OrdinalIgnoreCase))
+            {
+                error = null;
+                return true;
+            }
+
+            bool hasWhere = normalized.Contains(" where ", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("\nwhere ", StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("\twhere ", StringComparison.OrdinalIgnoreCase);
+            bool hasLimit = normalized.Contains(" limit ", StringComparison.OrdinalIgnoreCase)
+                || normalized.EndsWith(" limit", StringComparison.OrdinalIgnoreCase);
+
+            if (!hasWhere && !hasLimit)
+            {
+                error = "SELECT queries without a WHERE clause must include LIMIT.";
+                return false;
+            }
+
+            error = null;
+            return true;
         }
 
         private void SelectDocument(Dictionary<string, JsonElement> document)
