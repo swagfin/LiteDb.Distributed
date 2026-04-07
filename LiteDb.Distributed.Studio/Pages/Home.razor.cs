@@ -8,6 +8,8 @@ namespace LiteDb.Distributed.Studio.Pages
 {
     public partial class Home : ComponentBase
     {
+        private const string CacheCollectionName = "cache";
+
         [Inject]
         public required ProfileStore ProfileStore { get; init; }
 
@@ -15,6 +17,7 @@ namespace LiteDb.Distributed.Studio.Pages
         public required DistributedApiClient ApiClient { get; init; }
 
         private static readonly Regex DatabaseNamePattern = new("^[a-z0-9][a-z0-9_-]{0,62}$", RegexOptions.Compiled);
+        private static readonly HashSet<string> ReservedCollections = new(StringComparer.OrdinalIgnoreCase) { "cache" };
 
         private static readonly JsonSerializerOptions PrettyJsonOptions = new()
         {
@@ -28,9 +31,12 @@ namespace LiteDb.Distributed.Studio.Pages
         private Guid? _activeProfileId;
 
         private DashboardOverviewDto? _overview;
+        private List<string> _discoveredCollections = [];
         private List<string> _collections = [];
         private string? _selectedCollection;
-        private string _collectionInput = string.Empty;
+        private string _newCollectionName = string.Empty;
+        private bool _creatingCollection;
+        private bool _includeSystemCollections;
 
         private int _skip;
         private int _take = 100;
@@ -61,6 +67,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool ShowProfileManagement => _showProfileManagement || ActiveProfile is null;
 
         private bool IsProfileActionBusy => _savingProfile || _connectingProfile;
+        private bool SelectedCollectionIsSystem => IsReservedCollection(_selectedCollection);
 
         private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {ActiveProfile.BaseUrl}";
 
@@ -215,9 +222,10 @@ namespace LiteDb.Distributed.Studio.Pages
                 _activeProfileId = null;
                 _showProfileManagement = true;
                 _overview = null;
+                _discoveredCollections = [];
                 _collections = [];
                 _selectedCollection = null;
-                _collectionInput = string.Empty;
+                _newCollectionName = string.Empty;
                 _documents = [];
                 _selectedDocument = null;
                 _selectedDocumentId = string.Empty;
@@ -303,17 +311,24 @@ namespace LiteDb.Distributed.Studio.Pages
 
                 _activeProfileId = profile.Id;
                 await ProfileStore.SaveActiveProfileIdAsync(profile.Id).ConfigureAwait(false);
-                _collections = collectionsResult.Data ?? [];
+                List<string> discoveredCollections = collectionsResult.Data ?? [];
+                _discoveredCollections = NormalizeCollectionNames(discoveredCollections);
+                RebuildVisibleCollections();
 
                 if (_collections.Count == 0)
                 {
                     _documents = [];
                     _selectedDocument = null;
-                    _selectedCollection = string.IsNullOrWhiteSpace(_collectionInput) ? null : _collectionInput.Trim();
+                    _selectedCollection = null;
 
                     if (!quiet)
                     {
-                        _infoMessage = "Connected. No collections discovered yet for this database.";
+                        bool reservedCollectionsOnly = discoveredCollections.Any(IsReservedCollection);
+                        _infoMessage = reservedCollectionsOnly && !_includeSystemCollections
+                            ? "Connected. Only reserved collections are present. Turn on 'Show System Tables' to inspect them."
+                            : reservedCollectionsOnly
+                            ? "Connected. Only reserved collections are present. Create a new table to begin."
+                            : "Connected. No tables discovered yet for this database. Create one to begin.";
                     }
 
                     return true;
@@ -325,7 +340,6 @@ namespace LiteDb.Distributed.Studio.Pages
                     _selectedCollection = _collections[0];
                 }
 
-                _collectionInput = _selectedCollection;
                 UseCollectionTemplate();
 
                 await BrowseCollectionAsync().ConfigureAwait(false);
@@ -348,21 +362,47 @@ namespace LiteDb.Distributed.Studio.Pages
             }
         }
 
-        private async Task UseCollectionInputAsync()
+        private async Task SelectCollectionAsync(string collection)
         {
-            if (string.IsNullOrWhiteSpace(_collectionInput))
+            if (string.IsNullOrWhiteSpace(collection))
             {
-                _errorMessage = "Collection name cannot be empty.";
-                _infoMessage = null;
                 return;
             }
 
-            _selectedCollection = _collectionInput.Trim();
+            _selectedCollection = collection.Trim();
+            UseCollectionTemplate();
+            await BrowseCollectionAsync().ConfigureAwait(false);
+        }
 
-            if (!_collections.Contains(_selectedCollection, StringComparer.OrdinalIgnoreCase))
+        private async Task OnSystemCollectionsChangedAsync(ChangeEventArgs args)
+        {
+            bool includeSystemCollections = false;
+            if (args.Value is bool typedValue)
             {
-                _collections.Add(_selectedCollection);
-                _collections = _collections.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+                includeSystemCollections = typedValue;
+            }
+            else if (args.Value is string rawValue)
+            {
+                includeSystemCollections = string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(rawValue, "on", StringComparison.OrdinalIgnoreCase);
+            }
+
+            _includeSystemCollections = includeSystemCollections;
+            RebuildVisibleCollections();
+
+            if (_collections.Count == 0)
+            {
+                _selectedCollection = null;
+                _documents = [];
+                _selectedDocument = null;
+                CreateDocumentTemplate();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_selectedCollection)
+                || !_collections.Contains(_selectedCollection, StringComparer.OrdinalIgnoreCase))
+            {
+                _selectedCollection = _collections[0];
             }
 
             UseCollectionTemplate();
@@ -383,6 +423,20 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 _errorMessage = "Select or enter a collection before querying.";
                 _infoMessage = null;
+                return;
+            }
+
+            if (IsReservedCollection(_selectedCollection))
+            {
+                if (!_includeSystemCollections)
+                {
+                    _errorMessage = $"Collection '{_selectedCollection}' is reserved. Use '/api/cache' endpoints.";
+                    _infoMessage = null;
+                    _documents = [];
+                    return;
+                }
+
+                await BrowseSystemCollectionAsync(profile).ConfigureAwait(false);
                 return;
             }
 
@@ -419,6 +473,112 @@ namespace LiteDb.Distributed.Studio.Pages
             }
             finally
             {
+                _busy = false;
+            }
+        }
+
+        private async Task BrowseSystemCollectionAsync(ConnectionProfile profile)
+        {
+            _busy = true;
+            ClearMessages();
+
+            try
+            {
+                int safeTake = Math.Clamp(_take, 1, 10_000);
+                string query = $"SELECT $ FROM {_selectedCollection} LIMIT {safeTake}";
+                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, query, safeTake).ConfigureAwait(false);
+
+                if (!result.Success)
+                {
+                    _errorMessage = result.ErrorMessage;
+                    _documents = [];
+                    return;
+                }
+
+                _documents = result.Data?.Rows ?? [];
+
+                if (_documents.Count == 0)
+                {
+                    _selectedDocument = null;
+                    CreateDocumentTemplate();
+                    _infoMessage = $"System table '{_selectedCollection}' returned no rows.";
+                    return;
+                }
+
+                if (!TrySelectDocumentById(_selectedDocumentId))
+                {
+                    SelectDocument(_documents[0]);
+                }
+
+                _infoMessage = $"Loaded {_documents.Count} row(s) from system table '{_selectedCollection}'.";
+            }
+            finally
+            {
+                _busy = false;
+            }
+        }
+
+        private async Task CreateCollectionAsync()
+        {
+            ConnectionProfile? profile = ActiveProfile;
+            if (profile is null)
+            {
+                _errorMessage = "Connect a profile first.";
+                _infoMessage = null;
+                return;
+            }
+
+            string collectionName = (_newCollectionName ?? string.Empty).Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(collectionName))
+            {
+                _errorMessage = "Table name is required.";
+                _infoMessage = null;
+                return;
+            }
+
+            if (!DatabaseNamePattern.IsMatch(collectionName))
+            {
+                _errorMessage = "Table name can only include lowercase letters, digits, '-' or '_' (max 63 chars).";
+                _infoMessage = null;
+                return;
+            }
+
+            if (IsReservedCollection(collectionName))
+            {
+                _errorMessage = $"Table '{collectionName}' is reserved. Choose another name.";
+                _infoMessage = null;
+                return;
+            }
+
+            _creatingCollection = true;
+            _busy = true;
+            ClearMessages();
+
+            try
+            {
+                ApiResult<JsonElement> result = await ApiClient.RegisterCollectionAsync(profile, collectionName).ConfigureAwait(false);
+                if (!result.Success)
+                {
+                    _errorMessage = result.ErrorMessage;
+                    return;
+                }
+
+                if (!_collections.Contains(collectionName, StringComparer.OrdinalIgnoreCase))
+                {
+                    _discoveredCollections.Add(collectionName);
+                    _discoveredCollections = NormalizeCollectionNames(_discoveredCollections);
+                    RebuildVisibleCollections();
+                }
+
+                _selectedCollection = _collections.First(x => string.Equals(x, collectionName, StringComparison.OrdinalIgnoreCase));
+                _newCollectionName = string.Empty;
+                UseCollectionTemplate();
+                await BrowseCollectionAsync().ConfigureAwait(false);
+                _infoMessage = $"Table '{collectionName}' registered.";
+            }
+            finally
+            {
+                _creatingCollection = false;
                 _busy = false;
             }
         }
@@ -514,6 +674,22 @@ namespace LiteDb.Distributed.Studio.Pages
 
             try
             {
+                if (SelectedCollectionIsSystem && string.Equals(_selectedCollection, CacheCollectionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    ApiResult<Dictionary<string, JsonElement>> cacheResult = await ApiClient.GetCacheEntryAsync(profile, _idLookup.Trim()).ConfigureAwait(false);
+                    if (!cacheResult.Success || cacheResult.Data is null)
+                    {
+                        _errorMessage = cacheResult.ErrorMessage ?? "Cache entry not found.";
+                        _documents = [];
+                        return;
+                    }
+
+                    _documents = [cacheResult.Data];
+                    SelectDocument(cacheResult.Data);
+                    _infoMessage = "Cache entry loaded by key.";
+                    return;
+                }
+
                 ApiResult<Dictionary<string, JsonElement>> result = await ApiClient.GetDocumentByIdAsync(profile, _selectedCollection, _idLookup.Trim()).ConfigureAwait(false);
 
                 if (!result.Success || result.Data is null)
@@ -564,6 +740,13 @@ namespace LiteDb.Distributed.Studio.Pages
             if (string.IsNullOrWhiteSpace(_selectedCollection))
             {
                 _errorMessage = "Select or enter a collection first.";
+                _infoMessage = null;
+                return;
+            }
+
+            if (SelectedCollectionIsSystem)
+            {
+                _errorMessage = "System tables are read-only in Studio. Save is disabled for this table.";
                 _infoMessage = null;
                 return;
             }
@@ -637,6 +820,13 @@ namespace LiteDb.Distributed.Studio.Pages
             if (string.IsNullOrWhiteSpace(_selectedCollection))
             {
                 _errorMessage = "Select or enter a collection first.";
+                _infoMessage = null;
+                return;
+            }
+
+            if (SelectedCollectionIsSystem)
+            {
+                _errorMessage = "System tables are read-only in Studio. Delete is disabled for this table.";
                 _infoMessage = null;
                 return;
             }
@@ -821,6 +1011,40 @@ namespace LiteDb.Distributed.Studio.Pages
 
             value = default;
             return false;
+        }
+
+        private static bool IsReservedCollection(string? collectionName)
+        {
+            return !string.IsNullOrWhiteSpace(collectionName)
+                && ReservedCollections.Contains(collectionName.Trim());
+        }
+
+        private static List<string> FilterBrowsableCollections(IEnumerable<string> collections)
+        {
+            return collections
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Where(x => !IsReservedCollection(x))
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static List<string> NormalizeCollectionNames(IEnumerable<string> collections)
+        {
+            return collections
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private void RebuildVisibleCollections()
+        {
+            _collections = _includeSystemCollections
+                ? NormalizeCollectionNames(_discoveredCollections)
+                : FilterBrowsableCollections(_discoveredCollections);
         }
 
         private static string MaskApiKey(string? apiKey)

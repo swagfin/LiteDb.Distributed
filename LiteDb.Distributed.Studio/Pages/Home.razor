@@ -1,4 +1,5 @@
 @page "/"
+@using System.Text.Json
 
 <PageTitle>LiteDb Distributed Studio</PageTitle>
 
@@ -38,14 +39,14 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
             }
 
             <div class="profile-list">
-                @foreach (var profile in OrderedProfiles)
+                @foreach (ConnectionProfile profile in OrderedProfiles)
                 {
                     <button type="button"
                             class="profile-chip @(profile.Id == _selectedProfileId ? "active" : string.Empty)"
                             @onclick="() => SelectProfile(profile.Id)"
                             disabled="@(_busy || IsProfileActionBusy)">
                         <span class="profile-chip-name">@profile.Name</span>
-                        <span class="profile-chip-meta">@profile.Database · @profile.BaseUrl</span>
+                        <span class="profile-chip-meta">@profile.Database - @profile.BaseUrl</span>
                     </button>
                 }
 
@@ -129,120 +130,161 @@ else if (!string.IsNullOrWhiteSpace(_infoMessage))
                     <strong>@(_overview?.Databases.Count ?? 0)</strong>
                 </article>
                 <article>
-                    <span>Collections</span>
+                    <span>Tables</span>
                     <strong>@_collections.Count</strong>
                 </article>
             </div>
 
-            <div class="query-toolbar">
-                <label>
-                    <span>Collection</span>
-                    <select @bind="_selectedCollection">
-                        <option value="">Choose collection</option>
-                        @foreach (var collection in _collections)
-                        {
-                            <option value="@collection">@collection</option>
-                        }
-                    </select>
-                </label>
-                <label>
-                    <span>Or Type Collection</span>
-                    <div class="inline-input">
-                        <input @bind="_collectionInput" placeholder="OrderTransactions" />
-                        <button type="button" class="btn btn-ghost" @onclick="UseCollectionInputAsync">Use</button>
+            <div class="explorer-body">
+                <aside class="tables-pane">
+                    <div class="tables-head">
+                        <div class="h3">Tables</div>
+                        <span class="tables-count">@_collections.Count</span>
                     </div>
-                </label>
-                <label>
-                    <span>Skip</span>
-                    <input type="number" min="0" step="1" @bind="_skip" />
-                </label>
-                <label>
-                    <span>Take</span>
-                    <input type="number" min="1" max="10000" step="1" @bind="_take" />
-                </label>
-                <div class="toolbar-buttons">
-                    <button type="button" class="btn btn-primary" @onclick="BrowseCollectionAsync" disabled="@(ActiveProfile is null)">Run Collection Query</button>
-                </div>
-            </div>
 
-            <div class="id-query-row">
-                <label>
-                    <span>Lookup by Id</span>
-                    <div class="inline-input">
-                        <input @bind="_idLookup" placeholder="ordtx-20260407123456000001" />
-                        <button type="button" class="btn btn-ghost" @onclick="LookupByIdAsync" disabled="@(ActiveProfile is null)">Find</button>
-                        <button type="button" class="btn btn-ghost" @onclick="ClearIdFilterAsync" disabled="@(ActiveProfile is null)">Clear</button>
+                    <div class="tables-options">
+                        <label class="toggle-option">
+                            <input type="checkbox" checked="@_includeSystemCollections" @onchange="OnSystemCollectionsChangedAsync" />
+                            <span>Show System Tables</span>
+                        </label>
                     </div>
-                </label>
-            </div>
 
-            <div class="query-editor-row">
-                <label>
-                    <span>LiteQL Query (Read-Only)</span>
-                    <textarea class="query-textarea" @bind="_queryText" spellcheck="false"></textarea>
-                </label>
-                <div class="query-editor-actions">
-                    <label>
-                        <span>Max Rows</span>
-                        <input type="number" min="1" max="10000" step="1" @bind="_queryTake" />
-                    </label>
-                    <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Use Collection Template</button>
-                    <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run LiteQL</button>
-                </div>
-            </div>
+                    <div class="table-create-row">
+                        <input @bind="_newCollectionName" placeholder="new_table_name" />
+                        <button type="button" class="btn btn-primary" @onclick="CreateCollectionAsync" disabled="@(_busy || _creatingCollection || ActiveProfile is null)">@(_creatingCollection ? "Creating..." : "Create")</button>
+                    </div>
 
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            @foreach (var column in DisplayColumns)
-                            {
-                                <th>@column</th>
-                            }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (_documents.Count == 0)
+                    <div class="tables-list">
+                        @if (_collections.Count == 0)
                         {
-                            <tr>
-                                <td class="empty-row" colspan="@(Math.Max(DisplayColumns.Count, 1))">No documents loaded.</td>
-                            </tr>
+                            <p class="empty-label">No browsable tables yet. Create one to begin.</p>
                         }
                         else
                         {
-                            @foreach (var document in _documents)
+                            @foreach (string collection in _collections)
                             {
-                                <tr class="@GetDocumentRowClass(document)" @onclick="() => SelectDocument(document)">
-                                    @foreach (var column in DisplayColumns)
-                                    {
-                                        <td>@FormatCell(document, column)</td>
-                                    }
-                                </tr>
+                                <button type="button"
+                                        class="table-item @(string.Equals(collection, _selectedCollection, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty)"
+                                        @onclick="() => SelectCollectionAsync(collection)">
+                                    <span class="table-item-content">
+                                        <span>@collection</span>
+                                        @if (IsReservedCollection(collection))
+                                        {
+                                            <span class="table-badge">system</span>
+                                        }
+                                    </span>
+                                </button>
                             }
                         }
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="document-editor">
-                <div class="editor-head">
-                    <div>
-                        <div class="h3">Document Editor</div>
-                        <p>Use JSON payloads and save directly to the distributed node.</p>
                     </div>
-                    <div class="action-row compact">
-                        <button type="button" class="btn btn-ghost" @onclick="CreateDocumentTemplate">New Document</button>
-                        <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null)">Save</button>
-                        <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null)">Delete</button>
+                </aside>
+
+                <section class="query-results-pane">
+                    @if (SelectedCollectionIsSystem)
+                    {
+                        <div class="status-strip status-info system-collection-note">
+                            System table mode is read-only. Save/Delete are disabled for '@_selectedCollection'.
+                        </div>
+                    }
+
+                    <div class="query-toolbar">
+                        <label>
+                            <span>Active Table</span>
+                            <input value="@(_selectedCollection ?? string.Empty)" readonly />
+                        </label>
+                        <label>
+                            <span>Skip</span>
+                            <input type="number" min="0" step="1" @bind="_skip" />
+                        </label>
+                        <label>
+                            <span>Take</span>
+                            <input type="number" min="1" max="10000" step="1" @bind="_take" />
+                        </label>
+                        <div class="toolbar-buttons">
+                            <button type="button" class="btn btn-primary" @onclick="BrowseCollectionAsync" disabled="@(ActiveProfile is null || string.IsNullOrWhiteSpace(_selectedCollection))">Run Table Query</button>
+                        </div>
                     </div>
-                </div>
 
-                <label class="id-field">
-                    <span>Document Id</span>
-                    <input @bind="_selectedDocumentId" placeholder="Id used for PUT/DELETE" />
-                </label>
+                    <div class="id-query-row">
+                        <label>
+                            <span>@(SelectedCollectionIsSystem ? "Lookup by Key" : "Lookup by Id")</span>
+                            <div class="inline-input">
+                                <input @bind="_idLookup" placeholder="@(SelectedCollectionIsSystem ? "cache-key" : "ordtx-20260407123456000001")" />
+                                <button type="button" class="btn btn-ghost" @onclick="LookupByIdAsync" disabled="@(ActiveProfile is null)">Find</button>
+                                <button type="button" class="btn btn-ghost" @onclick="ClearIdFilterAsync" disabled="@(ActiveProfile is null)">Clear</button>
+                            </div>
+                        </label>
+                    </div>
 
-                <textarea @bind="_documentJson" spellcheck="false"></textarea>
+                    <div class="query-editor-row">
+                        <label>
+                            <span>LiteQL Query (Read-Only)</span>
+                            <textarea class="query-textarea" @bind="_queryText" spellcheck="false"></textarea>
+                        </label>
+                        <div class="query-editor-actions">
+                            <label>
+                                <span>Max Rows</span>
+                                <input type="number" min="1" max="10000" step="1" @bind="_queryTake" />
+                            </label>
+                            <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Use Table Template</button>
+                            <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run LiteQL</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    @foreach (string column in DisplayColumns)
+                                    {
+                                        <th>@column</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (_documents.Count == 0)
+                                {
+                                    <tr>
+                                        <td class="empty-row" colspan="@(Math.Max(DisplayColumns.Count, 1))">No documents loaded.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (Dictionary<string, JsonElement> document in _documents)
+                                    {
+                                        <tr class="@GetDocumentRowClass(document)" @onclick="() => SelectDocument(document)">
+                                            @foreach (string column in DisplayColumns)
+                                            {
+                                                <td>@FormatCell(document, column)</td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="document-editor">
+                        <div class="editor-head">
+                            <div>
+                                <div class="h3">Document Editor</div>
+                                <p>Use JSON payloads and save directly to the distributed node.</p>
+                            </div>
+                            <div class="action-row compact">
+                                <button type="button" class="btn btn-ghost" @onclick="CreateDocumentTemplate" disabled="@SelectedCollectionIsSystem">New Document</button>
+                                <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem)">Save</button>
+                                <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
+                            </div>
+                        </div>
+
+                        <label class="id-field">
+                            <span>Document Id</span>
+                            <input @bind="_selectedDocumentId" placeholder="Id used for PUT/DELETE" readonly="@SelectedCollectionIsSystem" />
+                        </label>
+
+                        <textarea @bind="_documentJson" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
+                    </div>
+                </section>
             </div>
         </section>
     }

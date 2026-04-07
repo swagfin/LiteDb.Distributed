@@ -60,6 +60,14 @@ namespace LiteDb.Distributed.Studio.Services
             return SendAsync<Dictionary<string, JsonElement>>(request, cancellationToken);
         }
 
+        public Task<ApiResult<Dictionary<string, JsonElement>>> GetCacheEntryAsync(ConnectionProfile profile, string key, CancellationToken cancellationToken = default)
+        {
+            string path = $"api/cache/{Uri.EscapeDataString(key)}";
+
+            using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Get, profile, path);
+            return SendAsync<Dictionary<string, JsonElement>>(request, cancellationToken);
+        }
+
         public Task<ApiResult<WriteResultDto>> PutDocumentAsync(
             ConnectionProfile profile,
             string collection,
@@ -82,6 +90,13 @@ namespace LiteDb.Distributed.Studio.Services
 
             using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Delete, profile, path);
             return SendAsync<WriteResultDto>(request, cancellationToken);
+        }
+
+        public Task<ApiResult<JsonElement>> RegisterCollectionAsync(ConnectionProfile profile, string collection, CancellationToken cancellationToken = default)
+        {
+            string path = $"api/{Uri.EscapeDataString(collection)}/register";
+            using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Post, profile, path);
+            return SendAsync<JsonElement>(request, cancellationToken);
         }
 
         public Task<ApiResult<QueryResponseDto>> ExecuteQueryAsync(ConnectionProfile profile, string query, int take = 200, CancellationToken cancellationToken = default)

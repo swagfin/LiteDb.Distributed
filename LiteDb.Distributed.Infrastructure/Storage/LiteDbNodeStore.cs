@@ -240,6 +240,19 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             }
         }
 
+        public Task EnsureCollectionAsync(string collection, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ValidateBusinessCollection(collection);
+
+            lock (_gate)
+            {
+                // Ensuring an index materializes the collection without requiring seed documents.
+                BusinessCollection(collection).EnsureIndex("_id");
+                return Task.CompletedTask;
+            }
+        }
+
         public Task<TDocument?> GetByIdAsync<TDocument>(string collection, string entityId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

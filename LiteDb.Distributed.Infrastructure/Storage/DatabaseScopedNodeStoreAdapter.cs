@@ -32,6 +32,12 @@ namespace LiteDb.Distributed.Infrastructure.Storage
             return await store.DeleteAsync(collection, entityId, parentVersion, cancellationToken).ConfigureAwait(false);
         }
 
+        public async Task EnsureCollectionAsync(string collection, CancellationToken cancellationToken = default)
+        {
+            LiteDbNodeStore store = await _storeProvider.GetCurrentStoreAsync(cancellationToken).ConfigureAwait(false);
+            await store.EnsureCollectionAsync(collection, cancellationToken).ConfigureAwait(false);
+        }
+
         public async Task<TDocument?> GetByIdAsync<TDocument>(string collection, string entityId, CancellationToken cancellationToken = default)
         {
             LiteDbNodeStore store = await _storeProvider.GetCurrentStoreAsync(cancellationToken).ConfigureAwait(false);

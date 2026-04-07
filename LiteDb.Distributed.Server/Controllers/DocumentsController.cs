@@ -106,6 +106,34 @@ namespace LiteDb.Distributed.Server.Controllers
             }
         }
 
+        [HttpPost("register")]
+        public async Task<IActionResult> RegisterCollectionAsync(string documentName, CancellationToken cancellationToken)
+        {
+            if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
+            {
+                return reservedRejection;
+            }
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            _logger.LogDebug("Collection register request. Collection={Collection}", documentName);
+
+            try
+            {
+                await _writer.EnsureCollectionAsync(documentName, cancellationToken).ConfigureAwait(false);
+                stopwatch.Stop();
+
+                _logger.LogInformation("Collection register completed. Collection={Collection} DurationMs={DurationMs}", documentName, stopwatch.Elapsed.TotalMilliseconds);
+
+                return Ok();
+            }
+            catch (ArgumentException ex)
+            {
+                stopwatch.Stop();
+                _logger.LogWarning(ex, "Collection register rejected. Collection={Collection} DurationMs={DurationMs}", documentName, stopwatch.Elapsed.TotalMilliseconds);
+                return BadRequest(new { Error = ex.Message });
+            }
+        }
+
         [HttpPut("{id}")]
         public async Task<IActionResult> PutAsync(string documentName, string id, [FromBody] JsonElement payload, [FromQuery] string? parentVersion, CancellationToken cancellationToken)
         {
