@@ -1,12 +1,14 @@
-﻿using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure.Configuration;
+using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
 namespace LiteDb.Distributed.Server.Controllers
 {
     [ApiController]
+    [RequireNodeReplicationApiKey]
     [Route("api/cluster")]
     public class ClusterController : ControllerBase
     {
@@ -55,3 +57,4 @@ namespace LiteDb.Distributed.Server.Controllers
     }
 
 }
+

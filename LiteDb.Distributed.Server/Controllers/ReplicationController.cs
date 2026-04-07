@@ -1,12 +1,15 @@
-﻿using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Models;
 using LiteDb.Distributed.Infrastructure.Configuration;
+using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
 namespace LiteDb.Distributed.Server.Controllers
 {
     [ApiController]
+    [RequireNodeReplicationApiKey]
+    [ResolveNodeReplicationDatabase]
     [Route("api/replication")]
     public class ReplicationController : ControllerBase
     {
@@ -90,5 +93,4 @@ namespace LiteDb.Distributed.Server.Controllers
             });
         }
     }
-
 }

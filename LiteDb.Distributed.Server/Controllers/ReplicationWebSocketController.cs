@@ -1,9 +1,11 @@
-﻿using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LiteDb.Distributed.Server.Controllers
 {
     [ApiController]
+    [RequireNodeReplicationApiKey]
     [Route("ws/replication")]
     public class ReplicationWebSocketController : ControllerBase
     {
@@ -34,3 +36,4 @@ namespace LiteDb.Distributed.Server.Controllers
     }
 
 }
+

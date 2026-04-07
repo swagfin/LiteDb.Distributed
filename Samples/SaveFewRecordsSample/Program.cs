@@ -142,7 +142,7 @@ public sealed record SampleSettings
 {
     public string ServerUrl { get; init; } = "http://localhost:1446";
     public string Database { get; init; } = string.Empty;
-    public string ApiKey { get; init; } = string.Empty;
+    public string ApiKey { get; init; } = "root";
     public string CollectionName { get; init; } = "OrderTransactions";
     public int MinIntervalSeconds { get; init; } = 1;
     public int MaxIntervalSeconds { get; init; } = 3;

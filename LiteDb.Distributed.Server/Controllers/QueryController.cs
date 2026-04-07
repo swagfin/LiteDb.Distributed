@@ -3,12 +3,14 @@ using System.Text.RegularExpressions;
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Filters;
 using LiteDB;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LiteDb.Distributed.Server.Controllers
 {
     [ApiController]
+    [RequireClientDatabaseAuth]
     [Route("api/query")]
     public class QueryController : ControllerBase
     {

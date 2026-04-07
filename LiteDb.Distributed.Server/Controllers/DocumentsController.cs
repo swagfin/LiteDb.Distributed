@@ -1,6 +1,7 @@
 ﻿using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using System.Text.Json;
@@ -8,6 +9,7 @@ using System.Text.Json;
 namespace LiteDb.Distributed.Server.Controllers
 {
     [ApiController]
+    [RequireClientDatabaseAuth]
     [Route("api/{documentName}")]
     public class DocumentsController : ControllerBase
     {

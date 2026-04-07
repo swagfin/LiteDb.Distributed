@@ -11,7 +11,7 @@ Each node:
 
 ## Multi-Database Model
 
-This MVP supports multiple logical databases selected from HTTP headers.
+The system supports multiple logical databases selected from HTTP headers.
 
 Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
@@ -19,6 +19,7 @@ Headers required on every `/api/*` request:
 
 Additional header required for node-to-node endpoints:
 - `ReplicationApiKey` (required for `/api/replication/*`, `/api/cluster/*`, and `/ws/replication`): shared cluster key configured by `Node:ReplicationApiKey`.
+  - Default server value in `appsettings.json`: `"I_AM_ONE_OF_YOU"`.
 
 ## Authentication And Authorization
 
@@ -70,7 +71,7 @@ Important notes:
 Query endpoint:
 
 - `POST /api/query`
-  - Body: `{ "query": "SELECT $ FROM OrderTransactions LIMIT 200", "take": 200 }`
+  - Body: `{ "query": "SELECT $ FROM OrderTransactions LIMIT 100", "take": 100 }`
   - Supports only: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
   - `INSERT` / `UPDATE` / `DELETE` are executed in safe mode through the document writer pipeline (operation-log append + replication signaling).
   - Safe write-query syntax:
@@ -273,10 +274,10 @@ Then register peers per logical database using `POST /api/cluster/peers` with `R
 `LiteDb.Distributed.Studio` is a browser-based management UI for:
 
 - saving connection profiles (server URL, database, ApiKey),
-- browsing collections and paged documents,
-- looking up documents by `Id`,
+- selecting a profile first, then opening Data Explorer,
+- browsing tables and result grids,
 - running LiteQL queries,
-- editing/saving/deleting documents as JSON.
+- creating, viewing, editing, and deleting JSON documents.
 
 Run it with:
 

@@ -10,7 +10,7 @@ Default config:
 
 - `ServerUrl`: `http://localhost:17001`
 - `Database`: `testapp`
-- `ApiKey`: `sample-local-key`
+- `ApiKey`: `root`
 - `CollectionName`: `OrderTransactions`
 - `MinIntervalSeconds`: `1`
 - `MaxIntervalSeconds`: `3`

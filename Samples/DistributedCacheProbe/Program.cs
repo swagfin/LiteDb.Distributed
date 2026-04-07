@@ -187,7 +187,7 @@ public sealed record CacheProbeSettings
     };
 
     public string Database { get; init; } = "testapp";
-    public string ApiKey { get; init; } = "sample-local-key";
+    public string ApiKey { get; init; } = "root";
     public int PollIntervalMilliseconds { get; init; } = 25;
     public int VisibilityTimeoutSeconds { get; init; } = 20;
     public int MinPauseMilliseconds { get; init; } = 500;
