@@ -367,17 +367,18 @@ textarea:focus {
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.02);
-    padding: 0.65rem;
+    padding: 0.55rem;
     display: grid;
-    gap: 0.65rem;
-    min-height: 320px;
+    gap: 0.4rem;
+    min-height: 0;
 }
 
 .tables-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.35rem;
+    margin-bottom: 0.1rem;
 }
 
 .tables-count {
@@ -388,17 +389,27 @@ textarea:focus {
 .tables-options {
     display: flex;
     align-items: center;
+    margin: 0;
 }
 
 .toggle-option {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.35rem;
     color: var(--text-muted);
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     text-transform: none;
     letter-spacing: 0;
     margin: 0;
+    line-height: 1.1;
+}
+
+.toggle-option span {
+    display: inline;
+    margin-bottom: 0;
+    font-size: inherit;
+    text-transform: none;
+    letter-spacing: 0.03em;
 }
 
 .toggle-option input[type="checkbox"] {
@@ -412,6 +423,7 @@ textarea:focus {
     display: flex;
     gap: 0.45rem;
     align-items: center;
+    margin-top: 0.05rem;
 }
 
 .table-create-row input {
@@ -423,11 +435,11 @@ textarea:focus {
 }
 
 .table-create-row .btn {
-    padding: 0.34rem 0.65rem;
+    padding: 0.3rem 0.6rem;
     border-radius: 8px;
-    font-size: 0.82rem;
-    min-height: 2.05rem;
-    min-width: 70px;
+    font-size: 0.78rem;
+    min-height: 1.85rem;
+    min-width: 64px;
 }
 
 .tables-list {

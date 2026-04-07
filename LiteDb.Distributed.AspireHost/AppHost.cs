@@ -6,8 +6,8 @@ builder.AddProject<Projects.LiteDb_Distributed_Studio>("studio", options =>
         options.ExcludeLaunchProfile = true;
         options.ExcludeKestrelEndpoints = true;
     })
-    .WithEnvironment("urls", "http://localhost:17006")
-    .WithHttpEndpoint(targetPort: 17006, port: 17006, name: "studio-http", env: null, isProxied: false);
+    .WithEnvironment("urls", "http://localhost:17000")
+    .WithHttpEndpoint(targetPort: 17000, port: 17000, name: "studio-http", env: null, isProxied: false);
 
 ConfigureNode(
     AddNodeProject(builder, "node-1"),
@@ -55,6 +55,6 @@ static void ConfigureNode(IResourceBuilder<ProjectResource> node, string nodeId,
     for (int index = 0; index < peers.Length; index++)
     {
         (string NodeId, string BaseUrl) peer = peers[index];
-        node.WithEnvironment($"Node__SeedPeers__{index}__NodeId", peer.NodeId) .WithEnvironment($"Node__SeedPeers__{index}__BaseUrl", peer.BaseUrl) .WithEnvironment($"Node__SeedPeers__{index}__IsActive", "true");
+        node.WithEnvironment($"Node__SeedPeers__{index}__NodeId", peer.NodeId).WithEnvironment($"Node__SeedPeers__{index}__BaseUrl", peer.BaseUrl).WithEnvironment($"Node__SeedPeers__{index}__IsActive", "true");
     }
 }

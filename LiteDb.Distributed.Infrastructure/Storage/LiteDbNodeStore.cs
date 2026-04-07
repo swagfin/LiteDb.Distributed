@@ -944,7 +944,7 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
             foreach (KeyValuePair<string, BsonValue> entry in payload)
             {
-                if (string.Equals(entry.Key, "_id", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(entry.Key, "_id", StringComparison.OrdinalIgnoreCase) || entry.Key.StartsWith("_sys_", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
