@@ -5,8 +5,10 @@ using LiteDb.Distributed.Infrastructure.Conflict;
 using LiteDb.Distributed.Infrastructure.Replication;
 using LiteDb.Distributed.Infrastructure.Storage;
 using LiteDb.Distributed.Server.Controllers;
+using LiteDb.Distributed.Tests.TestEntities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
 
 namespace LiteDb.Distributed.Tests
 {
@@ -174,6 +176,19 @@ namespace LiteDb.Distributed.Tests
             Assert.NotNull(c3);
         }
 
+        [Fact]
+        public async Task PutRouteId_OverridesBodyId()
+        {
+            await using TestCluster cluster = new TestCluster();
+            TestNode nodeA = cluster.AddNode("node-a");
+
+            await nodeA.PutCustomerViaControllerAsync("cust-route-001", "{\"Id\":\"\",\"Name\":\"Route Wins\",\"Email\":\"route@example.com\"}");
+
+            Dictionary<string, object?>? stored = await nodeA.GetCustomerAsync("cust-route-001");
+            Assert.NotNull(stored);
+            Assert.Equal("cust-route-001", stored!["Id"]?.ToString());
+        }
+
         private class TestCluster : IAsyncDisposable
         {
             private readonly string _rootPath;
@@ -249,6 +264,7 @@ namespace LiteDb.Distributed.Tests
             private readonly IOperationIngestionService _ingestionService;
             private readonly PeerReplicationService _replicationService;
             private readonly QueryController _queryController;
+            private readonly DocumentsController _documentsController;
 
             public TestNode(string rootPath, string nodeId, Func<string, TestNode> nodeResolver)
             {
@@ -284,6 +300,7 @@ namespace LiteDb.Distributed.Tests
                     NullLogger<PeerReplicationService>.Instance);
 
                 _queryController = new QueryController(Store, Store, new InMemoryReplicationSignalPublisher(), NullLogger<QueryController>.Instance);
+                _documentsController = new DocumentsController(Store, Store, new InMemoryReplicationSignalPublisher(), NullLogger<DocumentsController>.Instance);
             }
 
             public LiteDbNodeStore Store { get; }
@@ -348,6 +365,24 @@ namespace LiteDb.Distributed.Tests
                 }
 
                 throw new InvalidOperationException("Query failed with unexpected result type.");
+            }
+
+            public async Task PutCustomerViaControllerAsync(string routeId, string payloadJson)
+            {
+                using JsonDocument payload = JsonDocument.Parse(payloadJson);
+                IActionResult result = await _documentsController.PutAsync(CustomerCollection, routeId, payload.RootElement.Clone(), null, CancellationToken.None);
+
+                if (result is OkObjectResult)
+                {
+                    return;
+                }
+
+                if (result is ObjectResult objectResult)
+                {
+                    throw new InvalidOperationException($"PUT failed with status code {objectResult.StatusCode}.");
+                }
+
+                throw new InvalidOperationException("PUT failed with unexpected result type.");
             }
 
             public async Task<ReplicationPushResponse> ReceivePushAsync(ReplicationPushRequest request, CancellationToken cancellationToken)

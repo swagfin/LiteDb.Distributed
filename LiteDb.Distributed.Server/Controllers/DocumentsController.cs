@@ -147,9 +147,16 @@ namespace LiteDb.Distributed.Server.Controllers
             Stopwatch stopwatch = Stopwatch.StartNew();
             _logger.LogDebug("Document put request. Collection={Collection} Id={Id}", documentName, id);
 
+            if (!TryNormalizePutPayload(payload, id, out JsonElement normalizedPayload, out string? error))
+            {
+                stopwatch.Stop();
+                _logger.LogWarning("Document put rejected due to invalid payload. Collection={Collection} Id={Id} DurationMs={DurationMs}", documentName, id, stopwatch.Elapsed.TotalMilliseconds);
+                return BadRequest(new { Error = error });
+            }
+
             try
             {
-                Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, id, payload, parentVersion, cancellationToken).ConfigureAwait(false);
+                Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, id, normalizedPayload, parentVersion, cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
                 stopwatch.Stop();
 
@@ -234,6 +241,41 @@ namespace LiteDb.Distributed.Server.Controllers
             }
 
             value = candidate;
+            return true;
+        }
+
+        private static bool TryNormalizePutPayload(JsonElement payload, string routeId, out JsonElement normalizedPayload, out string error)
+        {
+            normalizedPayload = default;
+            error = string.Empty;
+
+            if (payload.ValueKind != JsonValueKind.Object)
+            {
+                error = "PUT body must be a JSON object.";
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream();
+            using Utf8JsonWriter writer = new Utf8JsonWriter(stream);
+
+            // Route id is source-of-truth for upsert identity; body Id/_id is overwritten.
+            writer.WriteStartObject();
+            foreach (JsonProperty property in payload.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase) || string.Equals(property.Name, "_id", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                property.WriteTo(writer);
+            }
+
+            writer.WriteString("Id", routeId);
+            writer.WriteEndObject();
+            writer.Flush();
+
+            using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+            normalizedPayload = document.RootElement.Clone();
             return true;
         }
 
