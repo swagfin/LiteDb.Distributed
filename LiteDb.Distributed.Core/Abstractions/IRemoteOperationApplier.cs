@@ -1,11 +1,10 @@
-using LiteDb.Distributed.Core.Models;
+﻿using LiteDb.Distributed.Core.Models;
 
-namespace LiteDb.Distributed.Core.Abstractions;
-
-public interface IRemoteOperationApplier
+namespace LiteDb.Distributed.Core.Abstractions
 {
-    Task<bool> ApplyRemoteOperationAsync(
-        OperationRecord operation,
-        CancellationToken cancellationToken = default);
-}
+    public interface IRemoteOperationApplier
+    {
+        Task<bool> ApplyRemoteOperationAsync(OperationRecord operation, CancellationToken cancellationToken = default);
+    }
 
+}

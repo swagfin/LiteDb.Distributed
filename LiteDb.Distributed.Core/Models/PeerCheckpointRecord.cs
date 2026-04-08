@@ -1,11 +1,11 @@
-namespace LiteDb.Distributed.Core.Models;
-
-public sealed record PeerCheckpointRecord
+namespace LiteDb.Distributed.Core.Models
 {
-    public required string LocalNodeId { get; init; }
-    public required string PeerNodeId { get; init; }
-    public long LastPushedLocalLogSequence { get; init; }
-    public long LastPulledPeerLogSequence { get; init; }
-    public DateTime UpdatedUtc { get; init; }
+    public class PeerCheckpointRecord
+    {
+        public required string LocalNodeId { get; set; }
+        public required string PeerNodeId { get; set; }
+        public long LastPushedLocalLogSequence { get; set; }
+        public long LastPulledPeerLogSequence { get; set; }
+        public DateTime UpdatedUtc { get; set; }
+    }
 }
-

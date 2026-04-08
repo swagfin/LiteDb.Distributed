@@ -1,0 +1,434 @@
+@page "/"
+@using System.Text.Json
+
+<PageTitle>LiteDb Distributed Studio</PageTitle>
+
+<div class="studio-grid">
+    @if (ShowProfileManagement)
+    {
+        <section class="studio-panel profile-panel profile-manager-panel">
+            @if (_busy)
+            {
+                <div class="status-strip status-working status-loading" role="status" aria-live="polite">
+                    <span class="loading-spinner" aria-hidden="true"></span>
+                    <span class="loading-text">Working on your request...</span>
+                    <span class="loading-line" aria-hidden="true"></span>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <div class="status-strip status-error">@_errorMessage</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(_infoMessage))
+            {
+                <div class="status-strip status-info">@_infoMessage</div>
+            }
+
+            <div class="panel-head">
+                <div class="h2">Profile Management</div>
+                <p>Select an existing profile or create a new one before opening Data Explorer.</p>
+            </div>
+
+            @if (ActiveProfile is not null)
+            {
+                <div class="active-connection-hint">
+                    <span>Connected: @GetProfileDisplayName(ActiveProfile) (@ActiveProfile.Database)</span>
+                    <button type="button" class="btn btn-ghost" @onclick="OpenDataExplorer">Open Data Explorer</button>
+                </div>
+            }
+
+            <div class="profile-toolbar">
+                <button type="button" class="btn btn-primary" @onclick="OpenCreateProfileModal" disabled="@(_busy || IsProfileActionBusy)">Add Profile</button>
+            </div>
+
+            <div class="profile-cards">
+                @if (_profiles.Count == 0)
+                {
+                    <p class="empty-label">No saved profile yet. Add one to get started.</p>
+                }
+                else
+                {
+                    @foreach (ConnectionProfile profile in OrderedProfiles)
+                    {
+                        <article class="profile-card">
+                            <div class="profile-card-head">
+                                <div class="profile-chip-name">@GetProfileDisplayName(profile)</div>
+                                @if (_activeProfileId == profile.Id)
+                                {
+                                    <span class="profile-active-pill">Connected</span>
+                                }
+                            </div>
+                            <div class="profile-chip-meta">@profile.BaseUrl</div>
+                            <div class="profile-chip-meta">Database: @profile.Database</div>
+                            <div class="profile-chip-meta">Updated: @profile.UpdatedUtc.ToLocalTime().ToString("g")</div>
+
+                            <div class="profile-card-actions">
+                                <button type="button" class="btn btn-ghost btn-icon" title="Edit Profile" aria-label="Edit Profile" @onclick="() => OpenEditProfileModal(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                                        <path fill="currentColor" d="M3 17.25V21h3.75l11-11-3.75-3.75-11 11zm17.71-10.04a1 1 0 0 0 0-1.42l-2.5-2.5a1 1 0 0 0-1.42 0l-1.96 1.96 3.75 3.75 2.13-2.04z" />
+                                    </svg>
+                                </button>
+                                <button type="button" class="btn btn-danger btn-icon" title="Delete Profile" aria-label="Delete Profile" @onclick="() => OpenProfileDeleteConfirmation(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                                        <path fill="currentColor" d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-4h6l1 2h4v2H4V5h4l1-2z" />
+                                    </svg>
+                                </button>
+                                <button type="button" class="btn btn-success" @onclick="() => ConnectProfileAsync(profile.Id)" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile && _selectedProfileId == profile.Id ? "Connecting..." : "Connect")</button>
+                            </div>
+                        </article>
+                    }
+                }
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="studio-panel workspace-panel">
+            <div class="connected-profile-bar">
+                <article>
+                    <span>Profile</span>
+                    <strong>@GetProfileDisplayName(ActiveProfile)</strong>
+                </article>
+                <article>
+                    <span>Server</span>
+                    <strong>@(ActiveProfile?.BaseUrl ?? "-")</strong>
+                </article>
+                <article>
+                    <span>Database</span>
+                    <strong>@(ActiveProfile?.Database ?? "-")</strong>
+                </article>
+                <article>
+                    <span>ApiKey</span>
+                    <strong>@MaskApiKey(ActiveProfile?.ApiKey)</strong>
+                </article>
+                <div class="connected-profile-actions">
+                    <button type="button" class="btn btn-warning" @onclick="DisconnectAsync" disabled="@_busy">Disconnect</button>
+                </div>
+            </div>
+
+            <div class="panel-head workspace-head">
+                <div>
+                    <div class="h2">Data Explorer</div>
+                    <p>@ActiveProfileSummary</p>
+                </div>
+                <button type="button" class="btn btn-ghost" @onclick="RefreshCollectionsAsync" disabled="@(ActiveProfile is null)">Refresh</button>
+            </div>
+
+            <div class="kpi-grid">
+                <article>
+                    <span>Node</span>
+                    <strong>@(_overview?.NodeId ?? "-")</strong>
+                </article>
+                <article>
+                    <span>Online Nodes</span>
+                    <strong>@(_overview?.Nodes.Count(n => n.IsOnline) ?? 0)</strong>
+                </article>
+                <article>
+                    <span>Tables</span>
+                    <strong>@_collections.Count</strong>
+                </article>
+            </div>
+
+            <div class="explorer-body">
+                <aside class="tables-pane">
+                    <div class="tables-head">
+                        <div class="h3">Tables</div>
+                        <span class="tables-count">@_collections.Count</span>
+                    </div>
+
+                    <div class="tables-options">
+                        <label class="toggle-option">
+                            <input type="checkbox" checked="@_includeSystemCollections" @onchange="OnSystemCollectionsChangedAsync" />
+                            <span>Show System Tables</span>
+                        </label>
+                    </div>
+
+                    <div class="table-create-row">
+                        <button type="button" class="btn btn-primary" @onclick="OpenTableModal" disabled="@(_busy || _creatingCollection || ActiveProfile is null)">Add Table</button>
+                    </div>
+
+                    <div class="tables-list">
+                        @if (_collections.Count == 0)
+                        {
+                            <p class="empty-label">No browsable tables yet. Create one to begin.</p>
+                        }
+                        else
+                        {
+                            <div class="tables-grid-wrap">
+                                <table class="tables-grid">
+                                    <thead>
+                                        <tr>
+                                            <th>Table</th>
+                                            <th>Type</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (string collection in _collections)
+                                        {
+                                            <tr class="@(string.Equals(collection, _selectedCollection, StringComparison.OrdinalIgnoreCase) ? "selected" : string.Empty)"
+                                                @onclick="() => SelectCollectionAsync(collection)">
+                                                <td>@collection</td>
+                                                <td>
+                                                    @if (IsReservedCollection(collection))
+                                                    {
+                                                        <span class="table-badge">system</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="table-badge standard">standard</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </aside>
+
+                <section class="query-results-pane" @onclick="DismissRowContextMenu">
+                    @if (_busy)
+                    {
+                        <div class="status-strip status-working status-loading workspace-status" role="status" aria-live="polite">
+                            <span class="loading-spinner" aria-hidden="true"></span>
+                            <span class="loading-text">Working on your request...</span>
+                            <span class="loading-line" aria-hidden="true"></span>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+                    {
+                        <div class="status-strip status-error workspace-status">@_errorMessage</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_infoMessage))
+                    {
+                        <div class="status-strip status-info workspace-status">@_infoMessage</div>
+                    }
+
+                    @if (SelectedCollectionIsSystem)
+                    {
+                        <div class="status-strip status-info system-collection-note">
+                            System table mode is read-only. Save/Delete are disabled for '@_selectedCollection'.
+                        </div>
+                    }
+
+                    <div class="active-table-hint">
+                        <span>Active Table:</span>
+                        <strong>@(_selectedCollection ?? "-")</strong>
+                    </div>
+
+                    <div class="query-editor-row">
+                        <label>
+                            <span>LiteQL Query</span>
+                            <textarea class="query-textarea" @bind="_queryText" @bind:event="onchange" spellcheck="false"></textarea>
+                        </label>
+                        <div class="query-editor-actions">
+                            <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Reset</button>
+                            <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run Query</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <div class="data-grid-actions">
+                            <div class="grid-search-wrap">
+                                <input @bind="_gridSearchText" @bind:event="oninput" placeholder="Search loaded rows..." />
+                            </div>
+                            <button type="button" class="btn btn-primary" @onclick="OpenNewDocumentModal" disabled="@(ActiveProfile is null || string.IsNullOrWhiteSpace(_selectedCollection) || SelectedCollectionIsSystem)">New Document</button>
+                        </div>
+                        @{ IReadOnlyList<Dictionary<string, JsonElement>> gridDocuments = GridDocuments; }
+                        <table>
+                            <thead>
+                                <tr>
+                                    @foreach (string column in DisplayColumns)
+                                    {
+                                        <th>@column</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (gridDocuments.Count == 0)
+                                {
+                                    <tr>
+                                        <td class="empty-row" colspan="@(Math.Max(DisplayColumns.Count, 1))">@(_documents.Count == 0 ? "No documents loaded." : "No rows match your search.")</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (Dictionary<string, JsonElement> document in gridDocuments)
+                                    {
+                                        <tr class="@GetDocumentRowClass(document)"
+                                            @onclick="() => SelectDocument(document)"
+                                            @ondblclick="() => OpenDocumentEditorModal(document)"
+                                            @oncontextmenu="(e => ShowRowContextMenu(e, document))"
+                                            @oncontextmenu:preventDefault="true">
+                                            @foreach (string column in DisplayColumns)
+                                            {
+                                                <td>@FormatCell(document, column)</td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </section>
+    }
+</div>
+
+@if (_showProfileModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CloseProfileModal">
+        <section class="profile-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">@ProfileModalTitle</div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseProfileModal" disabled="@(_busy || IsProfileActionBusy)">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Save a profile for this server endpoint. Name is optional and can be left blank.</p>
+
+            <div class="editor-grid">
+                <label>
+                    <span>Server URL</span>
+                    <input @bind="_editor.BaseUrl" placeholder="http://localhost:1446" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+                <label>
+                    <span>Database</span>
+                    <input @bind="_editor.Database" placeholder="testapp" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+                <label>
+                    <span>ApiKey</span>
+                    <input @bind="_editor.ApiKey" placeholder="root" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+                <label>
+                    <span>Profile Name (Optional)</span>
+                    <input @bind="_editor.Name" placeholder="Auto: server endpoint label" disabled="@(_busy || IsProfileActionBusy)" />
+                </label>
+            </div>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CloseProfileModal" disabled="@(_busy || IsProfileActionBusy)">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_savingProfile ? "Saving..." : "Save")</button>
+                <button type="button" class="btn btn-success" @onclick="SaveAndConnectProfileFromModalAsync" disabled="@(_busy || IsProfileActionBusy)">@(_connectingProfile ? "Connecting..." : "Save & Connect")</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showProfileDeleteConfirmModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CancelProfileDeleteConfirmation">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Confirm Delete Profile</div>
+                <button type="button" class="btn btn-ghost" @onclick="CancelProfileDeleteConfirmation" disabled="@(_busy || IsProfileActionBusy)">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Delete profile '@_pendingDeleteProfileName'? This cannot be undone.</p>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CancelProfileDeleteConfirmation" disabled="@(_busy || IsProfileActionBusy)">Cancel</button>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmProfileDeleteAsync" disabled="@(_busy || IsProfileActionBusy)">Delete</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showTableModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CloseTableModal">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Add Table</div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseTableModal">Close</button>
+            </div>
+
+            <label>
+                <span>Table Name</span>
+                <input @bind="_newCollectionName" placeholder="new_table_name" />
+            </label>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CloseTableModal" disabled="@(_busy || _creatingCollection)">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="CreateCollectionFromModalAsync" disabled="@(_busy || _creatingCollection || ActiveProfile is null)">@(_creatingCollection ? "Creating..." : "Create")</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showDocumentEditorModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CloseDocumentEditorModal">
+        <section class="profile-modal document-editor-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Document Editor</div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseDocumentEditorModal">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Edit JSON payload and save changes.</p>
+
+            <label class="id-field">
+                <span>Document Id</span>
+                <input @bind="_selectedDocumentId" placeholder="Id used for PUT/DELETE" readonly="@SelectedCollectionIsSystem" />
+            </label>
+
+            <textarea class="document-editor-textarea" @bind="_documentJson" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem)">Save</button>
+                <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showDeleteConfirmModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CancelDeleteConfirmation">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Confirm Delete</div>
+                <button type="button" class="btn btn-ghost" @onclick="CancelDeleteConfirmation">Close</button>
+            </div>
+
+            <p class="profile-modal-help">Delete document '@_pendingDeleteDocumentId'? This action cannot be undone.</p>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CancelDeleteConfirmation">Cancel</button>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmDeleteFromModalAsync" disabled="@(_busy || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showQueryConfirmModal)
+{
+    <div class="profile-modal-backdrop" @onclick="CancelQueryConfirmation">
+        <section class="profile-modal tiny-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="profile-modal-head">
+                <div class="h2">Confirm Query</div>
+                <button type="button" class="btn btn-ghost" @onclick="CancelQueryConfirmation">Close</button>
+            </div>
+
+            <p class="profile-modal-help">@_queryConfirmMessage</p>
+
+            <div class="action-row">
+                <button type="button" class="btn btn-ghost" @onclick="CancelQueryConfirmation">Cancel</button>
+                <button type="button" class="btn btn-warning" @onclick="ConfirmQueryFromModalAsync" disabled="@(_busy || ActiveProfile is null)">Run Query</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_showRowContextMenu)
+{
+    <div class="row-context-menu"
+         style="left:@($"{_rowContextMenuX}px"); top:@($"{_rowContextMenuY}px");"
+         @onclick:stopPropagation="true">
+        <button type="button" @onclick="EditFromRowContextMenuAsync">View</button>
+        <button type="button" @onclick="DeleteFromRowContextMenuAsync" disabled="@(SelectedCollectionIsSystem)">Delete</button>
+    </div>
+}

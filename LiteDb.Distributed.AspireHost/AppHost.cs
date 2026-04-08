@@ -1,4 +1,13 @@
-var builder = DistributedApplication.CreateBuilder(args);
+IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
+
+// Studio uses a fixed origin so browser local storage remains stable across restarts.
+builder.AddProject<Projects.LiteDb_Distributed_Studio>("studio", options =>
+    {
+        options.ExcludeLaunchProfile = true;
+        options.ExcludeKestrelEndpoints = true;
+    })
+    .WithEnvironment("urls", "http://localhost:17000")
+    .WithHttpEndpoint(targetPort: 17000, port: 17000, name: "studio-http", env: null, isProxied: false);
 
 ConfigureNode(
     AddNodeProject(builder, "node-1"),
@@ -26,40 +35,24 @@ ConfigureNode(
 
 builder.Build().Run();
 
-static IResourceBuilder<ProjectResource> AddNodeProject(
-    IDistributedApplicationBuilder builder,
-    string name)
+static IResourceBuilder<ProjectResource> AddNodeProject(IDistributedApplicationBuilder builder, string name)
 {
-    return builder.AddProject<Projects.LiteDb_Distributed_Server>(
-            name,
-            options =>
-            {
-                options.ExcludeLaunchProfile = true;
-                options.ExcludeKestrelEndpoints = true;
-            });
+    return builder.AddProject<Projects.LiteDb_Distributed_Server>(name, options =>
+    {
+        options.ExcludeLaunchProfile = true;
+        options.ExcludeKestrelEndpoints = true;
+    });
 }
 
-static void ConfigureNode(
-    IResourceBuilder<ProjectResource> node,
-    string nodeId,
-    string url,
-    int port,
-    params (string NodeId, string BaseUrl)[] peers)
+static void ConfigureNode(IResourceBuilder<ProjectResource> node, string nodeId, string url, int port, params (string NodeId, string BaseUrl)[] peers)
 {
     node.WithEnvironment("urls", url)
-        .WithHttpEndpoint(
-            targetPort: port,
-            port: port,
-            name: "http",
-            env: null,
-            isProxied: false)
+        .WithHttpEndpoint(targetPort: port, port: port, name: "http", env: null, isProxied: false)
         .WithEnvironment("Node__NodeId", nodeId);
 
-    for (var index = 0; index < peers.Length; index++)
+    for (int index = 0; index < peers.Length; index++)
     {
-        var peer = peers[index];
-        node.WithEnvironment($"Node__SeedPeers__{index}__NodeId", peer.NodeId)
-            .WithEnvironment($"Node__SeedPeers__{index}__BaseUrl", peer.BaseUrl)
-            .WithEnvironment($"Node__SeedPeers__{index}__IsActive", "true");
+        (string NodeId, string BaseUrl) peer = peers[index];
+        node.WithEnvironment($"Node__SeedPeers__{index}__NodeId", peer.NodeId).WithEnvironment($"Node__SeedPeers__{index}__BaseUrl", peer.BaseUrl).WithEnvironment($"Node__SeedPeers__{index}__IsActive", "true");
     }
 }

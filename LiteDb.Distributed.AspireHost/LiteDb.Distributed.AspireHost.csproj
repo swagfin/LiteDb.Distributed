@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LiteDb.Distributed.Server\LiteDb.Distributed.Server.csproj" />
+    <ProjectReference Include="..\LiteDb.Distributed.Studio\LiteDb.Distributed.Studio.csproj" />
   </ItemGroup>
 
 </Project>

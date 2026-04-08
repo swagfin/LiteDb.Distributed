@@ -5,7 +5,7 @@
     "http://localhost:17003"
   ],
   "Database": "testapp",
-  "ApiKey": "sample-local-key",
+  "ApiKey": "root",
   "PollIntervalMilliseconds": 25,
   "VisibilityTimeoutSeconds": 20,
   "MinPauseMilliseconds": 500,

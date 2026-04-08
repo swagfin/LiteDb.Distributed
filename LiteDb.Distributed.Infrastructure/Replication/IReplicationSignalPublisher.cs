@@ -1,6 +1,10 @@
-namespace LiteDb.Distributed.Infrastructure.Replication;
+﻿
 
-public interface IReplicationSignalPublisher
+namespace LiteDb.Distributed.Infrastructure.Replication
 {
-    void NotifyLocalChange(string reason);
+    public interface IReplicationSignalPublisher
+    {
+        void NotifyLocalChange(string reason);
+    }
+
 }

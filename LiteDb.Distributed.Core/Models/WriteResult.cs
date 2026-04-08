@@ -1,12 +1,14 @@
-namespace LiteDb.Distributed.Core.Models;
 
-public sealed record WriteResult
+
+namespace LiteDb.Distributed.Core.Models
 {
-    public required string Collection { get; init; }
-    public required string EntityId { get; init; }
-    public required string Version { get; init; }
-    public required DateTime CommittedUtc { get; init; }
-    public required bool IsDeleted { get; init; }
-    public required OperationRecord Operation { get; init; }
+    public class WriteResult
+    {
+        public required string Collection { get; set; }
+        public required string EntityId { get; set; }
+        public required string Version { get; set; }
+        public required DateTime CommittedUtc { get; set; }
+        public required bool IsDeleted { get; set; }
+        public required OperationRecord Operation { get; set; }
+    }
 }
-

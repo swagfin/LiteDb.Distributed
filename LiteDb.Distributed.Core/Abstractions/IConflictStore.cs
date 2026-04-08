@@ -1,9 +1,10 @@
-using LiteDb.Distributed.Core.Models;
+﻿using LiteDb.Distributed.Core.Models;
 
-namespace LiteDb.Distributed.Core.Abstractions;
-
-public interface IConflictStore
+namespace LiteDb.Distributed.Core.Abstractions
 {
-    Task RecordConflictAsync(ConflictRecord conflict, CancellationToken cancellationToken = default);
-}
+    public interface IConflictStore
+    {
+        Task RecordConflictAsync(ConflictRecord conflict, CancellationToken cancellationToken = default);
+    }
 
+}

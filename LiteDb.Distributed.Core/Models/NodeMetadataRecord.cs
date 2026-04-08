@@ -1,9 +1,12 @@
-namespace LiteDb.Distributed.Core.Models;
 
-public sealed record NodeMetadataRecord
+
+namespace LiteDb.Distributed.Core.Models
 {
-    public required string NodeId { get; init; }
-    public long LastLocalSequence { get; init; }
-    public DateTime LastWriteUtc { get; init; }
-}
+    public class NodeMetadataRecord
+    {
+        public required string NodeId { get; set; }
+        public long LastLocalSequence { get; set; }
+        public DateTime LastWriteUtc { get; set; }
+    }
 
+}

@@ -1,9 +1,12 @@
-namespace LiteDb.Distributed.Core.Models;
+﻿
 
-public enum OperationType
+namespace LiteDb.Distributed.Core.Models
 {
-    Insert = 1,
-    Update = 2,
-    Delete = 3
-}
+    public enum OperationType
+    {
+        Insert = 1,
+        Update = 2,
+        Delete = 3
+    }
 
+}

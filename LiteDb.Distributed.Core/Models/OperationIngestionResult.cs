@@ -1,8 +1,8 @@
-namespace LiteDb.Distributed.Core.Models;
-
-public sealed record OperationIngestionResult
+namespace LiteDb.Distributed.Core.Models
 {
-    public required int AcceptedCount { get; init; }
-    public required int ConflictCount { get; init; }
+    public class OperationIngestionResult
+    {
+        public required int AcceptedCount { get; set; }
+        public required int ConflictCount { get; set; }
+    }
 }
-

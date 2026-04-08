@@ -11,11 +11,77 @@ Each node:
 
 ## Multi-Database Model
 
-This MVP supports multiple logical databases selected from HTTP headers.
+The system supports multiple logical databases selected from HTTP headers.
 
 Headers required on every `/api/*` request:
 - `Database` (required): logical database name.
-- `Password` or `ApiKey` (required): validated against the logical database catalog.
+- `ApiKey` (required): API key used for database scope and role authorization.
+
+Additional header required for node-to-node endpoints:
+- `ReplicationApiKey` (required for `/api/replication/*`, `/api/cluster/*`, and `/ws/replication`): shared cluster key configured by `Node:ReplicationApiKey`.
+  - Default server value in `appsettings.json`: `"I_AM_ONE_OF_YOU"`.
+
+## Authentication And Authorization
+
+Authentication uses server-level API key authorization (not per-database shared secret matching).
+
+How it works:
+- API keys can be scoped to one database, many databases, or all databases (`*`).
+- A server root key is configured in `appsettings.json` as `Auth:RootApiKey` and defaults to `"root"`.
+- The root key has access to all databases and all roles.
+- Non-root keys must be declared in `Auth:ApiKeys` with explicit database scope and role flags.
+
+Example config:
+
+```json
+"Auth": {
+  "RootApiKey": "root",
+  "ApiKeys": [
+    {
+      "Name": "studio-dev",
+      "Key": "dev-123",
+      "Databases": [ "testapp", "orders" ],
+      "Roles": {
+        "ADD_DB": false,
+        "DELETE_DB": false,
+        "READ_DOCUMENT": true,
+        "WRITE_DOCUMENT": true,
+        "UPDATE_DOCUMENT": true,
+        "DELETE_DOCUMENT": true
+      }
+    }
+  ]
+}
+```
+
+Role behavior:
+- `ADD_DB`: required when the requested `Database` does not exist and must be created.
+- `DELETE_DB`: required for database deletion endpoints/flows.
+- `READ_DOCUMENT`: required for read/query select operations.
+- `WRITE_DOCUMENT`: required for insert/create operations.
+- `UPDATE_DOCUMENT`: required for update/replace operations.
+- `DELETE_DOCUMENT`: required for delete operations.
+
+Important notes:
+- Per-database credential matching is not part of this authentication model.
+- Clients without `ADD_DB` cannot auto-create missing databases.
+- Studio and tests should use the root key (`root`) when full access is required.
+- Node-to-node sync and peer registration require `Node:ReplicationApiKey`; unauthorized nodes cannot join/sync without it.
+
+Query endpoint:
+
+- `POST /api/query`
+  - Body: `{ "query": "SELECT $ FROM OrderTransactions LIMIT 100", "take": 100 }`
+  - Supports only: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
+  - `INSERT` / `UPDATE` / `DELETE` are executed in safe mode through the document writer pipeline (operation-log append + replication signaling).
+  - Safe write-query syntax:
+    - `INSERT INTO <collection> VALUES <json-object>` (payload must include `Id` or `_id`)
+    - `UPDATE <collection> SET <json-object> [WHERE <filterExpr>]` (affects matching docs through operation-log pipeline, up to `take`)
+    - `DELETE FROM <collection> [WHERE <filterExpr>]` (affects matching docs through operation-log pipeline, up to `take`)
+  - Only one statement is allowed per request (multi-statement queries are blocked).
+  - Response counters:
+    - `MatchedCount`: number of documents matched by query filter.
+    - `AppliedCount`: number of documents actually mutated (write queries only).
 
 ## Cache (Replicated TTL Key/Value)
 
@@ -44,15 +110,23 @@ Optional node settings:
 ## Why Use This Instead Of Redis?
 
 LiteDb.Distributed is not a drop-in Redis replacement. It is a better fit for a different class of systems.
+Redis is primarily key/value-first, while LiteDb.Distributed is built for document data that can also be shaped in a more relational-style model.
 
 Use LiteDb.Distributed when you need:
 
 - Local-first writes with no network dependency: writes succeed on the local node immediately, then replicate asynchronously.
 - Offline/edge operation: each node has full local storage and can keep serving reads/writes during network loss.
 - Durable document + cache in one engine: business documents and replicated TTL cache live in the same local-first system.
+- Document + relational-style modeling: even though this is a document store, records can be organized in table/collection structures that feel more relational for business data workflows.
 - Per-database isolation: each logical database has separate business and metadata files, which reduces blast radius.
 - Operation-log driven replication: deterministic replay and checkpoint-based catch-up across nodes.
+- Immutable operation history per database: easier troubleshooting, replay-based recovery, and audit-friendly change tracking.
 - Simpler self-hosted footprint for branch/edge deployments: no separate central in-memory tier required.
+- No migration burden for day-to-day changes: schema-flexible documents let you evolve fields without rigid table migration pipelines.
+- Reserved replicated cache with TTL in the same platform: no extra Redis dependency just to add distributed cache semantics.
+- Safe write-query guardrails: query writes (`INSERT` / `UPDATE` / `DELETE`) are routed through operation-log-aware writer APIs so replication remains consistent.
+- Tenant-ready request model: `Database` + `ApiKey` headers make logical database routing and isolation explicit per request.
+- Efficient peer sync model: nodes exchange operations and checkpoints, not full DB files.
 
 Concrete examples where this wins:
 
@@ -62,7 +136,7 @@ Concrete examples where this wins:
 
 Use Redis when you need:
 
-- Ultra-low-latency centralized cache patterns at very high QPS.
+- Pure key/value-first patterns with ultra-low-latency centralized cache behavior at very high QPS.
 - Native Redis features (pub/sub, streams, sorted sets, Lua, modules).
 - Mature managed cloud offerings with Redis-specific tooling/operations.
 - Strictly centralized cache semantics over local-first behavior.
@@ -130,31 +204,22 @@ POST/PUT/DELETE /api/{document}
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
-    participant A as Node A (Writer)
-    participant B as Node B (Peer)
-    participant M as LiteDB Metadata
-    participant D as LiteDB Business DB
+    participant Client
+    participant NodeA as Node A
+    participant NodeB as Node B
 
-    C->>A: PUT /api/{document}/{id}
-    A->>D: Upsert document
-    A->>M: Append immutable operation log
-    A-->>C: 200 OK (local-first success)
+    Client->>NodeA: Write request
+    NodeA->>NodeA: Save document + append operation log
+    NodeA-->>Client: Success (local-first)
 
-    Note over A: Async replication dispatch starts
-    A->>B: POST /api/replication/push (operations)
-    B->>B: Ingest + apply remote ops
-    B-->>A: Push response (accepted count)
+    Note over NodeA,NodeB: Async replication cycle
+    NodeA->>NodeB: Push new operations
+    NodeB->>NodeB: Apply operations to local state
+    NodeA->>NodeB: Pull missing operations (if any)
+    NodeA->>NodeA: Apply pulled operations + update checkpoints
 
-    A->>B: POST /api/replication/pull (after checkpoint)
-    B-->>A: Missing operations since checkpoint
-    A->>A: Apply pulled operations
-    A->>M: Save peer checkpoints
-
-    A->>B: WS /ws/replication sync-request (hint)
-    B->>A: WS ack
-
-    Note over A,B: If signal/call fails -> retry with backoff, plus 1-minute safety sweep
+    NodeA->>NodeB: WebSocket sync hint
+    Note over NodeA,NodeB: Retries + periodic safety sweep ensure eventual convergence
 ```
 
 ### Latency Measurement Notes
@@ -202,11 +267,38 @@ Configured node URLs:
 - `node-2`: `http://localhost:17002`
 - `node-3`: `http://localhost:17003`
 
-Then register peers per logical database using `POST /api/cluster/peers` with `Database` and `ApiKey` headers.
+Then register peers per logical database using `POST /api/cluster/peers` with `ReplicationApiKey` (and optional `Database` when you want the request bound to a specific logical DB context).
+
+## LiteDb.Distributed.Studio (Blazor WASM)
+
+`LiteDb.Distributed.Studio` is a browser-based management UI for:
+
+- saving connection profiles (server URL, database, ApiKey),
+- selecting a profile first, then opening Data Explorer,
+- browsing tables and result grids,
+- running LiteQL queries,
+- creating, viewing, editing, and deleting JSON documents.
+
+Run it with:
+
+```powershell
+dotnet run --project .\LiteDb.Distributed.Studio\LiteDb.Distributed.Studio.csproj
+```
+
+Default development profile URL is:
+
+- `http://localhost:5206`
+
+The server allows Studio browser calls via CORS. Configure origins in:
+
+- `LiteDb.Distributed.Server/appsettings.Development.json`
+  - `Studio:CorsOrigins`
 
 ## Notes
 
 - Replication is event-driven: local writes schedule immediate source-node replication with retry/backoff, WebSocket peer signals are hints for faster convergence, and a fixed 1-minute safety sweep handles anti-entropy catch-up.
 - Peer replication is bounded-parallel per cycle (`Node:ReplicationPeerConcurrency`, default `4`) for better multi-peer latency.
-- Conflict resolution is pluggable (default includes LWW with optional conflict recording for critical collections).
-- Credentials are catalog-based (MVP) and independent of LiteDB file encryption, so resetting a DB credential does not require re-encrypting data files.
+- Conflict resolution is controlled per node by `Node:ConflictResolutionPolicy` (`ApplyIncoming` or `KeepLocal`).
+- API keys are application-level authorization values and independent of LiteDB file encryption.
+
+

@@ -2,57 +2,54 @@ using LiteDb.Distributed.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
-namespace LiteDb.Distributed.Infrastructure.Context;
-
-public sealed class DatabaseRequestContextResolver : IDatabaseRequestContextResolver
+namespace LiteDb.Distributed.Infrastructure.Context
 {
-    private const string DatabaseHeader = "Database";
-    private const string PasswordHeader = "Password";
-    private const string ApiKeyHeader = "ApiKey";
-
-    private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
-    private readonly ILogger<DatabaseRequestContextResolver> _logger;
-
-    public DatabaseRequestContextResolver(ILogicalDatabaseCatalog logicalDatabaseCatalog, ILogger<DatabaseRequestContextResolver> logger)
+    public class DatabaseRequestContextResolver : IDatabaseRequestContextResolver
     {
-        _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+        private const string DatabaseHeader = "Database";
+        private const string ApiKeyHeader = "ApiKey";
 
-    public async Task<DatabaseRequestContext> ResolveAsync(IHeaderDictionary headers, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(headers);
+        private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
+        private readonly IApiKeyAuthorizationService _apiKeyAuthorizationService;
+        private readonly ILogger<DatabaseRequestContextResolver> _logger;
 
-        var rawDatabaseName = headers[DatabaseHeader].ToString();
-        var normalizedDatabaseName = DatabaseNameNormalizer.Normalize(rawDatabaseName);
-
-        var password = headers[PasswordHeader].ToString();
-        var apiKey = headers[ApiKeyHeader].ToString();
-
-        if (string.IsNullOrWhiteSpace(password) && string.IsNullOrWhiteSpace(apiKey))
+        public DatabaseRequestContextResolver(ILogicalDatabaseCatalog logicalDatabaseCatalog, IApiKeyAuthorizationService apiKeyAuthorizationService, ILogger<DatabaseRequestContextResolver> logger)
         {
-            throw new ArgumentException("Either Password or ApiKey header is required.");
+            _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
+            _apiKeyAuthorizationService = apiKeyAuthorizationService ?? throw new ArgumentNullException(nameof(apiKeyAuthorizationService));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        if (!string.IsNullOrWhiteSpace(password)
-            && !string.IsNullOrWhiteSpace(apiKey)
-            && !string.Equals(password, apiKey, StringComparison.Ordinal))
+        public async Task<DatabaseRequestContext> ResolveAsync(IHeaderDictionary headers, CancellationToken cancellationToken = default)
         {
-            throw new ArgumentException("Password and ApiKey headers both provided but do not match.");
+            ArgumentNullException.ThrowIfNull(headers);
+
+            string rawDatabaseName = headers[DatabaseHeader].ToString();
+            string normalizedDatabaseName = DatabaseNameNormalizer.Normalize(rawDatabaseName);
+            string apiKey = headers[ApiKeyHeader].ToString();
+            ApiKeyAccess access = _apiKeyAuthorizationService.Authorize(apiKey, normalizedDatabaseName);
+
+            bool exists = await _logicalDatabaseCatalog.ExistsAsync(normalizedDatabaseName, cancellationToken).ConfigureAwait(false);
+            if (!exists && !access.CanAddDatabase)
+            {
+                throw new UnauthorizedAccessException($"ApiKey is not allowed to create database '{normalizedDatabaseName}'.");
+            }
+
+            LogicalDatabaseRegistration registration = await _logicalDatabaseCatalog.GetOrCreateAsync(normalizedDatabaseName, cancellationToken).ConfigureAwait(false);
+            _logger.LogDebug("Database request context resolved. Database={Database}", registration.DatabaseName);
+
+            return new DatabaseRequestContext
+            {
+                DatabaseName = registration.DatabaseName,
+                ApiKey = access.ApiKey,
+                IsRoot = access.IsRoot,
+                CanAddDatabase = access.CanAddDatabase,
+                CanDeleteDatabase = access.CanDeleteDatabase,
+                CanReadDocument = access.CanReadDocument,
+                CanWriteDocument = access.CanWriteDocument,
+                CanUpdateDocument = access.CanUpdateDocument,
+                CanDeleteDocument = access.CanDeleteDocument
+            };
         }
-
-        var credential = string.IsNullOrWhiteSpace(password) ? apiKey : password;
-
-        var registration = await _logicalDatabaseCatalog
-            .GetOrCreateAsync(normalizedDatabaseName, credential, cancellationToken)
-            .ConfigureAwait(false);
-
-        _logger.LogDebug("Database request context resolved. Database={Database}", registration.DatabaseName);
-
-        return new DatabaseRequestContext
-        {
-            DatabaseName = registration.DatabaseName,
-            Credential = registration.Credential
-        };
     }
 }

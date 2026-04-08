@@ -1,34 +1,38 @@
 using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
 
-namespace LiteDb.Distributed.Server.Controllers;
-
-[ApiController]
-[Route("ws/replication")]
-public sealed class ReplicationWebSocketController : ControllerBase
+namespace LiteDb.Distributed.Server.Controllers
 {
-    private readonly IReplicationWebSocketHandler _webSocketHandler;
-    private readonly ILogger<ReplicationWebSocketController> _logger;
-
-    public ReplicationWebSocketController(IReplicationWebSocketHandler webSocketHandler, ILogger<ReplicationWebSocketController> logger)
+    [ApiController]
+    [RequireNodeReplicationApiKey]
+    [Route("ws/replication")]
+    public class ReplicationWebSocketController : ControllerBase
     {
-        _webSocketHandler = webSocketHandler ?? throw new ArgumentNullException(nameof(webSocketHandler));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+        private readonly IReplicationWebSocketHandler _webSocketHandler;
+        private readonly ILogger<ReplicationWebSocketController> _logger;
 
-    [HttpGet]
-    public async Task GetAsync(CancellationToken cancellationToken)
-    {
-        if (!HttpContext.WebSockets.IsWebSocketRequest)
+        public ReplicationWebSocketController(IReplicationWebSocketHandler webSocketHandler, ILogger<ReplicationWebSocketController> logger)
         {
-            HttpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await HttpContext.Response.WriteAsJsonAsync(new { Error = "A WebSocket request is required." }, cancellationToken).ConfigureAwait(false);
-            return;
+            _webSocketHandler = webSocketHandler ?? throw new ArgumentNullException(nameof(webSocketHandler));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        _logger.LogDebug("Replication websocket upgrade requested. Remote={Remote}", HttpContext.Connection.RemoteIpAddress?.ToString());
+        [HttpGet]
+        public async Task GetAsync(CancellationToken cancellationToken)
+        {
+            if (!HttpContext.WebSockets.IsWebSocketRequest)
+            {
+                HttpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await HttpContext.Response.WriteAsJsonAsync(new { Error = "A WebSocket request is required." }, cancellationToken).ConfigureAwait(false);
+                return;
+            }
 
-        using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
-        await _webSocketHandler.HandleConnectionAsync(webSocket, cancellationToken).ConfigureAwait(false);
+            _logger.LogDebug("Replication websocket upgrade requested. Remote={Remote}", HttpContext.Connection.RemoteIpAddress?.ToString());
+
+            using System.Net.WebSockets.WebSocket webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+            await _webSocketHandler.HandleConnectionAsync(webSocket, cancellationToken).ConfigureAwait(false);
+        }
     }
+
 }

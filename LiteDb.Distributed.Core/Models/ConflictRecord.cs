@@ -1,17 +1,20 @@
-namespace LiteDb.Distributed.Core.Models;
 
-public sealed record ConflictRecord
+
+namespace LiteDb.Distributed.Core.Models
 {
-    public required string Id { get; init; }
-    public required string NodeId { get; init; }
-    public required string Collection { get; init; }
-    public required string EntityId { get; init; }
-    public required string IncomingOperationId { get; init; }
-    public required string LocalVersion { get; init; }
-    public required string IncomingVersionHint { get; init; }
-    public required string Reason { get; init; }
-    public DateTime CreatedUtc { get; init; }
-    public string? LocalPayload { get; init; }
-    public string? IncomingPayload { get; init; }
-}
+    public class ConflictRecord
+    {
+        public required string Id { get; set; }
+        public required string NodeId { get; set; }
+        public required string Collection { get; set; }
+        public required string EntityId { get; set; }
+        public required string IncomingOperationId { get; set; }
+        public required string LocalVersion { get; set; }
+        public required string IncomingVersionHint { get; set; }
+        public required string Reason { get; set; }
+        public DateTime CreatedUtc { get; set; }
+        public string? LocalPayload { get; set; }
+        public string? IncomingPayload { get; set; }
+    }
 
+}

@@ -1,10 +1,12 @@
-namespace LiteDb.Distributed.Core.Exceptions;
+﻿
 
-public sealed class VersionMismatchException : Exception
+namespace LiteDb.Distributed.Core.Exceptions
 {
-    public VersionMismatchException(string message)
-        : base(message)
+    public class VersionMismatchException : Exception
     {
+        public VersionMismatchException(string message) : base(message)
+        {
+        }
     }
-}
 
+}
