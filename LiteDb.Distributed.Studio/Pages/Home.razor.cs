@@ -42,6 +42,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _includeSystemCollections;
 
         private string _queryText = "SELECT $ FROM OrderTransactions LIMIT 100";
+        private string _gridSearchText = string.Empty;
 
         private List<Dictionary<string, JsonElement>> _documents = [];
         private List<string> _displayColumns = ["Result"];
@@ -87,6 +88,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {GetProfileDisplayName(ActiveProfile)}";
 
         private IReadOnlyList<string> DisplayColumns => _displayColumns;
+        private IReadOnlyList<Dictionary<string, JsonElement>> GridDocuments => ResolveGridDocuments();
 
         protected override async Task OnInitializedAsync()
         {
@@ -1186,6 +1188,55 @@ namespace LiteDb.Distributed.Studio.Pages
                 JsonValueKind.Object => TrimCell(value.GetRawText()),
                 JsonValueKind.Array => TrimCell(value.GetRawText()),
                 _ => TrimCell(value.GetRawText())
+            };
+        }
+
+        private IReadOnlyList<Dictionary<string, JsonElement>> ResolveGridDocuments()
+        {
+            string normalizedSearch = (_gridSearchText ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedSearch))
+            {
+                return _documents;
+            }
+
+            List<Dictionary<string, JsonElement>> matches = _documents.Where(x => DocumentMatchesSearch(x, normalizedSearch)).ToList();
+            return matches;
+        }
+
+        private static bool DocumentMatchesSearch(IReadOnlyDictionary<string, JsonElement> document, string searchText)
+        {
+            foreach (KeyValuePair<string, JsonElement> entry in document)
+            {
+                if (!string.IsNullOrWhiteSpace(entry.Key)
+                    && entry.Key.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                string valueText = FormatSearchValue(entry.Value);
+                if (!string.IsNullOrWhiteSpace(valueText)
+                    && valueText.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string FormatSearchValue(JsonElement value)
+        {
+            return value.ValueKind switch
+            {
+                JsonValueKind.String => value.GetString() ?? string.Empty,
+                JsonValueKind.Number => value.GetRawText(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Null => "null",
+                JsonValueKind.Undefined => string.Empty,
+                JsonValueKind.Object => value.GetRawText(),
+                JsonValueKind.Array => value.GetRawText(),
+                _ => value.GetRawText()
             };
         }
 

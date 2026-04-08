@@ -232,8 +232,12 @@
 
                     <div class="table-wrap">
                         <div class="data-grid-actions">
+                            <div class="grid-search-wrap">
+                                <input @bind="_gridSearchText" @bind:event="oninput" placeholder="Search loaded rows..." />
+                            </div>
                             <button type="button" class="btn btn-primary" @onclick="OpenNewDocumentModal" disabled="@(ActiveProfile is null || string.IsNullOrWhiteSpace(_selectedCollection) || SelectedCollectionIsSystem)">New Document</button>
                         </div>
+                        @{ IReadOnlyList<Dictionary<string, JsonElement>> gridDocuments = GridDocuments; }
                         <table>
                             <thead>
                                 <tr>
@@ -244,15 +248,15 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (_documents.Count == 0)
+                                @if (gridDocuments.Count == 0)
                                 {
                                     <tr>
-                                        <td class="empty-row" colspan="@(Math.Max(DisplayColumns.Count, 1))">No documents loaded.</td>
+                                        <td class="empty-row" colspan="@(Math.Max(DisplayColumns.Count, 1))">@(_documents.Count == 0 ? "No documents loaded." : "No rows match your search.")</td>
                                     </tr>
                                 }
                                 else
                                 {
-                                    @foreach (Dictionary<string, JsonElement> document in _documents)
+                                    @foreach (Dictionary<string, JsonElement> document in gridDocuments)
                                     {
                                         <tr class="@GetDocumentRowClass(document)"
                                             @onclick="() => SelectDocument(document)"

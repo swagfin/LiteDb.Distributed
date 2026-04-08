@@ -640,10 +640,24 @@ textarea:focus {
 
 .data-grid-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.65rem;
     padding: 0.55rem 0.6rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(8, 16, 25, 0.8);
+}
+
+.grid-search-wrap {
+    flex: 1 1 auto;
+    max-width: 420px;
+}
+
+.grid-search-wrap input {
+    height: 2.15rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
 }
 
 table {
