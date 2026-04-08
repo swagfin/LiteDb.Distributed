@@ -181,8 +181,8 @@ namespace LiteDb.Distributed.Infrastructure.Cache
 
         private class CacheSweepEntry
         {
-            public string Id { get; init; } = string.Empty;
-            public DateTime ExpiresAtUtc { get; init; }
+            public string Id { get; set; } = string.Empty;
+            public DateTime ExpiresAtUtc { get; set; }
         }
     }
 }

@@ -121,9 +121,12 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 pushAcceptedCount = pushResponse.AcceptedCount;
 
                 // Advance the push checkpoint only after a successful peer acknowledgement.
-                checkpoint = checkpoint with
+                checkpoint = new PeerCheckpointRecord
                 {
+                    LocalNodeId = checkpoint.LocalNodeId,
+                    PeerNodeId = checkpoint.PeerNodeId,
                     LastPushedLocalLogSequence = pendingForPush.Max(x => x.LogSequence),
+                    LastPulledPeerLogSequence = checkpoint.LastPulledPeerLogSequence,
                     UpdatedUtc = DateTime.UtcNow
                 };
             }
@@ -154,8 +157,11 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 pulledConflictCount = ingestionResult.ConflictCount;
 
                 // Pull checkpoint tracks the furthest peer log position we have observed and processed.
-                checkpoint = checkpoint with
+                checkpoint = new PeerCheckpointRecord
                 {
+                    LocalNodeId = checkpoint.LocalNodeId,
+                    PeerNodeId = checkpoint.PeerNodeId,
+                    LastPushedLocalLogSequence = checkpoint.LastPushedLocalLogSequence,
                     LastPulledPeerLogSequence = Math.Max(checkpoint.LastPulledPeerLogSequence, pulled.Operations.Max(x => x.LogSequence)),
                     UpdatedUtc = DateTime.UtcNow
                 };

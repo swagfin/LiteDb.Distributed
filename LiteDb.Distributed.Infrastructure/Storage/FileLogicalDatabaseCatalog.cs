@@ -143,12 +143,12 @@ namespace LiteDb.Distributed.Infrastructure.Storage
 
         private class CatalogWrapper
         {
-            public List<CatalogEntry> Databases { get; init; } = new();
+            public List<CatalogEntry> Databases { get; set; } = new();
         }
 
         private class CatalogEntry
         {
-            public string DatabaseName { get; init; } = string.Empty;
+            public string DatabaseName { get; set; } = string.Empty;
             public DateTime CreatedUtc { get; set; }
             public DateTime UpdatedUtc { get; set; }
         }

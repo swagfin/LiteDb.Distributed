@@ -1,14 +1,14 @@
-﻿using LiteDb.Distributed.Core.Models;
+using LiteDb.Distributed.Core.Models;
 
 namespace LiteDb.Distributed.Infrastructure.Storage
 {
-    public sealed record LiteDbNodeStoreOptions
+    public class LiteDbNodeStoreOptions
     {
-        public required string DatabaseName { get; init; }
-        public required string BusinessDatabasePath { get; init; }
-        public required string MetadataDatabasePath { get; init; }
-        public required string NodeId { get; init; }
-        public IReadOnlyList<ClusterPeer> SeedPeers { get; init; } = Array.Empty<ClusterPeer>();
+        public required string DatabaseName { get; set; }
+        public required string BusinessDatabasePath { get; set; }
+        public required string MetadataDatabasePath { get; set; }
+        public required string NodeId { get; set; }
+        public IReadOnlyList<ClusterPeer> SeedPeers { get; set; } = Array.Empty<ClusterPeer>();
     }
 
 }

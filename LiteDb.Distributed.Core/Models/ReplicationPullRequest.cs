@@ -1,12 +1,9 @@
-﻿
-
 namespace LiteDb.Distributed.Core.Models
 {
-    public sealed record ReplicationPullRequest
+    public class ReplicationPullRequest
     {
-        public required string RequestingNodeId { get; init; }
-        public long AfterLogSequence { get; init; }
-        public int BatchSize { get; init; } = 200;
+        public required string RequestingNodeId { get; set; }
+        public long AfterLogSequence { get; set; }
+        public int BatchSize { get; set; } = 200;
     }
-
 }

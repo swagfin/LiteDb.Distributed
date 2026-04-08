@@ -1,11 +1,11 @@
-﻿
+
 
 namespace LiteDb.Distributed.Core.Models
 {
-    public sealed record ConflictResolutionResult
+    public class ConflictResolutionResult
     {
-        public required ConflictResolutionAction Action { get; init; }
-        public string Reason { get; init; } = string.Empty;
+        public required ConflictResolutionAction Action { get; set; }
+        public string Reason { get; set; } = string.Empty;
     }
 
 }

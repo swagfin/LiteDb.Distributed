@@ -21,6 +21,7 @@ namespace LiteDb.Distributed.Server.Controllers
         private static readonly Regex DollarIdAliasRegex = new("(?<![A-Za-z0-9_])\\$_id(?![A-Za-z0-9_])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex IdAliasRegex = new("(?<![A-Za-z0-9_])id(?![A-Za-z0-9_])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex IdEqualityLiteralRegex = new("_id\\s*=\\s*('([^']*)'|\"([^\"]*)\"|([A-Za-z0-9_\\-]+))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex TombstonePredicateRegex = new("(_sys_deleted|_sys_tombstone)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly ILocalDocumentReader _reader;
         private readonly ILocalDocumentWriter _writer;
@@ -70,15 +71,16 @@ namespace LiteDb.Distributed.Server.Controllers
             try
             {
                 IReadOnlyList<Dictionary<string, object?>> rows = await _reader.ExecuteQueryAsync<Dictionary<string, object?>>(query, safeTake, cancellationToken).ConfigureAwait(false);
+                List<Dictionary<string, object?>> visibleRows = ShouldFilterTombstonesForSelect(query) ? rows.Where(x => !IsDeletedOrTombstoneRow(x)).ToList() : rows.ToList();
 
                 return Ok(new QueryResponse
                 {
                     Query = query,
                     RequestedTake = safeTake,
-                    MatchedCount = rows.Count,
+                    MatchedCount = visibleRows.Count,
                     AppliedCount = 0,
-                    ReturnedRows = rows.Count,
-                    Rows = rows
+                    ReturnedRows = visibleRows.Count,
+                    Rows = visibleRows
                 });
             }
             catch (LiteException ex)
@@ -504,13 +506,18 @@ namespace LiteDb.Distributed.Server.Controllers
             // Resolve target ids via SELECT first, then apply writes through writer APIs for replication safety.
             string normalizedWhereClause = NormalizeWhereClause(whereClause);
             string lookupQuery = string.IsNullOrWhiteSpace(whereClause)
-                ? $"SELECT _id FROM {collection} LIMIT {take}"
-                : $"SELECT _id FROM {collection} WHERE {normalizedWhereClause} LIMIT {take}";
+                ? $"SELECT $ FROM {collection} LIMIT {take}"
+                : $"SELECT $ FROM {collection} WHERE {normalizedWhereClause} LIMIT {take}";
             IReadOnlyList<Dictionary<string, object?>> rows = await _reader.ExecuteQueryAsync<Dictionary<string, object?>>(lookupQuery, take, cancellationToken).ConfigureAwait(false);
             List<string> ids = new List<string>(rows.Count);
 
             foreach (Dictionary<string, object?> row in rows)
             {
+                if (IsDeletedOrTombstoneRow(row))
+                {
+                    continue;
+                }
+
                 if (!TryExtractEntityId(row, out string? entityId))
                 {
                     continue;
@@ -553,6 +560,22 @@ namespace LiteDb.Distributed.Server.Controllers
             }
 
             return ids;
+        }
+
+        private static bool ShouldFilterTombstonesForSelect(string query)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return false;
+            }
+
+            string normalized = query.Trim();
+            if (TombstonePredicateRegex.IsMatch(normalized))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private static string NormalizeWhereClause(string whereClause)
@@ -632,6 +655,71 @@ namespace LiteDb.Distributed.Server.Controllers
 
                 entityId = value;
                 return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsDeletedOrTombstoneRow(IReadOnlyDictionary<string, object?> row)
+        {
+            if (TryReadBooleanLike(row, "_sys_deleted", out bool deleted) && deleted)
+            {
+                return true;
+            }
+
+            if (TryReadBooleanLike(row, "_sys_tombstone", out bool tombstone) && tombstone)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadBooleanLike(IReadOnlyDictionary<string, object?> row, string key, out bool value)
+        {
+            value = false;
+
+            foreach (KeyValuePair<string, object?> entry in row)
+            {
+                if (!string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (entry.Value is bool boolValue)
+                {
+                    value = boolValue;
+                    return true;
+                }
+
+                if (entry.Value is string stringValue && bool.TryParse(stringValue, out bool parsedString))
+                {
+                    value = parsedString;
+                    return true;
+                }
+
+                if (entry.Value is JsonElement jsonElement)
+                {
+                    if (jsonElement.ValueKind == JsonValueKind.True)
+                    {
+                        value = true;
+                        return true;
+                    }
+
+                    if (jsonElement.ValueKind == JsonValueKind.False)
+                    {
+                        value = false;
+                        return true;
+                    }
+
+                    if (jsonElement.ValueKind == JsonValueKind.String && bool.TryParse(jsonElement.GetString(), out bool parsedJson))
+                    {
+                        value = parsedJson;
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
             return false;
@@ -836,18 +924,18 @@ namespace LiteDb.Distributed.Server.Controllers
 
         public class QueryRequest
         {
-            public string Query { get; init; } = string.Empty;
-            public int Take { get; init; } = 200;
+            public string Query { get; set; } = string.Empty;
+            public int Take { get; set; } = 200;
         }
 
         public class QueryResponse
         {
-            public required string Query { get; init; }
-            public required int RequestedTake { get; init; }
-            public required int MatchedCount { get; init; }
-            public required int AppliedCount { get; init; }
-            public required int ReturnedRows { get; init; }
-            public IReadOnlyList<Dictionary<string, object?>> Rows { get; init; } = Array.Empty<Dictionary<string, object?>>();
+            public required string Query { get; set; }
+            public required int RequestedTake { get; set; }
+            public required int MatchedCount { get; set; }
+            public required int AppliedCount { get; set; }
+            public required int ReturnedRows { get; set; }
+            public IReadOnlyList<Dictionary<string, object?>> Rows { get; set; } = Array.Empty<Dictionary<string, object?>>();
         }
     }
 }

@@ -416,7 +416,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             string mergedBaseUrl = string.IsNullOrWhiteSpace(existing.BaseUrl) ? normalizedBaseUrl : existing.BaseUrl;
             bool mergedActive = existing.IsActive || isActive;
-            peersByNodeId[nodeId] = existing with { BaseUrl = mergedBaseUrl, IsActive = mergedActive };
+            peersByNodeId[nodeId] = new DashboardPeerTarget(nodeId, mergedBaseUrl, mergedActive);
         }
 
         private static string ResolveDataDirectory(string dataDirectory)
@@ -438,89 +438,142 @@ namespace LiteDb.Distributed.Server.Controllers
 
         private class NodeInfoResponse
         {
-            public string NodeId { get; init; } = string.Empty;
+            public string NodeId { get; set; } = string.Empty;
         }
 
         private class DashboardWebSocketHealthCheck
         {
-            public string Type { get; init; } = string.Empty;
-            public string SourceNodeId { get; init; } = string.Empty;
-            public DateTime TimestampUtc { get; init; }
+            public string Type { get; set; } = string.Empty;
+            public string SourceNodeId { get; set; } = string.Empty;
+            public DateTime TimestampUtc { get; set; }
         }
 
         private class DashboardWebSocketAck
         {
-            public bool Accepted { get; init; }
-            public string? Error { get; init; }
+            public bool Accepted { get; set; }
+            public string? Error { get; set; }
         }
 
-        private sealed record DashboardPeerTarget(string NodeId, string BaseUrl, bool IsActive);
-        private sealed record DashboardPeerProbeResult(DashboardNodeStatusDto NodeStatus, DashboardPeerConnectivityDto PeerConnectivity);
-        private sealed record HttpProbeResult(string ResolvedNodeId, bool IsOnline, string Status, string? Error, double DurationMs);
-        private sealed record WebSocketProbeResult(bool IsOnline, string Status, string? Error, double? DurationMs)
+        private class DashboardPeerTarget
         {
+            public DashboardPeerTarget(string nodeId, string baseUrl, bool isActive)
+            {
+                NodeId = nodeId;
+                BaseUrl = baseUrl;
+                IsActive = isActive;
+            }
+
+            public string NodeId { get; set; }
+            public string BaseUrl { get; set; }
+            public bool IsActive { get; set; }
+        }
+
+        private class DashboardPeerProbeResult
+        {
+            public DashboardPeerProbeResult(DashboardNodeStatusDto nodeStatus, DashboardPeerConnectivityDto peerConnectivity)
+            {
+                NodeStatus = nodeStatus;
+                PeerConnectivity = peerConnectivity;
+            }
+
+            public DashboardNodeStatusDto NodeStatus { get; set; }
+            public DashboardPeerConnectivityDto PeerConnectivity { get; set; }
+        }
+
+        private class HttpProbeResult
+        {
+            public HttpProbeResult(string ResolvedNodeId, bool IsOnline, string Status, string? Error, double DurationMs)
+            {
+                this.ResolvedNodeId = ResolvedNodeId;
+                this.IsOnline = IsOnline;
+                this.Status = Status;
+                this.Error = Error;
+                this.DurationMs = DurationMs;
+            }
+
+            public string ResolvedNodeId { get; set; }
+            public bool IsOnline { get; set; }
+            public string Status { get; set; }
+            public string? Error { get; set; }
+            public double DurationMs { get; set; }
+        }
+
+        private class WebSocketProbeResult
+        {
+            public WebSocketProbeResult(bool IsOnline, string Status, string? Error, double? DurationMs)
+            {
+                this.IsOnline = IsOnline;
+                this.Status = Status;
+                this.Error = Error;
+                this.DurationMs = DurationMs;
+            }
+
+            public bool IsOnline { get; set; }
+            public string Status { get; set; }
+            public string? Error { get; set; }
+            public double? DurationMs { get; set; }
+
             public static WebSocketProbeResult Skipped(string reason) => new(false, "Skipped", reason, null);
         }
 
         public class DashboardOverviewDto
         {
-            public required string NodeId { get; init; }
-            public required DateTime TimestampUtc { get; init; }
-            public required string DataRootPath { get; init; }
-            public required string NodeDataPath { get; init; }
-            public IReadOnlyList<DashboardNodeStatusDto> Nodes { get; init; } = Array.Empty<DashboardNodeStatusDto>();
-            public IReadOnlyList<DashboardPeerConnectivityDto> PeerConnections { get; init; } = Array.Empty<DashboardPeerConnectivityDto>();
-            public IReadOnlyList<DashboardDatabaseStatusDto> Databases { get; init; } = Array.Empty<DashboardDatabaseStatusDto>();
+            public required string NodeId { get; set; }
+            public required DateTime TimestampUtc { get; set; }
+            public required string DataRootPath { get; set; }
+            public required string NodeDataPath { get; set; }
+            public IReadOnlyList<DashboardNodeStatusDto> Nodes { get; set; } = Array.Empty<DashboardNodeStatusDto>();
+            public IReadOnlyList<DashboardPeerConnectivityDto> PeerConnections { get; set; } = Array.Empty<DashboardPeerConnectivityDto>();
+            public IReadOnlyList<DashboardDatabaseStatusDto> Databases { get; set; } = Array.Empty<DashboardDatabaseStatusDto>();
         }
 
         public class DashboardNodeStatusDto
         {
-            public required string NodeId { get; init; }
-            public required string BaseUrl { get; init; }
-            public required bool IsOnline { get; init; }
-            public required string Status { get; init; }
-            public required string HttpStatus { get; init; }
-            public required string WebSocketStatus { get; init; }
-            public required double? HttpProbeDurationMs { get; init; }
-            public required double? WebSocketProbeDurationMs { get; init; }
-            public required string? Error { get; init; }
-            public required DateTime LastCheckedUtc { get; init; }
+            public required string NodeId { get; set; }
+            public required string BaseUrl { get; set; }
+            public required bool IsOnline { get; set; }
+            public required string Status { get; set; }
+            public required string HttpStatus { get; set; }
+            public required string WebSocketStatus { get; set; }
+            public required double? HttpProbeDurationMs { get; set; }
+            public required double? WebSocketProbeDurationMs { get; set; }
+            public required string? Error { get; set; }
+            public required DateTime LastCheckedUtc { get; set; }
         }
 
         public class DashboardPeerConnectivityDto
         {
-            public required string PeerNodeId { get; init; }
-            public required string BaseUrl { get; init; }
-            public required bool IsPeerActive { get; init; }
-            public required string OverallStatus { get; init; }
-            public required string HttpStatus { get; init; }
-            public required string WebSocketStatus { get; init; }
-            public required double? HttpProbeDurationMs { get; init; }
-            public required double? WebSocketProbeDurationMs { get; init; }
-            public required string? Error { get; init; }
-            public required DateTime LastCheckedUtc { get; init; }
+            public required string PeerNodeId { get; set; }
+            public required string BaseUrl { get; set; }
+            public required bool IsPeerActive { get; set; }
+            public required string OverallStatus { get; set; }
+            public required string HttpStatus { get; set; }
+            public required string WebSocketStatus { get; set; }
+            public required double? HttpProbeDurationMs { get; set; }
+            public required double? WebSocketProbeDurationMs { get; set; }
+            public required string? Error { get; set; }
+            public required DateTime LastCheckedUtc { get; set; }
         }
 
         public class DashboardDatabaseStatusDto
         {
-            public required string Name { get; init; }
-            public required string Status { get; init; }
-            public required string? Error { get; init; }
-            public required DashboardFileStatusDto BusinessFile { get; init; }
-            public required DashboardFileStatusDto MetadataFile { get; init; }
-            public required int PeerCount { get; init; }
-            public IReadOnlyList<string> BusinessCollections { get; init; } = Array.Empty<string>();
-            public IReadOnlyList<string> MetadataCollections { get; init; } = Array.Empty<string>();
+            public required string Name { get; set; }
+            public required string Status { get; set; }
+            public required string? Error { get; set; }
+            public required DashboardFileStatusDto BusinessFile { get; set; }
+            public required DashboardFileStatusDto MetadataFile { get; set; }
+            public required int PeerCount { get; set; }
+            public IReadOnlyList<string> BusinessCollections { get; set; } = Array.Empty<string>();
+            public IReadOnlyList<string> MetadataCollections { get; set; } = Array.Empty<string>();
         }
 
         public class DashboardFileStatusDto
         {
-            public required string Path { get; init; }
-            public required bool Exists { get; init; }
-            public required long SizeBytes { get; init; }
-            public required DateTime? LastWriteUtc { get; init; }
+            public required string Path { get; set; }
+            public required bool Exists { get; set; }
+            public required long SizeBytes { get; set; }
+            public required DateTime? LastWriteUtc { get; set; }
         }
     }
 
 }
-

@@ -1,10 +1,10 @@
-﻿
+
 
 namespace LiteDb.Distributed.Core.Models
 {
-    public sealed record ReplicationPullResponse
+    public class ReplicationPullResponse
     {
-        public required IReadOnlyList<OperationRecord> Operations { get; init; }
+        public required IReadOnlyList<OperationRecord> Operations { get; set; }
     }
 
 }

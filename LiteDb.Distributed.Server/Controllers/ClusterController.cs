@@ -35,7 +35,14 @@ namespace LiteDb.Distributed.Server.Controllers
                 return BadRequest(new { Error = "Cannot register local node as a peer." });
             }
 
-            await _peerRegistry.UpsertPeerAsync(peer with { UpdatedUtc = DateTime.UtcNow }, cancellationToken).ConfigureAwait(false);
+            ClusterPeer updatedPeer = new ClusterPeer
+            {
+                NodeId = peer.NodeId,
+                BaseUrl = peer.BaseUrl,
+                IsActive = peer.IsActive,
+                UpdatedUtc = DateTime.UtcNow
+            };
+            await _peerRegistry.UpsertPeerAsync(updatedPeer, cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
 
             _logger.LogInformation("Peer upserted. NodeId={NodeId} PeerNodeId={PeerNodeId} BaseUrl={BaseUrl} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, peer.BaseUrl, stopwatch.Elapsed.TotalMilliseconds);
@@ -57,4 +64,3 @@ namespace LiteDb.Distributed.Server.Controllers
     }
 
 }
-

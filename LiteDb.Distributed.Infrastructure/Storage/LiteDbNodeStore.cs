@@ -410,7 +410,24 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                 {
                     long logSequence = operation.LogSequence > 0 ? operation.LogSequence : ReserveNextLocalSequence(DateTime.UtcNow);
 
-                    InsertOperationInternal(operation with { LogSequence = logSequence });
+                    OperationRecord operationWithLogSequence = new OperationRecord
+                    {
+                        Id = operation.Id,
+                        NodeId = operation.NodeId,
+                        TimestampUtc = operation.TimestampUtc,
+                        Collection = operation.Collection,
+                        EntityId = operation.EntityId,
+                        OperationType = operation.OperationType,
+                        Payload = operation.Payload,
+                        Sequence = operation.Sequence,
+                        LogSequence = logSequence,
+                        ParentVersion = operation.ParentVersion,
+                        GlobalSequence = operation.GlobalSequence,
+                        IsSynced = operation.IsSynced,
+                        IsTombstone = operation.IsTombstone
+                    };
+
+                    InsertOperationInternal(operationWithLogSequence);
                     CommitCombinedTransaction();
                     return Task.CompletedTask;
                 }
@@ -667,7 +684,24 @@ namespace LiteDb.Distributed.Infrastructure.Storage
                     }
 
                     long localLogSequence = ReserveNextLocalSequence(DateTime.UtcNow);
-                    InsertOperationInternal(operation with { LogSequence = localLogSequence, IsSynced = true });
+                    OperationRecord syncedOperation = new OperationRecord
+                    {
+                        Id = operation.Id,
+                        NodeId = operation.NodeId,
+                        TimestampUtc = operation.TimestampUtc,
+                        Collection = operation.Collection,
+                        EntityId = operation.EntityId,
+                        OperationType = operation.OperationType,
+                        Payload = operation.Payload,
+                        Sequence = operation.Sequence,
+                        LogSequence = localLogSequence,
+                        ParentVersion = operation.ParentVersion,
+                        GlobalSequence = operation.GlobalSequence,
+                        IsSynced = true,
+                        IsTombstone = operation.IsTombstone
+                    };
+
+                    InsertOperationInternal(syncedOperation);
                     CommitCombinedTransaction();
 
                     return Task.FromResult(true);

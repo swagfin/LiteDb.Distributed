@@ -1,14 +1,14 @@
-﻿using System.Net;
+using System.Net;
 
 namespace LiteDb.Distributed.Studio.Models
 {
     public class ApiResult<T>
     {
-        public bool Success { get; init; }
-        public T? Data { get; init; }
-        public string? ErrorMessage { get; init; }
-        public HttpStatusCode? StatusCode { get; init; }
-        public string? RawBody { get; init; }
+        public bool Success { get; set; }
+        public T? Data { get; set; }
+        public string? ErrorMessage { get; set; }
+        public HttpStatusCode? StatusCode { get; set; }
+        public string? RawBody { get; set; }
 
         public static ApiResult<T> Ok(T? data, HttpStatusCode? statusCode = null)
         {

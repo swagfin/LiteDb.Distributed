@@ -59,7 +59,24 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 {
                     Stopwatch applyStopwatch = Stopwatch.StartNew();
 
-                    bool applied = await _remoteOperationApplier.ApplyRemoteOperationAsync(operation with { IsSynced = true }, cancellationToken).ConfigureAwait(false);
+                    OperationRecord syncedOperation = new OperationRecord
+                    {
+                        Id = operation.Id,
+                        NodeId = operation.NodeId,
+                        TimestampUtc = operation.TimestampUtc,
+                        Collection = operation.Collection,
+                        EntityId = operation.EntityId,
+                        OperationType = operation.OperationType,
+                        Payload = operation.Payload,
+                        Sequence = operation.Sequence,
+                        LogSequence = operation.LogSequence,
+                        ParentVersion = operation.ParentVersion,
+                        GlobalSequence = operation.GlobalSequence,
+                        IsSynced = true,
+                        IsTombstone = operation.IsTombstone
+                    };
+
+                    bool applied = await _remoteOperationApplier.ApplyRemoteOperationAsync(syncedOperation, cancellationToken).ConfigureAwait(false);
 
                     applyStopwatch.Stop();
 

@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
@@ -315,31 +315,31 @@ namespace LiteDb.Distributed.Server.Controllers
 
         private class CacheEntryDocument
         {
-            public string Id { get; init; } = string.Empty;
-            public string Key { get; init; } = string.Empty;
-            public JsonElement Value { get; init; }
-            public DateTime CreatedUtc { get; init; }
-            public DateTime UpdatedUtc { get; init; }
-            public DateTime ExpiresAtUtc { get; init; }
+            public string Id { get; set; } = string.Empty;
+            public string Key { get; set; } = string.Empty;
+            public JsonElement Value { get; set; }
+            public DateTime CreatedUtc { get; set; }
+            public DateTime UpdatedUtc { get; set; }
+            public DateTime ExpiresAtUtc { get; set; }
         }
 
         private class CacheSetResponse
         {
-            public required string Key { get; init; }
-            public required string Version { get; init; }
-            public required DateTime CommittedUtc { get; init; }
-            public required DateTime ExpiresAtUtc { get; init; }
-            public required string Ttl { get; init; }
+            public required string Key { get; set; }
+            public required string Version { get; set; }
+            public required DateTime CommittedUtc { get; set; }
+            public required DateTime ExpiresAtUtc { get; set; }
+            public required string Ttl { get; set; }
         }
 
         private class CacheGetResponse
         {
-            public required string Key { get; init; }
-            public required JsonElement Value { get; init; }
-            public required DateTime CreatedUtc { get; init; }
-            public required DateTime UpdatedUtc { get; init; }
-            public required DateTime ExpiresAtUtc { get; init; }
-            public required string RemainingTtl { get; init; }
+            public required string Key { get; set; }
+            public required JsonElement Value { get; set; }
+            public required DateTime CreatedUtc { get; set; }
+            public required DateTime UpdatedUtc { get; set; }
+            public required DateTime ExpiresAtUtc { get; set; }
+            public required string RemainingTtl { get; set; }
         }
     }
 

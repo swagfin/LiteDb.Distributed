@@ -13,10 +13,10 @@ namespace LiteDb.Distributed.Studio.Pages
         private const bool ShowInternalColumns = false;
 
         [Inject]
-        public required ProfileStore ProfileStore { get; init; }
+        public required ProfileStore ProfileStore { get; set; }
 
         [Inject]
-        public required DistributedApiClient ApiClient { get; init; }
+        public required DistributedApiClient ApiClient { get; set; }
 
         private static readonly Regex DatabaseNamePattern = new("^[a-z0-9][a-z0-9_-]{0,62}$", RegexOptions.Compiled);
         private static readonly HashSet<string> ReservedCollections = new(StringComparer.OrdinalIgnoreCase) { "cache" };
@@ -1584,4 +1584,3 @@ namespace LiteDb.Distributed.Studio.Pages
     }
 
 }
-

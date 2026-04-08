@@ -1,10 +1,10 @@
-﻿using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 SampleSettings settings = SampleSettings.Load();
 
@@ -88,8 +88,7 @@ public class OrderTransactionGeneratorService : BackgroundService
             Quantity = quantity,
             UnitPrice = unitPrice,
             TotalAmount = decimal.Round(quantity * unitPrice, 2),
-            OccurredUtc = DateTime.UtcNow,
-            Source = "SaveFewRecordsSample"
+            OrderDateUtc = DateTime.UtcNow
         };
     }
 
@@ -138,14 +137,14 @@ public class OrderTransactionGeneratorService : BackgroundService
     }
 }
 
-public sealed record SampleSettings
+public class SampleSettings
 {
-    public string ServerUrl { get; init; } = "http://localhost:1446";
-    public string Database { get; init; } = string.Empty;
-    public string ApiKey { get; init; } = "root";
-    public string CollectionName { get; init; } = "OrderTransactions";
-    public int MinIntervalSeconds { get; init; } = 1;
-    public int MaxIntervalSeconds { get; init; } = 3;
+    public string ServerUrl { get; set; } = "http://localhost:1446";
+    public string Database { get; set; } = string.Empty;
+    public string ApiKey { get; set; } = "root";
+    public string CollectionName { get; set; } = "OrderTransactions";
+    public int MinIntervalSeconds { get; set; } = 1;
+    public int MaxIntervalSeconds { get; set; } = 3;
 
     public static SampleSettings Load()
     {
@@ -167,7 +166,7 @@ public sealed record SampleSettings
         int minInterval = Math.Max(1, settings.MinIntervalSeconds);
         int maxInterval = Math.Max(minInterval, settings.MaxIntervalSeconds);
 
-        return settings with
+        return new SampleSettings
         {
             ServerUrl = settings.ServerUrl.Trim(),
             Database = settings.Database.Trim(),
@@ -179,15 +178,14 @@ public sealed record SampleSettings
     }
 }
 
-public sealed record OrderTransaction
+public class OrderTransaction
 {
-    public required string Id { get; init; }
-    public required string OrderId { get; init; }
-    public required string CustomerId { get; init; }
-    public required string ItemSku { get; init; }
-    public required int Quantity { get; init; }
-    public required decimal UnitPrice { get; init; }
-    public required decimal TotalAmount { get; init; }
-    public required DateTime OccurredUtc { get; init; }
-    public required string Source { get; init; }
+    public string Id { get; set; } = string.Empty;
+    public string OrderId { get; set; } = string.Empty;
+    public string CustomerId { get; set; } = string.Empty;
+    public string ItemSku { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal TotalAmount { get; set; }
+    public DateTime OrderDateUtc { get; set; }
 }

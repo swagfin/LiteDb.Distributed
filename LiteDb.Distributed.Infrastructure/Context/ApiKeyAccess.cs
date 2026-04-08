@@ -2,13 +2,13 @@ namespace LiteDb.Distributed.Infrastructure.Context
 {
     public class ApiKeyAccess
     {
-        public required string ApiKey { get; init; }
-        public required bool IsRoot { get; init; }
-        public required bool CanAddDatabase { get; init; }
-        public required bool CanDeleteDatabase { get; init; }
-        public required bool CanReadDocument { get; init; }
-        public required bool CanWriteDocument { get; init; }
-        public required bool CanUpdateDocument { get; init; }
-        public required bool CanDeleteDocument { get; init; }
+        public required string ApiKey { get; set; }
+        public required bool IsRoot { get; set; }
+        public required bool CanAddDatabase { get; set; }
+        public required bool CanDeleteDatabase { get; set; }
+        public required bool CanReadDocument { get; set; }
+        public required bool CanWriteDocument { get; set; }
+        public required bool CanUpdateDocument { get; set; }
+        public required bool CanDeleteDocument { get; set; }
     }
 }

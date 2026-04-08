@@ -70,8 +70,8 @@ namespace LiteDb.Distributed.Studio.Services
 
         private class StorageRecord<T>
         {
-            public T? Value { get; init; }
-            public DateTime SavedAtUtc { get; init; }
+            public T? Value { get; set; }
+            public DateTime SavedAtUtc { get; set; }
         }
     }
 

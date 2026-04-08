@@ -1,4 +1,4 @@
-﻿IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
+IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 
 // Studio uses a fixed origin so browser local storage remains stable across restarts.
 builder.AddProject<Projects.LiteDb_Distributed_Studio>("studio", options =>
@@ -32,8 +32,6 @@ ConfigureNode(
     17003,
     ("node-1", "http://localhost:17001"),
     ("node-2", "http://localhost:17002"));
-
-
 
 builder.Build().Run();
 

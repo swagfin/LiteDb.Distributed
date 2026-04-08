@@ -1,12 +1,12 @@
-﻿
+
 
 namespace LiteDb.Distributed.Core.Models
 {
-    public sealed record ClusterPeer
+    public class ClusterPeer
     {
-        public required string NodeId { get; init; }
-        public required string BaseUrl { get; init; }
-        public bool IsActive { get; init; } = true;
-        public DateTime UpdatedUtc { get; init; }
+        public required string NodeId { get; set; }
+        public required string BaseUrl { get; set; }
+        public bool IsActive { get; set; } = true;
+        public DateTime UpdatedUtc { get; set; }
     }
 }

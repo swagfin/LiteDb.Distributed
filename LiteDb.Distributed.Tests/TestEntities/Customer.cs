@@ -1,10 +1,10 @@
-﻿namespace LiteDb.Distributed.Tests
+namespace LiteDb.Distributed.Tests.TestEntities
 {
-    public record Customer
+    public class Customer
     {
-        public required string Id { get; init; }
-        public required string Name { get; init; }
-        public required string Email { get; init; }
-        public DateTime UpdatedUtc { get; init; }
+        public required string Id { get; set; }
+        public required string Name { get; set; }
+        public required string Email { get; set; }
+        public DateTime UpdatedUtc { get; set; }
     }
 }

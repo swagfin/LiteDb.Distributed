@@ -72,4 +72,3 @@ app.UseCors("StudioCors");
 app.MapControllers();
 
 app.Run();
-

@@ -1,12 +1,12 @@
-﻿
+
 
 namespace LiteDb.Distributed.Core.Models
 {
-    public sealed record ConflictResolutionContext
+    public class ConflictResolutionContext
     {
-        public required string LocalNodeId { get; init; }
-        public required OperationRecord IncomingOperation { get; init; }
-        public DocumentState? LocalDocumentState { get; init; }
+        public required string LocalNodeId { get; set; }
+        public required OperationRecord IncomingOperation { get; set; }
+        public DocumentState? LocalDocumentState { get; set; }
     }
 
 }

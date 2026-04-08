@@ -1,4 +1,4 @@
-﻿using LiteDb.Distributed.Core.Models;
+using LiteDb.Distributed.Core.Models;
 
 namespace LiteDb.Distributed.Core.Abstractions
 {

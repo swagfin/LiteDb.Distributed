@@ -1,11 +1,11 @@
-﻿
+
 
 namespace LiteDb.Distributed.Core.Models
 {
-    public sealed record ReplicationPushRequest
+    public class ReplicationPushRequest
     {
-        public required string SourceNodeId { get; init; }
-        public required IReadOnlyList<OperationRecord> Operations { get; init; }
+        public required string SourceNodeId { get; set; }
+        public required IReadOnlyList<OperationRecord> Operations { get; set; }
     }
 
 }

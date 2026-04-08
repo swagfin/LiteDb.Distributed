@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -15,7 +15,7 @@ Console.CancelKeyPress += (_, args) =>
     cancellation.Cancel();
 };
 
-List<CacheProbeNode> nodes = settings.Nodes.Select((baseUrl, index) => new CacheProbeNode(Name: $"node-{index + 1}", BaseUrl: NormalizeBaseUrl(baseUrl), Client: CreateNodeClient(baseUrl, settings))).ToList();
+List<CacheProbeNode> nodes = settings.Nodes.Select((baseUrl, index) => new CacheProbeNode($"node-{index + 1}", NormalizeBaseUrl(baseUrl), CreateNodeClient(baseUrl, settings))).ToList();
 
 Console.WriteLine("Distributed Cache Probe");
 Console.WriteLine($"Database: {settings.Database}");
@@ -129,13 +129,13 @@ static async Task<ReplicationProbeResult> WaitForReplicationAsync(CacheProbeNode
         bool exists = await CheckKeyExistsAsync(node, key, cancellationToken).ConfigureAwait(false);
         if (exists)
         {
-            return new ReplicationProbeResult(node.Name, Found: true, stopwatch.Elapsed);
+            return new ReplicationProbeResult(node.Name, true, stopwatch.Elapsed);
         }
 
         await SafeDelayAsync(pollDelay, cancellationToken).ConfigureAwait(false);
     }
 
-    return new ReplicationProbeResult(node.Name, Found: false, stopwatch.Elapsed);
+    return new ReplicationProbeResult(node.Name, false, stopwatch.Elapsed);
 }
 
 static async Task<bool> CheckKeyExistsAsync(CacheProbeNode node, string key, CancellationToken cancellationToken)
@@ -177,21 +177,21 @@ static string NormalizeBaseUrl(string baseUrl)
     return baseUrl.TrimEnd('/');
 }
 
-public sealed record CacheProbeSettings
+public class CacheProbeSettings
 {
-    public string[] Nodes { get; init; } = new[]
+    public string[] Nodes { get; set; } = new[]
     {
         "http://localhost:17001",
         "http://localhost:17002",
         "http://localhost:17003"
     };
 
-    public string Database { get; init; } = "testapp";
-    public string ApiKey { get; init; } = "root";
-    public int PollIntervalMilliseconds { get; init; } = 25;
-    public int VisibilityTimeoutSeconds { get; init; } = 20;
-    public int MinPauseMilliseconds { get; init; } = 500;
-    public int MaxPauseMilliseconds { get; init; } = 1500;
+    public string Database { get; set; } = "testapp";
+    public string ApiKey { get; set; } = "root";
+    public int PollIntervalMilliseconds { get; set; } = 25;
+    public int VisibilityTimeoutSeconds { get; set; } = 20;
+    public int MinPauseMilliseconds { get; set; } = 500;
+    public int MaxPauseMilliseconds { get; set; } = 1500;
 
     public static CacheProbeSettings Load()
     {
@@ -225,7 +225,7 @@ public sealed record CacheProbeSettings
         int minPauseMs = Math.Max(100, settings.MinPauseMilliseconds);
         int maxPauseMs = Math.Max(minPauseMs, settings.MaxPauseMilliseconds);
 
-        return settings with
+        return new CacheProbeSettings
         {
             Nodes = normalizedNodes,
             Database = settings.Database.Trim(),
@@ -238,14 +238,38 @@ public sealed record CacheProbeSettings
     }
 }
 
-public sealed record CacheValue
+public class CacheValue
 {
-    public required string Value { get; init; }
-    public required string OriginNode { get; init; }
-    public required DateTime WrittenUtc { get; init; }
-    public required string Ttl { get; init; }
+    public required string Value { get; set; }
+    public required string OriginNode { get; set; }
+    public required DateTime WrittenUtc { get; set; }
+    public required string Ttl { get; set; }
 }
 
-public sealed record CacheProbeNode(string Name, string BaseUrl, HttpClient Client);
+public class CacheProbeNode
+{
+    public CacheProbeNode(string name, string baseUrl, HttpClient client)
+    {
+        Name = name;
+        BaseUrl = baseUrl;
+        Client = client;
+    }
 
-public sealed record ReplicationProbeResult(string NodeName, bool Found, TimeSpan Elapsed);
+    public string Name { get; set; }
+    public string BaseUrl { get; set; }
+    public HttpClient Client { get; set; }
+}
+
+public class ReplicationProbeResult
+{
+    public ReplicationProbeResult(string nodeName, bool found, TimeSpan elapsed)
+    {
+        NodeName = nodeName;
+        Found = found;
+        Elapsed = elapsed;
+    }
+
+    public string NodeName { get; set; }
+    public bool Found { get; set; }
+    public TimeSpan Elapsed { get; set; }
+}

@@ -1,10 +1,10 @@
-﻿
+
 
 namespace LiteDb.Distributed.Core.Models
 {
-    public sealed record ReplicationPushResponse
+    public class ReplicationPushResponse
     {
-        public required int AcceptedCount { get; init; }
+        public required int AcceptedCount { get; set; }
     }
 
 }

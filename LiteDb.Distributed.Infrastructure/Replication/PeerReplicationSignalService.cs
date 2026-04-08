@@ -54,7 +54,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             ScheduledDispatch scheduled = _scheduledDispatches.AddOrUpdate(
                 context.DatabaseName,
                 _ => new ScheduledDispatch(context.DatabaseName, reason, 0, now, now),
-                (_, existing) => existing with { Reason = reason, Attempt = 0, DueUtc = now, UpdatedUtc = now });
+                (_, existing) => new ScheduledDispatch(existing.DatabaseName, reason, 0, now, now));
 
             _dispatchSignal.Release();
             _logger.LogDebug("Replication dispatch scheduled. Database={Database} Reason={Reason} DueUtc={DueUtc}", scheduled.DatabaseName, scheduled.Reason, scheduled.DueUtc);
@@ -200,7 +200,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 int nextAttempt = dispatch.Attempt + 1;
                 TimeSpan retryDelay = ComputeRetryDelay(nextAttempt);
                 DateTime retryDueUtc = DateTime.UtcNow.Add(retryDelay);
-                ScheduledDispatch retryDispatch = dispatch with { Attempt = nextAttempt, DueUtc = retryDueUtc, UpdatedUtc = DateTime.UtcNow };
+                ScheduledDispatch retryDispatch = new ScheduledDispatch(dispatch.DatabaseName, dispatch.Reason, nextAttempt, retryDueUtc, DateTime.UtcNow);
 
                 _scheduledDispatches.AddOrUpdate(dispatch.DatabaseName, _ => retryDispatch, (_, existing) => MergeRetry(existing, retryDispatch));
 
@@ -426,27 +426,42 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             int attempt = existing.Attempt == 0 ? 0 : Math.Max(existing.Attempt, retry.Attempt);
             string reason = string.IsNullOrWhiteSpace(existing.Reason) ? retry.Reason : existing.Reason;
 
-            return existing with { Reason = reason, Attempt = attempt, DueUtc = dueUtc, UpdatedUtc = DateTime.UtcNow };
+            return new ScheduledDispatch(existing.DatabaseName, reason, attempt, dueUtc, DateTime.UtcNow);
         }
 
-        private sealed record ScheduledDispatch(string DatabaseName, string Reason, int Attempt, DateTime DueUtc, DateTime UpdatedUtc);
-
-        private sealed record ReplicationSignalMessage
+        private class ScheduledDispatch
         {
-            public string Type { get; init; } = string.Empty;
-            public string SourceNodeId { get; init; } = string.Empty;
-            public string Database { get; init; } = string.Empty;
-            public string ReplicationApiKey { get; init; } = string.Empty;
-            public string Reason { get; init; } = string.Empty;
-            public DateTime TimestampUtc { get; init; }
+            public ScheduledDispatch(string databaseName, string reason, int attempt, DateTime dueUtc, DateTime updatedUtc)
+            {
+                DatabaseName = databaseName;
+                Reason = reason;
+                Attempt = attempt;
+                DueUtc = dueUtc;
+                UpdatedUtc = updatedUtc;
+            }
+
+            public string DatabaseName { get; set; }
+            public string Reason { get; set; }
+            public int Attempt { get; set; }
+            public DateTime DueUtc { get; set; }
+            public DateTime UpdatedUtc { get; set; }
         }
 
-        private sealed record ReplicationSignalAck
+        private class ReplicationSignalMessage
         {
-            public bool Accepted { get; init; }
-            public string? Error { get; init; }
+            public string Type { get; set; } = string.Empty;
+            public string SourceNodeId { get; set; } = string.Empty;
+            public string Database { get; set; } = string.Empty;
+            public string ReplicationApiKey { get; set; } = string.Empty;
+            public string Reason { get; set; } = string.Empty;
+            public DateTime TimestampUtc { get; set; }
+        }
+
+        private class ReplicationSignalAck
+        {
+            public bool Accepted { get; set; }
+            public string? Error { get; set; }
         }
     }
 
 }
-
