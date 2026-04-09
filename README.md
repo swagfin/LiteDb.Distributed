@@ -306,6 +306,7 @@ The server allows Studio browser calls via CORS. Configure origins in:
 
 - Replication is event-driven: local writes schedule immediate source-node replication with retry/backoff, WebSocket peer signals are hints for faster convergence, and a fixed 1-minute safety sweep handles anti-entropy catch-up.
 - Peer replication is bounded-parallel per cycle (`Node:ReplicationPeerConcurrency`, default `4`) for better multi-peer latency.
+- WebSocket signal ack wait timeout is configurable with `Node:ReplicationSignalAckTimeoutMilliseconds` (default `10000`).
 - Conflict resolution is controlled per node by `Node:ConflictResolutionPolicy` (`ApplyIncoming` or `KeepLocal`).
 - API keys are application-level authorization values and independent of LiteDB file encryption.
 

@@ -15,7 +15,6 @@ namespace LiteDb.Distributed.Infrastructure.Replication
     public class PeerReplicationSignalService : BackgroundService, IReplicationSignalPublisher, IReplicationWebSocketHandler
     {
         private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-        private static readonly TimeSpan WebSocketAckTimeout = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan RetryMaxDelay = TimeSpan.FromSeconds(30);
 
@@ -24,6 +23,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
         private readonly IClusterPeerRegistry _clusterPeerRegistry;
         private readonly IReplicationOrchestrator _replicationOrchestrator;
         private readonly ILogger<PeerReplicationSignalService> _logger;
+        private readonly TimeSpan _webSocketAckTimeout;
         private readonly ConcurrentDictionary<string, ScheduledDispatch> _scheduledDispatches = new(StringComparer.Ordinal);
         private readonly SemaphoreSlim _dispatchSignal = new(0, int.MaxValue);
 
@@ -34,6 +34,9 @@ namespace LiteDb.Distributed.Infrastructure.Replication
             _clusterPeerRegistry = clusterPeerRegistry ?? throw new ArgumentNullException(nameof(clusterPeerRegistry));
             _replicationOrchestrator = replicationOrchestrator ?? throw new ArgumentNullException(nameof(replicationOrchestrator));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+            int ackTimeoutMs = Math.Clamp(_nodeOptions.ReplicationSignalAckTimeoutMilliseconds, 1000, 120000);
+            _webSocketAckTimeout = TimeSpan.FromMilliseconds(ackTimeoutMs);
         }
 
         public void NotifyLocalChange(string reason)
@@ -104,12 +107,12 @@ namespace LiteDb.Distributed.Infrastructure.Replication
 
                 try
                 {
+                    // Acknowledge immediately so sender does not block on receiver-side replication work.
+                    await TrySendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
                     await _replicationOrchestrator.ReplicateDatabaseAsync(message.Database, _nodeOptions.ReplicationApiKey, $"websocket:{message.SourceNodeId}", cancellationToken).ConfigureAwait(false);
                     applyStopwatch.Stop();
 
                     _logger.LogDebug("Replication websocket signal applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, message.SourceNodeId, message.Database, applyStopwatch.Elapsed.TotalMilliseconds);
-
-                    await TrySendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -119,7 +122,6 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 {
                     applyStopwatch.Stop();
                     _logger.LogWarning(ex, "Replication websocket signal failed. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, message.SourceNodeId, message.Database, applyStopwatch.Elapsed.TotalMilliseconds);
-                    await TrySendAckAsync(webSocket, accepted: false, error: "apply-failed", cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -269,7 +271,7 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 webSocket.Options.SetRequestHeader("ReplicationApiKey", _nodeOptions.ReplicationApiKey);
 
                 using CancellationTokenSource ackTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                ackTimeout.CancelAfter(WebSocketAckTimeout);
+                ackTimeout.CancelAfter(_webSocketAckTimeout);
 
                 await webSocket.ConnectAsync(endpoint, ackTimeout.Token).ConfigureAwait(false);
                 await webSocket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, ackTimeout.Token).ConfigureAwait(false);
@@ -298,6 +300,12 @@ namespace LiteDb.Distributed.Infrastructure.Replication
                 stopwatch.Stop();
                 _logger.LogDebug("Replication signal sent. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Database={Database} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, databaseName, stopwatch.Elapsed.TotalMilliseconds);
                 return true;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                stopwatch.Stop();
+                _logger.LogWarning("Replication signal timed out waiting for ack. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Database={Database} TimeoutMs={TimeoutMs} Endpoint={Endpoint} DurationMs={DurationMs}", _nodeOptions.NodeId, peer.NodeId, databaseName, _webSocketAckTimeout.TotalMilliseconds, endpoint, stopwatch.Elapsed.TotalMilliseconds);
+                return false;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

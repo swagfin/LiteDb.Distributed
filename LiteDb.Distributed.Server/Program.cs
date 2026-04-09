@@ -44,6 +44,7 @@ ClusterNodeOptions nodeOptions = new ClusterNodeOptions
     ReplicationApiKey = builder.Configuration["Node:ReplicationApiKey"] ?? "I_AM_ONE_OF_YOU",
     ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 1000,
     ReplicationPeerConcurrency = builder.Configuration.GetValue<int?>("Node:ReplicationPeerConcurrency") ?? 4,
+    ReplicationSignalAckTimeoutMilliseconds = builder.Configuration.GetValue<int?>("Node:ReplicationSignalAckTimeoutMilliseconds") ?? 10000,
     CacheCleanupIntervalSeconds = builder.Configuration.GetValue<int?>("Node:CacheCleanupIntervalSeconds") ?? 30,
     CacheCleanupBatchSize = builder.Configuration.GetValue<int?>("Node:CacheCleanupBatchSize") ?? 500,
     CacheCleanupMaxScanPages = builder.Configuration.GetValue<int?>("Node:CacheCleanupMaxScanPages") ?? 20,
