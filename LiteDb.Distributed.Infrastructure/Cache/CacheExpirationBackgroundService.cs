@@ -1,4 +1,5 @@
 using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Common;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Configuration;
 using LiteDb.Distributed.Infrastructure.Context;
@@ -11,7 +12,6 @@ namespace LiteDb.Distributed.Infrastructure.Cache
 {
     public class CacheExpirationBackgroundService : BackgroundService
     {
-        private const string CacheCollectionName = "cache";
         private readonly ClusterNodeOptions _nodeOptions;
         private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
         private readonly IDatabaseContextAccessor _databaseContextAccessor;
@@ -115,7 +115,7 @@ namespace LiteDb.Distributed.Infrastructure.Cache
 
                 try
                 {
-                    await _writer.DeleteAsync(CacheCollectionName, key, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    await _writer.DeleteAsync(Common.CacheCollectionName, key, cancellationToken: cancellationToken).ConfigureAwait(false);
                     deletedCount++;
                 }
                 catch (VersionMismatchException ex)
@@ -140,7 +140,7 @@ namespace LiteDb.Distributed.Infrastructure.Cache
 
             for (int page = 0; page < maxScanPages; page++)
             {
-                IReadOnlyList<CacheSweepEntry> entries = await _reader.ListAsync<CacheSweepEntry>(CacheCollectionName, skip, batchSize, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<CacheSweepEntry> entries = await _reader.ListAsync<CacheSweepEntry>(Common.CacheCollectionName, skip, batchSize, cancellationToken).ConfigureAwait(false);
                 if (entries.Count == 0)
                 {
                     break;

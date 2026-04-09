@@ -1,8 +1,10 @@
 using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Common;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Storage;
 using LiteDb.Distributed.Infrastructure.Replication;
 using LiteDb.Distributed.Server.Filters;
+using LiteDb.Distributed.Server.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using System.Text.Json;
@@ -14,10 +16,6 @@ namespace LiteDb.Distributed.Server.Controllers
     [Route("api/documents/{documentName}")]
     public class DocumentsController : ControllerBase
     {
-        private const string CacheCollectionName = "cache";
-        private const string IdField = "Id";
-        private const string InternalIdField = "_id";
-        private const string SystemPrefix = "_sys_";
         private readonly ILocalDocumentWriter _writer;
         private readonly ILocalDocumentReader _reader;
         private readonly ILogicalDatabaseStoreProvider _logicalDatabaseStoreProvider;
@@ -67,7 +65,7 @@ namespace LiteDb.Distributed.Server.Controllers
             _logger.LogDebug("Document list request. Collection={Collection} Skip={Skip} Take={Take}", documentName, skip, safeTake);
 
             IReadOnlyList<Dictionary<string, object?>> documents = await _reader.ListAsync<Dictionary<string, object?>>(documentName, skip, safeTake, cancellationToken).ConfigureAwait(false);
-            IReadOnlyList<Dictionary<string, object?>> responseDocuments = includeReservedFields ? documents : SanitizeDocumentsIfNeeded(documents);
+            IReadOnlyList<Dictionary<string, object?>> responseDocuments = includeReservedFields ? documents : ReservedFieldSanitizer.SanitizeRowsIfNeeded(documents);
             stopwatch.Stop();
 
             _logger.LogDebug("Document list completed. Collection={Collection} Count={Count} DurationMs={DurationMs}", documentName, responseDocuments.Count, stopwatch.Elapsed.TotalMilliseconds);
@@ -96,7 +94,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 return NotFound();
             }
 
-            Dictionary<string, object?> responseDocument = includeReservedFields || !RequiresSanitization(document) ? document : SanitizeDocument(document);
+            Dictionary<string, object?> responseDocument = includeReservedFields || !ReservedFieldSanitizer.RequiresSanitization(document) ? document : ReservedFieldSanitizer.SanitizeRow(document);
             return Ok(responseDocument);
         }
 
@@ -337,12 +335,12 @@ namespace LiteDb.Distributed.Server.Controllers
 
             foreach (JsonProperty property in payload.EnumerateObject())
             {
-                if (string.Equals(property.Name, InternalIdField, StringComparison.OrdinalIgnoreCase) || property.Name.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(property.Name, Common.InternalIdField, StringComparison.OrdinalIgnoreCase) || property.Name.StartsWith(Common.SystemPrefix, StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }
 
-                if (!string.Equals(property.Name, IdField, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(property.Name, Common.IdField, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -366,9 +364,9 @@ namespace LiteDb.Distributed.Server.Controllers
 
         private static bool IsReservedPayloadField(string propertyName)
         {
-            return string.Equals(propertyName, IdField, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(propertyName, InternalIdField, StringComparison.OrdinalIgnoreCase)
-                || propertyName.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(propertyName, Common.IdField, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, Common.InternalIdField, StringComparison.OrdinalIgnoreCase)
+                || propertyName.StartsWith(Common.SystemPrefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryCreateReservedCollectionRejection(string documentName, out IActionResult rejection)
@@ -388,82 +386,8 @@ namespace LiteDb.Distributed.Server.Controllers
 
         private static bool IsReservedCollection(string? collectionName)
         {
-            return string.Equals(collectionName, CacheCollectionName, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(collectionName, Common.CacheCollectionName, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static IReadOnlyList<Dictionary<string, object?>> SanitizeDocumentsIfNeeded(IReadOnlyList<Dictionary<string, object?>> documents)
-        {
-            List<Dictionary<string, object?>>? sanitized = null;
-
-            for (int i = 0; i < documents.Count; i++)
-            {
-                Dictionary<string, object?> document = documents[i];
-                if (!RequiresSanitization(document))
-                {
-                    sanitized?.Add(document);
-                    continue;
-                }
-
-                if (sanitized is null)
-                {
-                    sanitized = new List<Dictionary<string, object?>>(documents.Count);
-                    for (int j = 0; j < i; j++)
-                    {
-                        sanitized.Add(documents[j]);
-                    }
-                }
-
-                sanitized.Add(SanitizeDocument(document));
-            }
-
-            return sanitized ?? documents;
-        }
-
-        private static bool RequiresSanitization(IReadOnlyDictionary<string, object?> source)
-        {
-            foreach (KeyValuePair<string, object?> entry in source)
-            {
-                if (string.Equals(entry.Key, InternalIdField, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-
-                if (entry.Key.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static Dictionary<string, object?> SanitizeDocument(IReadOnlyDictionary<string, object?> source)
-        {
-            Dictionary<string, object?> sanitized = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            object? internalIdValue = null;
-
-            foreach (KeyValuePair<string, object?> entry in source)
-            {
-                if (string.Equals(entry.Key, InternalIdField, StringComparison.OrdinalIgnoreCase))
-                {
-                    internalIdValue = entry.Value;
-                    continue;
-                }
-
-                if (entry.Key.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                sanitized[entry.Key] = entry.Value;
-            }
-
-            if (!sanitized.ContainsKey(IdField) && internalIdValue is not null)
-            {
-                sanitized[IdField] = internalIdValue;
-            }
-
-            return sanitized;
-        }
     }
 }

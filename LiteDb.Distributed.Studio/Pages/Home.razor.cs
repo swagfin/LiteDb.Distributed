@@ -618,7 +618,7 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 int safeTake = Math.Clamp(DefaultBrowseTake, 1, 10_000);
                 string query = $"SELECT $ FROM {_selectedCollection} LIMIT {safeTake}";
-                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, query, safeTake).ConfigureAwait(false);
+                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, query, safeTake, includeReservedFields: false).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -773,7 +773,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             try
             {
-                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, trimmedQuery, 10_000).ConfigureAwait(false);
+                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, trimmedQuery, 10_000, includeReservedFields: false).ConfigureAwait(false);
 
                 if (!result.Success)
                 {

@@ -2,6 +2,7 @@
 
 LiteDb.Distributed is a local-first, eventually consistent distributed document database built on top of LiteDB.
 ![Node Dashboard - Online 4](./screenshots/node-dashboard.JPG)
+![Management Studio](./screenshots/management-studio.JPG)
 
 Each node:
 - Writes locally first.
@@ -72,6 +73,8 @@ Query endpoint:
 
 - `POST /api/query`
   - Body: `{ "query": "SELECT $ FROM OrderTransactions LIMIT 100", "take": 100 }`
+  - Optional query flag: `includeReservedFields=true|false` (default `false`).
+    - When `false`, SELECT row payloads omit `_id` and `_sys_*` fields.
   - Supports only: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
   - `INSERT` / `UPDATE` / `DELETE` are executed in safe mode through the document writer pipeline (operation-log append + replication signaling).
   - Safe write-query syntax:

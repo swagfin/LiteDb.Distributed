@@ -91,7 +91,7 @@ namespace LiteDb.Distributed.Studio.Services
             return SendAsync<JsonElement>(request, cancellationToken);
         }
 
-        public Task<ApiResult<QueryResponseDto>> ExecuteQueryAsync(ConnectionProfile profile, string query, int take = 200, CancellationToken cancellationToken = default)
+        public Task<ApiResult<QueryResponseDto>> ExecuteQueryAsync(ConnectionProfile profile, string query, int take = 200, bool includeReservedFields = false, CancellationToken cancellationToken = default)
         {
             QueryRequestPayload payload = new QueryRequestPayload
             {
@@ -99,7 +99,8 @@ namespace LiteDb.Distributed.Studio.Services
                 Take = Math.Clamp(take, 1, 10_000)
             };
 
-            using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Post, profile, "api/query");
+            string path = $"api/query?includeReservedFields={includeReservedFields.ToString().ToLowerInvariant()}";
+            using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Post, profile, path);
             request.Content = CreateJsonContent(JsonSerializer.Serialize(payload, JsonOptions));
 
             return SendAsync<QueryResponseDto>(request, cancellationToken);
