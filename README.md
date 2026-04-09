@@ -1,7 +1,10 @@
 # LiteDb.Distributed
 
 LiteDb.Distributed is a local-first, eventually consistent distributed document database built on top of LiteDB.
+### Node Dashboard
 ![Node Dashboard - Online 4](./screenshots/node-dashboard.JPG)
+
+### Management Studio
 ![Management Studio](./screenshots/management-studio.JPG)
 
 Each node:
