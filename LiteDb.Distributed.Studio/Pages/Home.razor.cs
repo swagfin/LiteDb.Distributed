@@ -899,9 +899,52 @@ namespace LiteDb.Distributed.Studio.Pages
         private void SelectDocument(Dictionary<string, JsonElement> document)
         {
             _selectedDocument = document;
-            _documentJson = JsonSerializer.Serialize(document, PrettyJsonOptions);
+            _documentJson = JsonSerializer.Serialize(BuildEditorDocument(document), PrettyJsonOptions);
 
             _selectedDocumentId = ExtractId(document) ?? string.Empty;
+        }
+
+        private Dictionary<string, JsonElement> BuildEditorDocument(Dictionary<string, JsonElement> document)
+        {
+            Dictionary<string, JsonElement> ordered = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (TryGetValueIgnoreCase(document, "Id", out JsonElement idValue))
+            {
+                ordered["Id"] = idValue;
+                added.Add("Id");
+            }
+
+            foreach (string column in DisplayColumns)
+            {
+                if (string.Equals(column, "Result", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(column, "Id", StringComparison.OrdinalIgnoreCase)
+                    || added.Contains(column))
+                {
+                    continue;
+                }
+
+                if (!TryGetValueIgnoreCase(document, column, out JsonElement value))
+                {
+                    continue;
+                }
+
+                ordered[column] = value;
+                added.Add(column);
+            }
+
+            foreach (KeyValuePair<string, JsonElement> entry in document)
+            {
+                if (added.Contains(entry.Key))
+                {
+                    continue;
+                }
+
+                ordered[entry.Key] = entry.Value;
+                added.Add(entry.Key);
+            }
+
+            return ordered;
         }
 
         private void OpenDocumentEditorModal(Dictionary<string, JsonElement> document)
