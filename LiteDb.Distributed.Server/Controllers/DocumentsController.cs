@@ -39,12 +39,12 @@ namespace LiteDb.Distributed.Server.Controllers
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            int safeTake = take <= 0 ? 100 : take;
+            int safeTake = take <= 0 ? 100 : Math.Clamp(take, 1, 10_000);
 
             _logger.LogDebug("Document list request. Collection={Collection} Skip={Skip} Take={Take}", documentName, skip, safeTake);
 
             IReadOnlyList<Dictionary<string, object?>> documents = await _reader.ListAsync<Dictionary<string, object?>>(documentName, skip, safeTake, cancellationToken).ConfigureAwait(false);
-            IReadOnlyList<Dictionary<string, object?>> responseDocuments = includeReservedFields ? documents : documents.Select(SanitizeDocument).ToList();
+            IReadOnlyList<Dictionary<string, object?>> responseDocuments = includeReservedFields ? documents : SanitizeDocumentsIfNeeded(documents);
             stopwatch.Stop();
 
             _logger.LogDebug("Document list completed. Collection={Collection} Count={Count} DurationMs={DurationMs}", documentName, responseDocuments.Count, stopwatch.Elapsed.TotalMilliseconds);
@@ -73,7 +73,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 return NotFound();
             }
 
-            Dictionary<string, object?> responseDocument = includeReservedFields ? document : SanitizeDocument(document);
+            Dictionary<string, object?> responseDocument = includeReservedFields || !RequiresSanitization(document) ? document : SanitizeDocument(document);
             return Ok(responseDocument);
         }
 
@@ -272,6 +272,12 @@ namespace LiteDb.Distributed.Server.Controllers
                 return false;
             }
 
+            if (CanUsePayloadAsIs(payload, routeId))
+            {
+                normalizedPayload = payload;
+                return true;
+            }
+
             using MemoryStream stream = new MemoryStream();
             using Utf8JsonWriter writer = new Utf8JsonWriter(stream);
 
@@ -291,9 +297,48 @@ namespace LiteDb.Distributed.Server.Controllers
             writer.WriteEndObject();
             writer.Flush();
 
-            using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+            stream.Position = 0;
+            using JsonDocument document = JsonDocument.Parse(stream);
             normalizedPayload = document.RootElement.Clone();
             return true;
+        }
+
+        private static bool CanUsePayloadAsIs(JsonElement payload, string routeId)
+        {
+            if (payload.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            bool hasId = false;
+
+            foreach (JsonProperty property in payload.EnumerateObject())
+            {
+                if (string.Equals(property.Name, InternalIdField, StringComparison.OrdinalIgnoreCase) || property.Name.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                if (!string.Equals(property.Name, IdField, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (property.Value.ValueKind != JsonValueKind.String)
+                {
+                    return false;
+                }
+
+                string? id = property.Value.GetString();
+                if (!string.Equals(id, routeId, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                hasId = true;
+            }
+
+            return hasId;
         }
 
         private static bool IsReservedPayloadField(string propertyName)
@@ -321,6 +366,52 @@ namespace LiteDb.Distributed.Server.Controllers
         private static bool IsReservedCollection(string? collectionName)
         {
             return string.Equals(collectionName, CacheCollectionName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static IReadOnlyList<Dictionary<string, object?>> SanitizeDocumentsIfNeeded(IReadOnlyList<Dictionary<string, object?>> documents)
+        {
+            List<Dictionary<string, object?>>? sanitized = null;
+
+            for (int i = 0; i < documents.Count; i++)
+            {
+                Dictionary<string, object?> document = documents[i];
+                if (!RequiresSanitization(document))
+                {
+                    sanitized?.Add(document);
+                    continue;
+                }
+
+                if (sanitized is null)
+                {
+                    sanitized = new List<Dictionary<string, object?>>(documents.Count);
+                    for (int j = 0; j < i; j++)
+                    {
+                        sanitized.Add(documents[j]);
+                    }
+                }
+
+                sanitized.Add(SanitizeDocument(document));
+            }
+
+            return sanitized ?? documents;
+        }
+
+        private static bool RequiresSanitization(IReadOnlyDictionary<string, object?> source)
+        {
+            foreach (KeyValuePair<string, object?> entry in source)
+            {
+                if (string.Equals(entry.Key, InternalIdField, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (entry.Key.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static Dictionary<string, object?> SanitizeDocument(IReadOnlyDictionary<string, object?> source)
@@ -352,5 +443,4 @@ namespace LiteDb.Distributed.Server.Controllers
             return sanitized;
         }
     }
-
 }
