@@ -10,7 +10,6 @@ namespace LiteDb.Distributed.Studio.Pages
     public partial class Home : ComponentBase
     {
         private const int DefaultBrowseTake = 100;
-        private const bool ShowInternalColumns = false;
 
         [Inject]
         public required ProfileStore ProfileStore { get; set; }
@@ -884,11 +883,6 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 foreach (string key in document.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
                 {
-                    if (!ShowInternalColumns && IsInternalColumn(key))
-                    {
-                        continue;
-                    }
-
                     if (seen.Contains(key))
                     {
                         continue;
@@ -900,12 +894,6 @@ namespace LiteDb.Distributed.Studio.Pages
             }
 
             _displayColumns = columns.Count == 0 ? ["Result"] : columns;
-        }
-
-        private static bool IsInternalColumn(string key)
-        {
-            return !string.IsNullOrWhiteSpace(key)
-                && key.StartsWith("_", StringComparison.Ordinal);
         }
 
         private void SelectDocument(Dictionary<string, JsonElement> document)
