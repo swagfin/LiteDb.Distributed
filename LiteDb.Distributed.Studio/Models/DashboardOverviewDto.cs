@@ -1,5 +1,3 @@
-﻿
-
 namespace LiteDb.Distributed.Studio.Models
 {
     public class DashboardOverviewDto
@@ -49,8 +47,6 @@ namespace LiteDb.Distributed.Studio.Models
         public DashboardFileStatusDto? BusinessFile { get; set; }
         public DashboardFileStatusDto? MetadataFile { get; set; }
         public int PeerCount { get; set; }
-        public List<string> BusinessCollections { get; set; } = [];
-        public List<string> MetadataCollections { get; set; } = [];
     }
 
     public class DashboardFileStatusDto
@@ -60,5 +56,4 @@ namespace LiteDb.Distributed.Studio.Models
         public long SizeBytes { get; set; }
         public DateTime? LastWriteUtc { get; set; }
     }
-
 }

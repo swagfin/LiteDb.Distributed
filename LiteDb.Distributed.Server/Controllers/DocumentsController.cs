@@ -1,5 +1,6 @@
 using LiteDb.Distributed.Core.Abstractions;
 using LiteDb.Distributed.Core.Exceptions;
+using LiteDb.Distributed.Infrastructure.Storage;
 using LiteDb.Distributed.Infrastructure.Replication;
 using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,7 @@ namespace LiteDb.Distributed.Server.Controllers
 {
     [ApiController]
     [RequireClientDatabaseAuth]
-    [Route("api/{documentName}")]
+    [Route("api/documents/{documentName}")]
     public class DocumentsController : ControllerBase
     {
         private const string CacheCollectionName = "cache";
@@ -19,15 +20,37 @@ namespace LiteDb.Distributed.Server.Controllers
         private const string SystemPrefix = "_sys_";
         private readonly ILocalDocumentWriter _writer;
         private readonly ILocalDocumentReader _reader;
+        private readonly ILogicalDatabaseStoreProvider _logicalDatabaseStoreProvider;
         private readonly IReplicationSignalPublisher _replicationSignalPublisher;
         private readonly ILogger<DocumentsController> _logger;
 
-        public DocumentsController(ILocalDocumentWriter writer, ILocalDocumentReader reader, IReplicationSignalPublisher replicationSignalPublisher, ILogger<DocumentsController> logger)
+        public DocumentsController(ILocalDocumentWriter writer, ILocalDocumentReader reader, ILogicalDatabaseStoreProvider logicalDatabaseStoreProvider, IReplicationSignalPublisher replicationSignalPublisher, ILogger<DocumentsController> logger)
         {
             _writer = writer ?? throw new ArgumentNullException(nameof(writer));
             _reader = reader ?? throw new ArgumentNullException(nameof(reader));
+            _logicalDatabaseStoreProvider = logicalDatabaseStoreProvider ?? throw new ArgumentNullException(nameof(logicalDatabaseStoreProvider));
             _replicationSignalPublisher = replicationSignalPublisher ?? throw new ArgumentNullException(nameof(replicationSignalPublisher));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        [HttpGet("/api/documents")]
+        public async Task<IActionResult> GetCollectionsAsync([FromQuery] bool includeSystemCollections = false, CancellationToken cancellationToken = default)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            LiteDbNodeStore store = await _logicalDatabaseStoreProvider.GetCurrentStoreAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<string> collections = await store.GetBusinessCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
+            IEnumerable<string> discoveredCollections = collections.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim());
+
+            if (!includeSystemCollections)
+            {
+                discoveredCollections = discoveredCollections.Where(x => !IsReservedCollection(x));
+            }
+
+            List<string> responseCollections = discoveredCollections.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            stopwatch.Stop();
+            _logger.LogDebug("Collection list completed. Count={Count} IncludeSystemCollections={IncludeSystemCollections} DurationMs={DurationMs}", responseCollections.Count, includeSystemCollections, stopwatch.Elapsed.TotalMilliseconds);
+
+            return Ok(responseCollections);
         }
 
         [HttpGet]

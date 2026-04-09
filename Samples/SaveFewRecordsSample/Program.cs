@@ -94,7 +94,7 @@ public class OrderTransactionGeneratorService : BackgroundService
 
     private async Task UpsertAsync(OrderTransaction transaction, CancellationToken cancellationToken)
     {
-        string endpoint = $"/api/{_settings.CollectionName}/{transaction.Id}";
+        string endpoint = $"/api/documents/{_settings.CollectionName}/{transaction.Id}";
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         try

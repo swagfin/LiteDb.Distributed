@@ -163,13 +163,18 @@ Node A: write business document + append immutable operation log (local commit)
 ### Local-First Write Flow
 
 ```text
-POST/PUT/DELETE /api/{document}
+POST/PUT/DELETE /api/documents/{document}
    -> validate request
    -> write local materialized state in {db}.db
    -> append operation in {db}.db.metadata
    -> return success immediately
    -> replication runs asynchronously
 ```
+
+Collection listing endpoint:
+
+- `GET /api/documents?includeSystemCollections=false`
+  - Returns collection names for the current logical database context.
 
 ### What WebSockets Do vs What Push/Pull Do
 

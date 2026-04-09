@@ -57,8 +57,6 @@ namespace LiteDb.Distributed.Server.Controllers
                 {
                     LiteDbNodeStore store = await _logicalDatabaseStoreProvider.GetStoreAsync(registration.DatabaseName, cancellationToken).ConfigureAwait(false);
                     IReadOnlyList<ClusterPeer> peers = await store.GetPeersAsync(cancellationToken).ConfigureAwait(false);
-                    IReadOnlyList<string> businessCollections = await store.GetBusinessCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
-                    IReadOnlyList<string> metadataCollections = await store.GetMetadataCollectionNamesAsync(cancellationToken).ConfigureAwait(false);
 
                     foreach (ClusterPeer peer in peers)
                     {
@@ -72,9 +70,7 @@ namespace LiteDb.Distributed.Server.Controllers
                         Error = null,
                         BusinessFile = businessFile,
                         MetadataFile = metadataFile,
-                        PeerCount = peers.Count,
-                        BusinessCollections = businessCollections,
-                        MetadataCollections = metadataCollections
+                        PeerCount = peers.Count
                     });
                 }
                 catch (Exception ex)
@@ -88,9 +84,7 @@ namespace LiteDb.Distributed.Server.Controllers
                         Error = ex.Message,
                         BusinessFile = businessFile,
                         MetadataFile = metadataFile,
-                        PeerCount = 0,
-                        BusinessCollections = Array.Empty<string>(),
-                        MetadataCollections = Array.Empty<string>()
+                        PeerCount = 0
                     });
                 }
             }
@@ -563,8 +557,6 @@ namespace LiteDb.Distributed.Server.Controllers
             public required DashboardFileStatusDto BusinessFile { get; set; }
             public required DashboardFileStatusDto MetadataFile { get; set; }
             public required int PeerCount { get; set; }
-            public IReadOnlyList<string> BusinessCollections { get; set; } = Array.Empty<string>();
-            public IReadOnlyList<string> MetadataCollections { get; set; } = Array.Empty<string>();
         }
 
         public class DashboardFileStatusDto

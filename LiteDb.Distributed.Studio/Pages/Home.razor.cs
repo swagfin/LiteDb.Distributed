@@ -421,7 +421,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
                 _overview = overviewResult.Data;
 
-                ApiResult<List<string>> collectionsResult = await ApiClient.GetCollectionsAsync(profile).ConfigureAwait(false);
+                ApiResult<List<string>> collectionsResult = await ApiClient.GetCollectionsAsync(profile, includeSystemCollections: true).ConfigureAwait(false);
                 if (!collectionsResult.Success)
                 {
                     _errorMessage = collectionsResult.ErrorMessage;
