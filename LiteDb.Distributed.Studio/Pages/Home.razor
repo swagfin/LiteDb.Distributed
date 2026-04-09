@@ -207,72 +207,82 @@
                         <div class="status-strip status-info workspace-status">@_infoMessage</div>
                     }
 
-                    @if (SelectedCollectionIsSystem)
+                    @if (!HasSelectedCollection)
                     {
-                        <div class="status-strip status-info system-collection-note">
-                            System table mode is read-only. Save/Delete are disabled for '@_selectedCollection'.
+                        <div class="no-table-selected-card" role="status" aria-live="polite">
+                            <p class="no-table-selected-title">No table selected</p>
+                            <p class="no-table-selected-text">Select a table from the left to view query data, or create one to get started.</p>
                         </div>
                     }
-
-                    <div class="active-table-hint">
-                        <span>Active Table:</span>
-                        <strong>@(_selectedCollection ?? "-")</strong>
-                    </div>
-
-                    <div class="query-editor-row">
-                        <label>
-                            <span>LiteQL Query</span>
-                            <textarea class="query-textarea" @bind="_queryText" @bind:event="onchange" spellcheck="false"></textarea>
-                        </label>
-                        <div class="query-editor-actions">
-                            <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Reset</button>
-                            <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run Query</button>
-                        </div>
-                    </div>
-
-                    <div class="table-wrap">
-                        <div class="data-grid-actions">
-                            <div class="grid-search-wrap">
-                                <input @bind="_gridSearchText" @bind:event="oninput" placeholder="Search loaded rows..." />
+                    else
+                    {
+                        @if (SelectedCollectionIsSystem)
+                        {
+                            <div class="status-strip status-info system-collection-note">
+                                System table mode is read-only. Save/Delete are disabled for '@_selectedCollection'.
                             </div>
-                            <button type="button" class="btn btn-primary" @onclick="OpenNewDocumentModal" disabled="@(ActiveProfile is null || string.IsNullOrWhiteSpace(_selectedCollection) || SelectedCollectionIsSystem)">New Document</button>
+                        }
+
+                        <div class="active-table-hint">
+                            <span>Active Table:</span>
+                            <strong>@_selectedCollection</strong>
                         </div>
-                        @{ IReadOnlyList<Dictionary<string, JsonElement>> gridDocuments = GridDocuments; }
-                        <table>
-                            <thead>
-                                <tr>
-                                    @foreach (string column in DisplayColumns)
-                                    {
-                                        <th>@column</th>
-                                    }
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (gridDocuments.Count == 0)
-                                {
+
+                        <div class="query-editor-row">
+                            <label>
+                                <span>LiteQL Query</span>
+                                <textarea class="query-textarea" @bind="_queryText" @bind:event="onchange" spellcheck="false"></textarea>
+                            </label>
+                            <div class="query-editor-actions">
+                                <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Reset</button>
+                                <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run Query</button>
+                            </div>
+                        </div>
+
+                        <div class="table-wrap">
+                            <div class="data-grid-actions">
+                                <div class="grid-search-wrap">
+                                    <input @bind="_gridSearchText" @bind:event="oninput" placeholder="Search loaded rows..." />
+                                </div>
+                                <button type="button" class="btn btn-primary" @onclick="OpenNewDocumentModal" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem)">New Document</button>
+                            </div>
+                            @{ IReadOnlyList<Dictionary<string, JsonElement>> gridDocuments = GridDocuments; }
+                            <table>
+                                <thead>
                                     <tr>
-                                        <td class="empty-row" colspan="@(Math.Max(DisplayColumns.Count, 1))">@(_documents.Count == 0 ? "No documents loaded." : "No rows match your search.")</td>
+                                        @foreach (string column in DisplayColumns)
+                                        {
+                                            <th>@column</th>
+                                        }
                                     </tr>
-                                }
-                                else
-                                {
-                                    @foreach (Dictionary<string, JsonElement> document in gridDocuments)
+                                </thead>
+                                <tbody>
+                                    @if (gridDocuments.Count == 0)
                                     {
-                                        <tr class="@GetDocumentRowClass(document)"
-                                            @onclick="() => SelectDocument(document)"
-                                            @ondblclick="() => OpenDocumentEditorModal(document)"
-                                            @oncontextmenu="(e => ShowRowContextMenu(e, document))"
-                                            @oncontextmenu:preventDefault="true">
-                                            @foreach (string column in DisplayColumns)
-                                            {
-                                                <td>@FormatCell(document, column)</td>
-                                            }
+                                        <tr>
+                                            <td class="empty-row" colspan="@(Math.Max(DisplayColumns.Count, 1))">@(_documents.Count == 0 ? "No documents loaded." : "No rows match your search.")</td>
                                         </tr>
                                     }
-                                }
-                            </tbody>
-                        </table>
-                    </div>
+                                    else
+                                    {
+                                        @foreach (Dictionary<string, JsonElement> document in gridDocuments)
+                                        {
+                                            <tr class="@GetDocumentRowClass(document)"
+                                                @onclick="() => SelectDocument(document)"
+                                                @ondblclick="() => OpenDocumentEditorModal(document)"
+                                                @oncontextmenu="(e => ShowRowContextMenu(e, document))"
+                                                @oncontextmenu:preventDefault="true">
+                                                @foreach (string column in DisplayColumns)
+                                                {
+                                                    <td>@FormatCell(document, column)</td>
+                                                }
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
                 </section>
             </div>
         </section>

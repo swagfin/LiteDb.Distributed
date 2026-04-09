@@ -1,9 +1,11 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Common;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Replication;
 using LiteDb.Distributed.Server.Filters;
+using LiteDb.Distributed.Server.Helpers;
 using LiteDB;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,8 +16,6 @@ namespace LiteDb.Distributed.Server.Controllers
     [Route("api/query")]
     public class QueryController : ControllerBase
     {
-        private const string CacheCollectionName = "cache";
-
         private static readonly Regex FirstKeywordRegex = new("^(?<cmd>[a-zA-Z]+)", RegexOptions.Compiled);
         private static readonly Regex IdentifierRegex = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
         private static readonly Regex DollarIdAliasRegex = new("(?<![A-Za-z0-9_])\\$_id(?![A-Za-z0-9_])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -37,7 +37,7 @@ namespace LiteDb.Distributed.Server.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> ExecuteAsync([FromBody] QueryRequest request, CancellationToken cancellationToken)
+        public async Task<IActionResult> ExecuteAsync([FromBody] QueryRequest request, [FromQuery] bool includeReservedFields = false, CancellationToken cancellationToken = default)
         {
             if (request is null || string.IsNullOrWhiteSpace(request.Query))
             {
@@ -56,7 +56,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             return command.ToLowerInvariant() switch
             {
-                "select" => await ExecuteSelectAsync(normalizedQuery, request.Take, cancellationToken).ConfigureAwait(false),
+                "select" => await ExecuteSelectAsync(normalizedQuery, request.Take, includeReservedFields, cancellationToken).ConfigureAwait(false),
                 "insert" => await ExecuteInsertAsync(normalizedQuery, cancellationToken).ConfigureAwait(false),
                 "update" => await ExecuteUpdateAsync(normalizedQuery, request.Take, cancellationToken).ConfigureAwait(false),
                 "delete" => await ExecuteDeleteAsync(normalizedQuery, request.Take, cancellationToken).ConfigureAwait(false),
@@ -64,7 +64,7 @@ namespace LiteDb.Distributed.Server.Controllers
             };
         }
 
-        private async Task<IActionResult> ExecuteSelectAsync(string query, int take, CancellationToken cancellationToken)
+        private async Task<IActionResult> ExecuteSelectAsync(string query, int take, bool includeReservedFields, CancellationToken cancellationToken)
         {
             int safeTake = take <= 0 ? 100 : Math.Clamp(take, 1, 10_000);
 
@@ -72,15 +72,16 @@ namespace LiteDb.Distributed.Server.Controllers
             {
                 IReadOnlyList<Dictionary<string, object?>> rows = await _reader.ExecuteQueryAsync<Dictionary<string, object?>>(query, safeTake, cancellationToken).ConfigureAwait(false);
                 List<Dictionary<string, object?>> visibleRows = ShouldFilterTombstonesForSelect(query) ? rows.Where(x => !IsDeletedOrTombstoneRow(x)).ToList() : rows.ToList();
+                IReadOnlyList<Dictionary<string, object?>> responseRows = includeReservedFields ? visibleRows : ReservedFieldSanitizer.SanitizeRowsIfNeeded(visibleRows);
 
                 return Ok(new QueryResponse
                 {
                     Query = query,
                     RequestedTake = safeTake,
-                    MatchedCount = visibleRows.Count,
+                    MatchedCount = responseRows.Count,
                     AppliedCount = 0,
-                    ReturnedRows = visibleRows.Count,
-                    Rows = visibleRows
+                    ReturnedRows = responseRows.Count,
+                    Rows = responseRows
                 });
             }
             catch (LiteException ex)
@@ -919,7 +920,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
         private static bool IsReservedCollection(string? collectionName)
         {
-            return string.Equals(collectionName, CacheCollectionName, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(collectionName, Common.CacheCollectionName, StringComparison.OrdinalIgnoreCase);
         }
 
         public class QueryRequest

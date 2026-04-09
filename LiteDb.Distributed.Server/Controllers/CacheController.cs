@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using LiteDb.Distributed.Core.Abstractions;
+using LiteDb.Distributed.Core.Common;
 using LiteDb.Distributed.Core.Exceptions;
 using LiteDb.Distributed.Infrastructure.Replication;
 using LiteDb.Distributed.Server.Filters;
@@ -13,7 +14,6 @@ namespace LiteDb.Distributed.Server.Controllers
     [Route("api/cache")]
     public class CacheController : ControllerBase
     {
-        private const string CacheCollectionName = "cache";
         private static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan MaximumTtl = TimeSpan.FromDays(30);
 
@@ -50,7 +50,7 @@ namespace LiteDb.Distributed.Server.Controllers
             }
 
             DateTime now = DateTime.UtcNow;
-            CacheEntryDocument? existing = await _reader.GetByIdAsync<CacheEntryDocument>(CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
+            CacheEntryDocument? existing = await _reader.GetByIdAsync<CacheEntryDocument>(Common.CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
             DateTime createdUtc = existing is not null && !IsExpired(existing, now) ? NormalizeUtc(existing.CreatedUtc) : now;
             DateTime expiresAtUtc = now.Add(ttlValue);
             CacheEntryDocument document = new CacheEntryDocument
@@ -65,7 +65,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.UpsertAsync(CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
+                Core.Models.WriteResult result = await _writer.UpsertAsync(Common.CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-upsert");
                 stopwatch.Stop();
 
@@ -106,7 +106,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 return BadRequest(new { Error = keyError });
             }
 
-            CacheEntryDocument? entry = await _reader.GetByIdAsync<CacheEntryDocument>(CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
+            CacheEntryDocument? entry = await _reader.GetByIdAsync<CacheEntryDocument>(Common.CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
             if (entry is null)
             {
                 stopwatch.Stop();
@@ -117,7 +117,7 @@ namespace LiteDb.Distributed.Server.Controllers
             DateTime now = DateTime.UtcNow;
             if (IsExpired(entry, now))
             {
-                await _writer.DeleteAsync(CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await _writer.DeleteAsync(Common.CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-expired-delete");
                 stopwatch.Stop();
 
@@ -154,7 +154,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.DeleteAsync(CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+                Core.Models.WriteResult result = await _writer.DeleteAsync(Common.CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-delete");
                 stopwatch.Stop();
 

@@ -10,7 +10,6 @@ namespace LiteDb.Distributed.Studio.Pages
     public partial class Home : ComponentBase
     {
         private const int DefaultBrowseTake = 100;
-        private const bool ShowInternalColumns = false;
 
         [Inject]
         public required ProfileStore ProfileStore { get; set; }
@@ -41,7 +40,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _showTableModal;
         private bool _includeSystemCollections;
 
-        private string _queryText = "SELECT $ FROM OrderTransactions LIMIT 100";
+        private string _queryText = string.Empty;
         private string _gridSearchText = string.Empty;
 
         private List<Dictionary<string, JsonElement>> _documents = [];
@@ -82,6 +81,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool ShowProfileManagement => _showProfileManagement || ActiveProfile is null;
 
         private bool IsProfileActionBusy => _savingProfile || _connectingProfile;
+        private bool HasSelectedCollection => !string.IsNullOrWhiteSpace(_selectedCollection);
         private bool SelectedCollectionIsSystem => IsReservedCollection(_selectedCollection);
         private string ProfileModalTitle => _editingProfile ? "Edit Profile" : "Add Profile";
 
@@ -159,6 +159,7 @@ namespace LiteDb.Distributed.Studio.Pages
             _discoveredCollections = [];
             _collections = [];
             _selectedCollection = null;
+            UseCollectionTemplate();
             ClearDocuments();
             _selectedDocument = null;
             _selectedDocumentId = string.Empty;
@@ -214,6 +215,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 _discoveredCollections = [];
                 _collections = [];
                 _selectedCollection = null;
+                UseCollectionTemplate();
                 _newCollectionName = string.Empty;
                 _showTableModal = false;
                 ClearDocuments();
@@ -422,7 +424,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
                 _overview = overviewResult.Data;
 
-                ApiResult<List<string>> collectionsResult = await ApiClient.GetCollectionsAsync(profile).ConfigureAwait(false);
+                ApiResult<List<string>> collectionsResult = await ApiClient.GetCollectionsAsync(profile, includeSystemCollections: true).ConfigureAwait(false);
                 if (!collectionsResult.Success)
                 {
                     _errorMessage = collectionsResult.ErrorMessage;
@@ -440,6 +442,7 @@ namespace LiteDb.Distributed.Studio.Pages
                     ClearDocuments();
                     _selectedDocument = null;
                     _selectedCollection = null;
+                    UseCollectionTemplate();
 
                     if (!quiet)
                     {
@@ -513,6 +516,7 @@ namespace LiteDb.Distributed.Studio.Pages
             if (_collections.Count == 0)
             {
                 _selectedCollection = null;
+                UseCollectionTemplate();
                 ClearDocuments();
                 _selectedDocument = null;
                 CreateDocumentTemplate();
@@ -536,6 +540,14 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 _errorMessage = "Connect a profile first.";
                 _infoMessage = null;
+                return;
+            }
+
+            if (!HasSelectedCollection)
+            {
+                _errorMessage = null;
+                _infoMessage = null;
+                ClearDocuments();
                 return;
             }
 
@@ -606,7 +618,7 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 int safeTake = Math.Clamp(DefaultBrowseTake, 1, 10_000);
                 string query = $"SELECT $ FROM {_selectedCollection} LIMIT {safeTake}";
-                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, query, safeTake).ConfigureAwait(false);
+                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, query, safeTake, includeReservedFields: false).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -761,7 +773,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             try
             {
-                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, trimmedQuery, 10_000).ConfigureAwait(false);
+                ApiResult<QueryResponseDto> result = await ApiClient.ExecuteQueryAsync(profile, trimmedQuery, 10_000, includeReservedFields: false).ConfigureAwait(false);
 
                 if (!result.Success)
                 {
@@ -844,6 +856,7 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             if (string.IsNullOrWhiteSpace(_selectedCollection))
             {
+                _queryText = string.Empty;
                 return;
             }
 
@@ -884,11 +897,6 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 foreach (string key in document.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
                 {
-                    if (!ShowInternalColumns && IsInternalColumn(key))
-                    {
-                        continue;
-                    }
-
                     if (seen.Contains(key))
                     {
                         continue;
@@ -902,18 +910,55 @@ namespace LiteDb.Distributed.Studio.Pages
             _displayColumns = columns.Count == 0 ? ["Result"] : columns;
         }
 
-        private static bool IsInternalColumn(string key)
-        {
-            return !string.IsNullOrWhiteSpace(key)
-                && key.StartsWith("_", StringComparison.Ordinal);
-        }
-
         private void SelectDocument(Dictionary<string, JsonElement> document)
         {
             _selectedDocument = document;
-            _documentJson = JsonSerializer.Serialize(document, PrettyJsonOptions);
+            _documentJson = JsonSerializer.Serialize(BuildEditorDocument(document), PrettyJsonOptions);
 
             _selectedDocumentId = ExtractId(document) ?? string.Empty;
+        }
+
+        private Dictionary<string, JsonElement> BuildEditorDocument(Dictionary<string, JsonElement> document)
+        {
+            Dictionary<string, JsonElement> ordered = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (TryGetValueIgnoreCase(document, "Id", out JsonElement idValue))
+            {
+                ordered["Id"] = idValue;
+                added.Add("Id");
+            }
+
+            foreach (string column in DisplayColumns)
+            {
+                if (string.Equals(column, "Result", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(column, "Id", StringComparison.OrdinalIgnoreCase)
+                    || added.Contains(column))
+                {
+                    continue;
+                }
+
+                if (!TryGetValueIgnoreCase(document, column, out JsonElement value))
+                {
+                    continue;
+                }
+
+                ordered[column] = value;
+                added.Add(column);
+            }
+
+            foreach (KeyValuePair<string, JsonElement> entry in document)
+            {
+                if (added.Contains(entry.Key))
+                {
+                    continue;
+                }
+
+                ordered[entry.Key] = entry.Value;
+                added.Add(entry.Key);
+            }
+
+            return ordered;
         }
 
         private void OpenDocumentEditorModal(Dictionary<string, JsonElement> document)

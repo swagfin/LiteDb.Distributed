@@ -21,7 +21,6 @@
       --warn: #d7831f;
       --bad: #d64b4b;
       --info: #2f67d5;
-      --chip: #edf4ff;
       --spark-http: #1575ff;
       --spark-ws: #7f55ff;
       --shadow: 0 20px 38px rgba(26, 82, 173, 0.12);
@@ -373,25 +372,6 @@
       word-break: break-word;
     }
 
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 7px;
-      margin-top: 8px;
-    }
-
-    .chip {
-      border: 1px solid #d4e2fa;
-      background: var(--chip);
-      color: #264777;
-      border-radius: 999px;
-      padding: 4px 9px;
-      font-size: 0.79rem;
-      line-height: 1.2;
-      word-break: break-word;
-      max-width: 100%;
-    }
-
     .note {
       margin: 8px 0 0;
       color: var(--muted);
@@ -633,7 +613,7 @@
     <section class="section">
       <div class="section-head">
         <h2>Databases</h2>
-        <p>Logical database status, files, and available collections.</p>
+        <p>Logical database status and files.</p>
       </div>
       <div id="databasesGrid" class="grid"></div>
     </section>
@@ -742,7 +722,6 @@
       for (const db of databases) {
         const status = db.Status || "Unknown";
         const error = db.Error ? `<div class="error">${escapeHtml(db.Error)}</div>` : "";
-        const businessCollections = renderChips(db.BusinessCollections, "No business collections yet.");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
           <article class="panel reveal">
@@ -753,8 +732,6 @@
             <p class="kv">Peers registered: ${escapeHtml(db.PeerCount)}</p>
             <p class="kv">Business file: ${formatFile(db.BusinessFile)}</p>
             <p class="kv">Metadata file: ${formatFile(db.MetadataFile)}</p>
-            <p class="kv">Business Collections</p>
-            ${businessCollections}
             ${error}
           </article>`);
       }
@@ -955,14 +932,6 @@
       }
 
       refreshTimer = window.setInterval(refreshDashboard, intervalMs);
-    }
-
-    function renderChips(values, emptyText) {
-      if (!values || values.length === 0) {
-        return `<p class="note">${escapeHtml(emptyText)}</p>`;
-      }
-
-      return `<div class="chips">${values.map(v => `<span class="chip">${escapeHtml(v)}</span>`).join("")}</div>`;
     }
 
     function formatFile(file) {

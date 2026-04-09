@@ -2,6 +2,7 @@
 
 LiteDb.Distributed is a local-first, eventually consistent distributed document database built on top of LiteDB.
 ![Node Dashboard - Online 4](./screenshots/node-dashboard.JPG)
+![Management Studio](./screenshots/management-studio.JPG)
 
 Each node:
 - Writes locally first.
@@ -72,6 +73,8 @@ Query endpoint:
 
 - `POST /api/query`
   - Body: `{ "query": "SELECT $ FROM OrderTransactions LIMIT 100", "take": 100 }`
+  - Optional query flag: `includeReservedFields=true|false` (default `false`).
+    - When `false`, SELECT row payloads omit `_id` and `_sys_*` fields.
   - Supports only: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
   - `INSERT` / `UPDATE` / `DELETE` are executed in safe mode through the document writer pipeline (operation-log append + replication signaling).
   - Safe write-query syntax:
@@ -163,13 +166,18 @@ Node A: write business document + append immutable operation log (local commit)
 ### Local-First Write Flow
 
 ```text
-POST/PUT/DELETE /api/{document}
+POST/PUT/DELETE /api/documents/{document}
    -> validate request
    -> write local materialized state in {db}.db
    -> append operation in {db}.db.metadata
    -> return success immediately
    -> replication runs asynchronously
 ```
+
+Collection listing endpoint:
+
+- `GET /api/documents?includeSystemCollections=false`
+  - Returns collection names for the current logical database context.
 
 ### What WebSockets Do vs What Push/Pull Do
 
@@ -298,6 +306,7 @@ The server allows Studio browser calls via CORS. Configure origins in:
 
 - Replication is event-driven: local writes schedule immediate source-node replication with retry/backoff, WebSocket peer signals are hints for faster convergence, and a fixed 1-minute safety sweep handles anti-entropy catch-up.
 - Peer replication is bounded-parallel per cycle (`Node:ReplicationPeerConcurrency`, default `4`) for better multi-peer latency.
+- WebSocket signal ack wait timeout is configurable with `Node:ReplicationSignalAckTimeoutMilliseconds` (default `10000`).
 - Conflict resolution is controlled per node by `Node:ConflictResolutionPolicy` (`ApplyIncoming` or `KeepLocal`).
 - API keys are application-level authorization values and independent of LiteDB file encryption.
 
