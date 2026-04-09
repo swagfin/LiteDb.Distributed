@@ -40,7 +40,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _showTableModal;
         private bool _includeSystemCollections;
 
-        private string _queryText = "SELECT $ FROM OrderTransactions LIMIT 100";
+        private string _queryText = string.Empty;
         private string _gridSearchText = string.Empty;
 
         private List<Dictionary<string, JsonElement>> _documents = [];
@@ -81,6 +81,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool ShowProfileManagement => _showProfileManagement || ActiveProfile is null;
 
         private bool IsProfileActionBusy => _savingProfile || _connectingProfile;
+        private bool HasSelectedCollection => !string.IsNullOrWhiteSpace(_selectedCollection);
         private bool SelectedCollectionIsSystem => IsReservedCollection(_selectedCollection);
         private string ProfileModalTitle => _editingProfile ? "Edit Profile" : "Add Profile";
 
@@ -158,6 +159,7 @@ namespace LiteDb.Distributed.Studio.Pages
             _discoveredCollections = [];
             _collections = [];
             _selectedCollection = null;
+            UseCollectionTemplate();
             ClearDocuments();
             _selectedDocument = null;
             _selectedDocumentId = string.Empty;
@@ -213,6 +215,7 @@ namespace LiteDb.Distributed.Studio.Pages
                 _discoveredCollections = [];
                 _collections = [];
                 _selectedCollection = null;
+                UseCollectionTemplate();
                 _newCollectionName = string.Empty;
                 _showTableModal = false;
                 ClearDocuments();
@@ -439,6 +442,7 @@ namespace LiteDb.Distributed.Studio.Pages
                     ClearDocuments();
                     _selectedDocument = null;
                     _selectedCollection = null;
+                    UseCollectionTemplate();
 
                     if (!quiet)
                     {
@@ -512,6 +516,7 @@ namespace LiteDb.Distributed.Studio.Pages
             if (_collections.Count == 0)
             {
                 _selectedCollection = null;
+                UseCollectionTemplate();
                 ClearDocuments();
                 _selectedDocument = null;
                 CreateDocumentTemplate();
@@ -535,6 +540,14 @@ namespace LiteDb.Distributed.Studio.Pages
             {
                 _errorMessage = "Connect a profile first.";
                 _infoMessage = null;
+                return;
+            }
+
+            if (!HasSelectedCollection)
+            {
+                _errorMessage = null;
+                _infoMessage = null;
+                ClearDocuments();
                 return;
             }
 
@@ -843,6 +856,7 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             if (string.IsNullOrWhiteSpace(_selectedCollection))
             {
+                _queryText = string.Empty;
                 return;
             }
 
