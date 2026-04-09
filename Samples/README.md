@@ -2,7 +2,7 @@
 
 ## 1) SaveFewRecordsSample (OrderTransaction Generator)
 
-This sample now runs as a continuous background generator that inserts random `OrderTransaction` records every random second.
+This sample now runs as a continuous background generator that inserts random `OrderTransaction` records at a random millisecond interval.
 
 - `Samples/SaveFewRecordsSample/sample-settings.json`
 
@@ -12,8 +12,8 @@ Default config:
 - `Database`: `testapp`
 - `ApiKey`: `root`
 - `CollectionName`: `OrderTransactions`
-- `MinIntervalSeconds`: `1`
-- `MaxIntervalSeconds`: `3`
+- `MinIntervalMilliseconds`: `0`
+- `MaxIntervalMilliseconds`: `1`
 
 Run it with:
 

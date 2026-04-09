@@ -2,7 +2,7 @@
   "ServerUrl": "http://localhost:17001",
   "Database": "testapp",
   "ApiKey": "root",
-  "CollectionName": "Orders",
-  "MinIntervalSeconds": 5,
-  "MaxIntervalSeconds": 10
+  "CollectionName": "orders",
+  "MinIntervalMilliseconds": 500,
+  "MaxIntervalMilliseconds": 1000
 }

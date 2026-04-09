@@ -49,11 +49,11 @@ public class OrderTransactionGeneratorService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            int waitSeconds = Random.Shared.Next(_settings.MinIntervalSeconds, _settings.MaxIntervalSeconds + 1);
+            int waitMilliseconds = Random.Shared.Next(_settings.MinIntervalMilliseconds, _settings.MaxIntervalMilliseconds + 1);
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(waitSeconds), stoppingToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(waitMilliseconds), stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -143,8 +143,8 @@ public class SampleSettings
     public string Database { get; set; } = string.Empty;
     public string ApiKey { get; set; } = "root";
     public string CollectionName { get; set; } = "OrderTransactions";
-    public int MinIntervalSeconds { get; set; } = 1;
-    public int MaxIntervalSeconds { get; set; } = 3;
+    public int MinIntervalMilliseconds { get; set; } = 0;
+    public int MaxIntervalMilliseconds { get; set; } = 1;
 
     public static SampleSettings Load()
     {
@@ -163,8 +163,8 @@ public class SampleSettings
             throw new InvalidOperationException("sample-settings.json is missing required values: ServerUrl, Database, ApiKey.");
         }
 
-        int minInterval = Math.Max(1, settings.MinIntervalSeconds);
-        int maxInterval = Math.Max(minInterval, settings.MaxIntervalSeconds);
+        int minInterval = Math.Max(0, settings.MinIntervalMilliseconds);
+        int maxInterval = Math.Max(minInterval, settings.MaxIntervalMilliseconds);
 
         return new SampleSettings
         {
@@ -172,8 +172,8 @@ public class SampleSettings
             Database = settings.Database.Trim(),
             ApiKey = settings.ApiKey.Trim(),
             CollectionName = string.IsNullOrWhiteSpace(settings.CollectionName) ? "OrderTransactions" : settings.CollectionName.Trim(),
-            MinIntervalSeconds = minInterval,
-            MaxIntervalSeconds = maxInterval
+            MinIntervalMilliseconds = minInterval,
+            MaxIntervalMilliseconds = maxInterval
         };
     }
 }
