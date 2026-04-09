@@ -14,6 +14,9 @@ namespace LiteDb.Distributed.Server.Controllers
     public class DocumentsController : ControllerBase
     {
         private const string CacheCollectionName = "cache";
+        private const string IdField = "Id";
+        private const string InternalIdField = "_id";
+        private const string SystemPrefix = "_sys_";
         private readonly ILocalDocumentWriter _writer;
         private readonly ILocalDocumentReader _reader;
         private readonly IReplicationSignalPublisher _replicationSignalPublisher;
@@ -28,7 +31,7 @@ namespace LiteDb.Distributed.Server.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> ListAsync(string documentName, [FromQuery] int skip, [FromQuery] int take, CancellationToken cancellationToken)
+        public async Task<IActionResult> ListAsync(string documentName, [FromQuery] int skip, [FromQuery] int take, [FromQuery] bool includeReservedFields = false, CancellationToken cancellationToken = default)
         {
             if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
             {
@@ -41,15 +44,16 @@ namespace LiteDb.Distributed.Server.Controllers
             _logger.LogDebug("Document list request. Collection={Collection} Skip={Skip} Take={Take}", documentName, skip, safeTake);
 
             IReadOnlyList<Dictionary<string, object?>> documents = await _reader.ListAsync<Dictionary<string, object?>>(documentName, skip, safeTake, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<Dictionary<string, object?>> responseDocuments = includeReservedFields ? documents : documents.Select(SanitizeDocument).ToList();
             stopwatch.Stop();
 
-            _logger.LogDebug("Document list completed. Collection={Collection} Count={Count} DurationMs={DurationMs}", documentName, documents.Count, stopwatch.Elapsed.TotalMilliseconds);
+            _logger.LogDebug("Document list completed. Collection={Collection} Count={Count} DurationMs={DurationMs}", documentName, responseDocuments.Count, stopwatch.Elapsed.TotalMilliseconds);
 
-            return Ok(documents);
+            return Ok(responseDocuments);
         }
 
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetByIdAsync(string documentName, string id, CancellationToken cancellationToken)
+        public async Task<IActionResult> GetByIdAsync(string documentName, string id, [FromQuery] bool includeReservedFields = false, CancellationToken cancellationToken = default)
         {
             if (TryCreateReservedCollectionRejection(documentName, out IActionResult? reservedRejection))
             {
@@ -64,7 +68,13 @@ namespace LiteDb.Distributed.Server.Controllers
 
             _logger.LogDebug("Document get completed. Collection={Collection} Id={Id} Found={Found} DurationMs={DurationMs}", documentName, id, document is not null, stopwatch.Elapsed.TotalMilliseconds);
 
-            return document is null ? NotFound() : Ok(document);
+            if (document is null)
+            {
+                return NotFound();
+            }
+
+            Dictionary<string, object?> responseDocument = includeReservedFields ? document : SanitizeDocument(document);
+            return Ok(responseDocument);
         }
 
         [HttpPost]
@@ -84,9 +94,16 @@ namespace LiteDb.Distributed.Server.Controllers
                 return BadRequest(new { Error = "POST body must include an 'Id' string field." });
             }
 
+            if (!TryNormalizeUpsertPayload(payload, entityId, out JsonElement normalizedPayload, out string? normalizeError))
+            {
+                stopwatch.Stop();
+                _logger.LogWarning("Document post rejected due to invalid payload. Collection={Collection} Id={Id} DurationMs={DurationMs}", documentName, entityId, stopwatch.Elapsed.TotalMilliseconds);
+                return BadRequest(new { Error = normalizeError });
+            }
+
             try
             {
-                Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, entityId, payload, parentVersion, cancellationToken).ConfigureAwait(false);
+                Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, entityId, normalizedPayload, parentVersion, cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
                 stopwatch.Stop();
 
@@ -147,7 +164,7 @@ namespace LiteDb.Distributed.Server.Controllers
             Stopwatch stopwatch = Stopwatch.StartNew();
             _logger.LogDebug("Document put request. Collection={Collection} Id={Id}", documentName, id);
 
-            if (!TryNormalizePutPayload(payload, id, out JsonElement normalizedPayload, out string? error))
+            if (!TryNormalizeUpsertPayload(payload, id, out JsonElement normalizedPayload, out string? error))
             {
                 stopwatch.Stop();
                 _logger.LogWarning("Document put rejected due to invalid payload. Collection={Collection} Id={Id} DurationMs={DurationMs}", documentName, id, stopwatch.Elapsed.TotalMilliseconds);
@@ -244,7 +261,7 @@ namespace LiteDb.Distributed.Server.Controllers
             return true;
         }
 
-        private static bool TryNormalizePutPayload(JsonElement payload, string routeId, out JsonElement normalizedPayload, out string error)
+        private static bool TryNormalizeUpsertPayload(JsonElement payload, string routeId, out JsonElement normalizedPayload, out string error)
         {
             normalizedPayload = default;
             error = string.Empty;
@@ -262,7 +279,7 @@ namespace LiteDb.Distributed.Server.Controllers
             writer.WriteStartObject();
             foreach (JsonProperty property in payload.EnumerateObject())
             {
-                if (string.Equals(property.Name, "Id", StringComparison.OrdinalIgnoreCase) || string.Equals(property.Name, "_id", StringComparison.OrdinalIgnoreCase))
+                if (IsReservedPayloadField(property.Name))
                 {
                     continue;
                 }
@@ -277,6 +294,13 @@ namespace LiteDb.Distributed.Server.Controllers
             using JsonDocument document = JsonDocument.Parse(stream.ToArray());
             normalizedPayload = document.RootElement.Clone();
             return true;
+        }
+
+        private static bool IsReservedPayloadField(string propertyName)
+        {
+            return string.Equals(propertyName, IdField, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, InternalIdField, StringComparison.OrdinalIgnoreCase)
+                || propertyName.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryCreateReservedCollectionRejection(string documentName, out IActionResult rejection)
@@ -297,6 +321,35 @@ namespace LiteDb.Distributed.Server.Controllers
         private static bool IsReservedCollection(string? collectionName)
         {
             return string.Equals(collectionName, CacheCollectionName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static Dictionary<string, object?> SanitizeDocument(IReadOnlyDictionary<string, object?> source)
+        {
+            Dictionary<string, object?> sanitized = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            object? internalIdValue = null;
+
+            foreach (KeyValuePair<string, object?> entry in source)
+            {
+                if (string.Equals(entry.Key, InternalIdField, StringComparison.OrdinalIgnoreCase))
+                {
+                    internalIdValue = entry.Value;
+                    continue;
+                }
+
+                if (entry.Key.StartsWith(SystemPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                sanitized[entry.Key] = entry.Value;
+            }
+
+            if (!sanitized.ContainsKey(IdField) && internalIdValue is not null)
+            {
+                sanitized[IdField] = internalIdValue;
+            }
+
+            return sanitized;
         }
     }
 

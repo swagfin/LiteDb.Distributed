@@ -46,7 +46,7 @@ namespace LiteDb.Distributed.Studio.Services
         {
             int safeSkip = Math.Max(skip, 0);
             int safeTake = Math.Clamp(take, 1, 10_000);
-            string path = $"api/{Uri.EscapeDataString(collection)}?skip={safeSkip}&take={safeTake}";
+            string path = $"api/{Uri.EscapeDataString(collection)}?skip={safeSkip}&take={safeTake}&includeReservedFields=false";
 
             using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Get, profile, path);
             return SendAsync<List<Dictionary<string, JsonElement>>>(request, cancellationToken);
@@ -54,7 +54,7 @@ namespace LiteDb.Distributed.Studio.Services
 
         public Task<ApiResult<Dictionary<string, JsonElement>>> GetDocumentByIdAsync(ConnectionProfile profile, string collection, string id, CancellationToken cancellationToken = default)
         {
-            string path = $"api/{Uri.EscapeDataString(collection)}/{Uri.EscapeDataString(id)}";
+            string path = $"api/{Uri.EscapeDataString(collection)}/{Uri.EscapeDataString(id)}?includeReservedFields=false";
 
             using HttpRequestMessage request = CreateDatabaseRequest(HttpMethod.Get, profile, path);
             return SendAsync<Dictionary<string, JsonElement>>(request, cancellationToken);
