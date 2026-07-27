@@ -33,8 +33,7 @@ namespace LiteDb.Distributed.Server.Storage
             PropertyNameCaseInsensitive = true
         };
 
-        private readonly LiteDatabase _businessDatabase;
-        private readonly LiteDatabase _metadataDatabase;
+        private readonly LiteDatabase _database;
         private readonly string _nodeId;
         private readonly object _gate = new();
 
@@ -52,25 +51,17 @@ namespace LiteDb.Distributed.Server.Storage
                 throw new ArgumentException("DatabaseName is required.", nameof(options));
             }
 
-            if (string.IsNullOrWhiteSpace(options.BusinessDatabasePath))
+            if (string.IsNullOrWhiteSpace(options.DatabasePath))
             {
-                throw new ArgumentException("BusinessDatabasePath is required.", nameof(options));
-            }
-
-            if (string.IsNullOrWhiteSpace(options.MetadataDatabasePath))
-            {
-                throw new ArgumentException("MetadataDatabasePath is required.", nameof(options));
+                throw new ArgumentException("DatabasePath is required.", nameof(options));
             }
 
             _nodeId = options.NodeId.Trim();
-            string businessFullPath = Path.GetFullPath(options.BusinessDatabasePath);
-            string metadataFullPath = Path.GetFullPath(options.MetadataDatabasePath);
+            string databaseFullPath = Path.GetFullPath(options.DatabasePath);
 
-            EnsureParentDirectory(businessFullPath);
-            EnsureParentDirectory(metadataFullPath);
+            EnsureParentDirectory(databaseFullPath);
 
-            _businessDatabase = OpenDatabase(businessFullPath, options.DatabaseName, _nodeId, logicalFileKind: "business");
-            _metadataDatabase = OpenDatabase(metadataFullPath, options.DatabaseName, _nodeId, logicalFileKind: "metadata");
+            _database = OpenDatabase(databaseFullPath, options.DatabaseName, _nodeId);
 
             EnsureSystemIndexes();
             SeedPeers(options.SeedPeers);
@@ -99,7 +90,7 @@ namespace LiteDb.Distributed.Server.Storage
             lock (_gate)
             {
                 // Business write and operation-log append must commit together for replication correctness.
-                BeginCombinedTransaction();
+                BeginTransaction();
 
                 try
                 {
@@ -141,7 +132,7 @@ namespace LiteDb.Distributed.Server.Storage
                     };
 
                     InsertOperationInternal(operation);
-                    CommitCombinedTransaction();
+                    CommitTransaction();
 
                     return Task.FromResult(new WriteResult
                     {
@@ -155,7 +146,7 @@ namespace LiteDb.Distributed.Server.Storage
                 }
                 catch
                 {
-                    RollbackCombinedTransaction();
+                    RollbackTransaction();
                     throw;
                 }
             }
@@ -177,7 +168,7 @@ namespace LiteDb.Distributed.Server.Storage
             lock (_gate)
             {
                 // Delete is represented as a tombstone so downstream peers can observe and replay removal.
-                BeginCombinedTransaction();
+                BeginTransaction();
 
                 try
                 {
@@ -220,7 +211,7 @@ namespace LiteDb.Distributed.Server.Storage
                     };
 
                     InsertOperationInternal(operation);
-                    CommitCombinedTransaction();
+                    CommitTransaction();
 
                     return Task.FromResult(new WriteResult
                     {
@@ -234,7 +225,7 @@ namespace LiteDb.Distributed.Server.Storage
                 }
                 catch
                 {
-                    RollbackCombinedTransaction();
+                    RollbackTransaction();
                     throw;
                 }
             }
@@ -330,7 +321,7 @@ namespace LiteDb.Distributed.Server.Storage
 
             lock (_gate)
             {
-                using IBsonDataReader reader = _businessDatabase.Execute(query, new BsonDocument());
+                using IBsonDataReader reader = _database.Execute(query, new BsonDocument());
                 List<TDocument> result = new List<TDocument>(safeTake);
                 int count = 0;
 
@@ -404,7 +395,7 @@ namespace LiteDb.Distributed.Server.Storage
                     return Task.CompletedTask;
                 }
 
-                BeginCombinedTransaction();
+                BeginTransaction();
 
                 try
                 {
@@ -428,12 +419,12 @@ namespace LiteDb.Distributed.Server.Storage
                     };
 
                     InsertOperationInternal(operationWithLogSequence);
-                    CommitCombinedTransaction();
+                    CommitTransaction();
                     return Task.CompletedTask;
                 }
                 catch
                 {
-                    RollbackCombinedTransaction();
+                    RollbackTransaction();
                     throw;
                 }
             }
@@ -642,7 +633,7 @@ namespace LiteDb.Distributed.Server.Storage
                     return Task.FromResult(false);
                 }
 
-                BeginCombinedTransaction();
+                BeginTransaction();
 
                 try
                 {
@@ -702,13 +693,13 @@ namespace LiteDb.Distributed.Server.Storage
                     };
 
                     InsertOperationInternal(syncedOperation);
-                    CommitCombinedTransaction();
+                    CommitTransaction();
 
                     return Task.FromResult(true);
                 }
                 catch
                 {
-                    RollbackCombinedTransaction();
+                    RollbackTransaction();
                     throw;
                 }
             }
@@ -720,7 +711,7 @@ namespace LiteDb.Distributed.Server.Storage
 
             lock (_gate)
             {
-                List<string> names = _businessDatabase.GetCollectionNames().Where(name => !string.IsNullOrWhiteSpace(name)).OrderBy(name => name, StringComparer.Ordinal).ToList();
+                List<string> names = _database.GetCollectionNames().Where(name => !string.IsNullOrWhiteSpace(name)).OrderBy(name => name, StringComparer.Ordinal).ToList();
 
                 return Task.FromResult<IReadOnlyList<string>>(names);
             }
@@ -728,8 +719,7 @@ namespace LiteDb.Distributed.Server.Storage
 
         public void Dispose()
         {
-            _businessDatabase.Dispose();
-            _metadataDatabase.Dispose();
+            _database.Dispose();
         }
 
         private static void EnsureParentDirectory(string path)
@@ -741,7 +731,7 @@ namespace LiteDb.Distributed.Server.Storage
             }
         }
 
-        private static LiteDatabase OpenDatabase(string fullPath, string databaseName, string nodeId, string logicalFileKind)
+        private static LiteDatabase OpenDatabase(string fullPath, string databaseName, string nodeId)
         {
             try
             {
@@ -755,44 +745,34 @@ namespace LiteDb.Distributed.Server.Storage
             catch (LiteException ex)
             {
                 throw new InvalidOperationException(
-                    $"Failed to open {logicalFileKind} LiteDB file for NodeId='{nodeId}', Database='{databaseName}', Path='{fullPath}'. " +
+                    $"Failed to open LiteDB file for NodeId='{nodeId}', Database='{databaseName}', Path='{fullPath}'. " +
                     "If this file was created when encryption was enabled, delete/recreate the file or migrate it before running this node.",
                     ex);
             }
             catch (IOException ex)
             {
                 throw new InvalidOperationException(
-                    $"Failed to open {logicalFileKind} LiteDB file for NodeId='{nodeId}', Database='{databaseName}', Path='{fullPath}'. " +
+                    $"Failed to open LiteDB file for NodeId='{nodeId}', Database='{databaseName}', Path='{fullPath}'. " +
                     "The file is locked by another process. Ensure only one process owns this node/data path and avoid duplicate node instances.",
                     ex);
             }
         }
 
-        private void BeginCombinedTransaction()
+        private void BeginTransaction()
         {
-            // Metadata is started first so sequence reservation and data writes share one critical section.
-            _metadataDatabase.BeginTrans();
-            _businessDatabase.BeginTrans();
+            _database.BeginTrans();
         }
 
-        private void CommitCombinedTransaction()
+        private void CommitTransaction()
         {
-            // TODO: Harden with compensation/recovery for crash windows between metadata and business commits.
-            _metadataDatabase.Commit();
-            _businessDatabase.Commit();
+            _database.Commit();
         }
 
-        private void RollbackCombinedTransaction()
-        {
-            TryRollback(_businessDatabase);
-            TryRollback(_metadataDatabase);
-        }
-
-        private static void TryRollback(LiteDatabase database)
+        private void RollbackTransaction()
         {
             try
             {
-                database.Rollback();
+                _database.Rollback();
             }
             catch
             {
@@ -816,32 +796,32 @@ namespace LiteDb.Distributed.Server.Storage
 
         private ILiteCollection<BsonDocument> BusinessCollection(string collectionName)
         {
-            return _businessDatabase.GetCollection<BsonDocument>(collectionName);
+            return _database.GetCollection<BsonDocument>(collectionName);
         }
 
         private ILiteCollection<OperationEntity> OperationsCollection()
         {
-            return _metadataDatabase.GetCollection<OperationEntity>(SystemCollections.Operations);
+            return _database.GetCollection<OperationEntity>(SystemCollections.Operations);
         }
 
         private ILiteCollection<NodeMetadataEntity> NodeMetadataCollection()
         {
-            return _metadataDatabase.GetCollection<NodeMetadataEntity>(SystemCollections.NodeMetadata);
+            return _database.GetCollection<NodeMetadataEntity>(SystemCollections.NodeMetadata);
         }
 
         private ILiteCollection<ConflictEntity> ConflictsCollection()
         {
-            return _metadataDatabase.GetCollection<ConflictEntity>(SystemCollections.Conflicts);
+            return _database.GetCollection<ConflictEntity>(SystemCollections.Conflicts);
         }
 
         private ILiteCollection<PeerCheckpointEntity> PeerCheckpointsCollection()
         {
-            return _metadataDatabase.GetCollection<PeerCheckpointEntity>(PeerCheckpointsCollectionName);
+            return _database.GetCollection<PeerCheckpointEntity>(PeerCheckpointsCollectionName);
         }
 
         private ILiteCollection<ClusterPeerEntity> ClusterPeersCollection()
         {
-            return _metadataDatabase.GetCollection<ClusterPeerEntity>(ClusterPeersCollectionName);
+            return _database.GetCollection<ClusterPeerEntity>(ClusterPeersCollectionName);
         }
 
         private long ReserveNextLocalSequence(DateTime writeUtc)

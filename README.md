@@ -121,7 +121,7 @@ Use LiteDb.Distributed when you need:
 - Offline/edge operation: each node has full local storage and can keep serving reads/writes during network loss.
 - Durable document + cache in one engine: business documents and replicated TTL cache live in the same local-first system.
 - Document + relational-style modeling: even though this is a document store, records can be organized in table/collection structures that feel more relational for business data workflows.
-- Per-database isolation: each logical database has separate business and metadata files, which reduces blast radius.
+- Per-database isolation: each logical database has a single local LiteDB file containing both documents and replication metadata.
 - Operation-log driven replication: deterministic replay and checkpoint-based catch-up across nodes.
 - Immutable operation history per database: easier troubleshooting, replay-based recovery, and audit-friendly change tracking.
 - Simpler self-hosted footprint for branch/edge deployments: no separate central in-memory tier required.
@@ -169,7 +169,7 @@ Node A: write business document + append immutable operation log (local commit)
 POST/PUT/DELETE /api/documents/{document}
    -> validate request
    -> write local materialized state in {db}.db
-   -> append operation in {db}.db.metadata
+   -> append operation in reserved metadata collections in the same {db}.db file
    -> return success immediately
    -> replication runs asynchronously
 ```

@@ -44,8 +44,7 @@ namespace LiteDb.Distributed.Studio.Models
         public string Name { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public string? Error { get; set; }
-        public DashboardFileStatusDto? BusinessFile { get; set; }
-        public DashboardFileStatusDto? MetadataFile { get; set; }
+        public DashboardFileStatusDto? DatabaseFile { get; set; }
         public int PeerCount { get; set; }
     }
 

@@ -6,6 +6,7 @@ using LiteDb.Distributed.Server.Replication;
 using LiteDb.Distributed.Server.Storage;
 using LiteDb.Distributed.Server.Controllers;
 using LiteDb.Distributed.Tests.TestEntities;
+using LiteDB;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
@@ -203,8 +204,7 @@ namespace LiteDb.Distributed.Tests
                 {
                     NodeId = "node-a",
                     DatabaseName = "testdb",
-                    BusinessDatabasePath = Path.Combine(rootPath, "node-a.testdb.db"),
-                    MetadataDatabasePath = Path.Combine(rootPath, "node-a.testdb.db.metadata")
+                    DatabasePath = Path.Combine(rootPath, "node-a.testdb.db")
                 });
 
                 await store.UpsertPeerAsync(new ClusterPeer
@@ -262,15 +262,13 @@ namespace LiteDb.Distributed.Tests
                 {
                     NodeId = "node-a",
                     DatabaseName = "testdb",
-                    BusinessDatabasePath = Path.Combine(rootPath, "node-a.testdb.db"),
-                    MetadataDatabasePath = Path.Combine(rootPath, "node-a.testdb.db.metadata")
+                    DatabasePath = Path.Combine(rootPath, "node-a.testdb.db")
                 });
                 using LiteDbNodeStore targetStore = new LiteDbNodeStore(new LiteDbNodeStoreOptions
                 {
                     NodeId = "node-b",
                     DatabaseName = "testdb",
-                    BusinessDatabasePath = Path.Combine(rootPath, "node-b.testdb.db"),
-                    MetadataDatabasePath = Path.Combine(rootPath, "node-b.testdb.db.metadata")
+                    DatabasePath = Path.Combine(rootPath, "node-b.testdb.db")
                 });
 
                 await sourceStore.UpsertAsync(CustomerCollection, "cust-dup-001", new Customer { Id = "cust-dup-001", Name = "Dup", Email = "dup@example.com", UpdatedUtc = DateTime.UtcNow });
@@ -286,6 +284,42 @@ namespace LiteDb.Distributed.Tests
                 Assert.Equal(1, second.ProcessedCount);
                 Assert.Equal(0, second.AcceptedCount);
                 Assert.Equal(1, second.LastProcessedLogSequence);
+            }
+            finally
+            {
+                if (Directory.Exists(rootPath))
+                {
+                    Directory.Delete(rootPath, recursive: true);
+                }
+            }
+        }
+
+        [Fact]
+        public async Task LocalWrite_StoresBusinessDocumentAndOperationLogInSameDatabaseFile()
+        {
+            string rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(rootPath);
+            string databasePath = Path.Combine(rootPath, "node-a.testdb.db");
+
+            try
+            {
+                using (LiteDbNodeStore store = new LiteDbNodeStore(new LiteDbNodeStoreOptions
+                {
+                    NodeId = "node-a",
+                    DatabaseName = "testdb",
+                    DatabasePath = databasePath
+                }))
+                {
+                    await store.UpsertAsync(CustomerCollection, "cust-single-file-001", new Customer { Id = "cust-single-file-001", Name = "Single File", Email = "single@example.com", UpdatedUtc = DateTime.UtcNow });
+                }
+
+                using LiteDatabase database = new LiteDatabase(databasePath);
+                BsonDocument? customer = database.GetCollection<BsonDocument>(CustomerCollection).FindById("cust-single-file-001");
+                BsonDocument? operation = database.GetCollection("_sys_operations").FindAll().FirstOrDefault();
+
+                Assert.NotNull(customer);
+                Assert.NotNull(operation);
+                Assert.False(File.Exists(Path.Combine(rootPath, "node-a.testdb.db.metadata")));
             }
             finally
             {
@@ -376,13 +410,12 @@ namespace LiteDb.Distributed.Tests
             {
                 _nodeId = nodeId;
 
-                // Each test node gets isolated business/metadata files under temp storage.
+                // Each test node gets an isolated single database file under temp storage.
                 Store = new LiteDbNodeStore(new LiteDbNodeStoreOptions
                 {
                     NodeId = nodeId,
                     DatabaseName = "testdb",
-                    BusinessDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db"),
-                    MetadataDatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db.metadata")
+                    DatabasePath = Path.Combine(rootPath, $"{nodeId}.testdb.db")
                 });
 
                 IConflictResolver conflictResolver = new NodeConflictPolicyResolver("ApplyIncoming");

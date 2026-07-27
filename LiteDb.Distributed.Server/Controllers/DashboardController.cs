@@ -48,10 +48,8 @@ namespace LiteDb.Distributed.Server.Controllers
 
             foreach (LogicalDatabaseRegistration? registration in registrations.OrderBy(x => x.DatabaseName, StringComparer.Ordinal))
             {
-                string businessPath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db");
-                string metadataPath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db.metadata");
-                DashboardFileStatusDto businessFile = BuildFileStatus(businessPath);
-                DashboardFileStatusDto metadataFile = BuildFileStatus(metadataPath);
+                string databasePath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db");
+                DashboardFileStatusDto databaseFile = BuildFileStatus(databasePath);
 
                 try
                 {
@@ -68,8 +66,7 @@ namespace LiteDb.Distributed.Server.Controllers
                         Name = registration.DatabaseName,
                         Status = "Healthy",
                         Error = null,
-                        BusinessFile = businessFile,
-                        MetadataFile = metadataFile,
+                        DatabaseFile = databaseFile,
                         PeerCount = peers.Count
                     });
                 }
@@ -82,8 +79,7 @@ namespace LiteDb.Distributed.Server.Controllers
                         Name = registration.DatabaseName,
                         Status = "Error",
                         Error = ex.Message,
-                        BusinessFile = businessFile,
-                        MetadataFile = metadataFile,
+                        DatabaseFile = databaseFile,
                         PeerCount = 0
                     });
                 }
@@ -554,8 +550,7 @@ namespace LiteDb.Distributed.Server.Controllers
             public required string Name { get; set; }
             public required string Status { get; set; }
             public required string? Error { get; set; }
-            public required DashboardFileStatusDto BusinessFile { get; set; }
-            public required DashboardFileStatusDto MetadataFile { get; set; }
+            public required DashboardFileStatusDto DatabaseFile { get; set; }
             public required int PeerCount { get; set; }
         }
 

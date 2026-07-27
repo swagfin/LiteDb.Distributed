@@ -64,10 +64,9 @@ namespace LiteDb.Distributed.Server.Storage
             string rootDataDirectory = ResolveDataDirectory(_options.DataDirectory);
             string nodeDataDirectory = Path.Combine(rootDataDirectory, _options.NodeId);
             Directory.CreateDirectory(nodeDataDirectory);
-            string businessPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db");
-            string metadataPath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db.metadata");
+            string databasePath = Path.Combine(nodeDataDirectory, $"{registration.DatabaseName}.db");
 
-            _logger.LogInformation("Opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}", _options.NodeId, registration.DatabaseName, businessPath, metadataPath);
+            _logger.LogInformation("Opening logical database store. NodeId={NodeId} Database={Database} DatabasePath={DatabasePath}", _options.NodeId, registration.DatabaseName, databasePath);
 
             try
             {
@@ -75,14 +74,13 @@ namespace LiteDb.Distributed.Server.Storage
                 {
                     NodeId = _options.NodeId,
                     DatabaseName = registration.DatabaseName,
-                    BusinessDatabasePath = businessPath,
-                    MetadataDatabasePath = metadataPath,
+                    DatabasePath = databasePath,
                     SeedPeers = _options.SeedPeers
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed opening logical database store. NodeId={NodeId} Database={Database} BusinessPath={BusinessPath} MetadataPath={MetadataPath}", _options.NodeId, registration.DatabaseName, businessPath, metadataPath);
+                _logger.LogError(ex, "Failed opening logical database store. NodeId={NodeId} Database={Database} DatabasePath={DatabasePath}", _options.NodeId, registration.DatabaseName, databasePath);
                 throw;
             }
         }
