@@ -1,7 +1,6 @@
-using LiteDb.Distributed.Core.Models;
-using LiteDb.Distributed.Infrastructure;
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Infrastructure.Context;
+using LiteDb.Distributed.Server;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Core.Context;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:1446");
@@ -38,28 +37,14 @@ builder.Services.AddCors(options =>
     });
 });
 
-ClusterNodeOptions nodeOptions = new ClusterNodeOptions
-{
-    NodeId = builder.Configuration["Node:NodeId"] ?? "node-1",
-    ReplicationApiKey = builder.Configuration["Node:ReplicationApiKey"] ?? "I_AM_ONE_OF_YOU",
-    ReplicationBatchSize = builder.Configuration.GetValue<int?>("Node:ReplicationBatchSize") ?? 1000,
-    ReplicationPeerConcurrency = builder.Configuration.GetValue<int?>("Node:ReplicationPeerConcurrency") ?? 4,
-    ReplicationSignalAckTimeoutMilliseconds = builder.Configuration.GetValue<int?>("Node:ReplicationSignalAckTimeoutMilliseconds") ?? 10000,
-    CacheCleanupIntervalSeconds = builder.Configuration.GetValue<int?>("Node:CacheCleanupIntervalSeconds") ?? 30,
-    CacheCleanupBatchSize = builder.Configuration.GetValue<int?>("Node:CacheCleanupBatchSize") ?? 500,
-    CacheCleanupMaxScanPages = builder.Configuration.GetValue<int?>("Node:CacheCleanupMaxScanPages") ?? 20,
-    ConflictResolutionPolicy = builder.Configuration["Node:ConflictResolutionPolicy"] ?? "ApplyIncoming",
-    SeedPeers = builder.Configuration.GetSection("Node:SeedPeers").Get<ClusterPeer[]>() ?? Array.Empty<ClusterPeer>()
-};
+ClusterNodeOptions nodeOptions = new ClusterNodeOptions();
+builder.Configuration.GetSection("Node").Bind(nodeOptions);
+
+ApiKeyAuthorizationOptions authOptions = new ApiKeyAuthorizationOptions();
+builder.Configuration.GetSection("Auth").Bind(authOptions);
 
 builder.Services.AddLiteDbDistributedNode(nodeOptions);
-
-builder.Services.AddSingleton(sp =>
-{
-    ApiKeyAuthorizationOptions authOptions = new ApiKeyAuthorizationOptions();
-    builder.Configuration.GetSection("Auth").Bind(authOptions);
-    return authOptions;
-});
+builder.Services.AddSingleton(authOptions);
 builder.Services.AddSingleton<IApiKeyAuthorizationService, ApiKeyAuthorizationService>();
 
 WebApplication app = builder.Build();

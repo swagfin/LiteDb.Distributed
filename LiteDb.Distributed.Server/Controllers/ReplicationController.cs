@@ -1,7 +1,7 @@
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Models;
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Server.Filters;
+using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Core.Filters;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
@@ -48,13 +48,15 @@ namespace LiteDb.Distributed.Server.Controllers
                 OperationIngestionResult result = await _ingestionService.IngestAsync(_nodeOptions.NodeId, request.Operations, cancellationToken).ConfigureAwait(false);
                 stopwatch.Stop();
 
-                int notAppliedCount = Math.Max(0, operationCount - result.AcceptedCount);
+                int notAppliedCount = Math.Max(0, result.ProcessedCount - result.AcceptedCount);
 
-                _logger.LogInformation("Replication push applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Received={Received} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} ApplyDurationMs={ApplyDurationMs}", _nodeOptions.NodeId, request.SourceNodeId, operationCount, result.AcceptedCount, result.ConflictCount, notAppliedCount, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Replication push applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Received={Received} Processed={Processed} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} LastProcessedLogSequence={LastProcessedLogSequence} ApplyDurationMs={ApplyDurationMs}", _nodeOptions.NodeId, request.SourceNodeId, operationCount, result.ProcessedCount, result.AcceptedCount, result.ConflictCount, notAppliedCount, result.LastProcessedLogSequence, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(new ReplicationPushResponse
                 {
-                    AcceptedCount = result.AcceptedCount
+                    ProcessedCount = result.ProcessedCount,
+                    AcceptedCount = result.AcceptedCount,
+                    LastProcessedLogSequence = result.LastProcessedLogSequence
                 });
             }
             catch (ArgumentException ex)

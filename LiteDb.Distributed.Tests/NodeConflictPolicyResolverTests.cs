@@ -1,5 +1,5 @@
-using LiteDb.Distributed.Core.Models;
-using LiteDb.Distributed.Infrastructure.Conflict;
+using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Infrastructure.Conflict;
 
 namespace LiteDb.Distributed.Tests
 {
@@ -17,14 +17,14 @@ namespace LiteDb.Distributed.Tests
         }
 
         [Fact]
-        public async Task ResolveAsync_ReturnsKeepLocal_WhenPolicyIsKeepLocalAndDocumentExistsLocally()
+        public async Task ResolveAsync_ReturnsKeepLocalAndRecordConflict_WhenPolicyIsKeepLocalAndDocumentExistsLocally()
         {
             NodeConflictPolicyResolver resolver = new NodeConflictPolicyResolver("KeepLocal");
             ConflictResolutionContext context = CreateContext(hasLocalState: true);
 
             ConflictResolutionResult result = await resolver.ResolveAsync(context);
 
-            Assert.Equal(ConflictResolutionAction.KeepLocal, result.Action);
+            Assert.Equal(ConflictResolutionAction.KeepLocalAndRecordConflict, result.Action);
         }
 
         [Fact]

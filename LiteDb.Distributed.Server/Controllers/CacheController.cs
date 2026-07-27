@@ -1,10 +1,11 @@
 using System.Globalization;
 using System.Text.Json;
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Common;
-using LiteDb.Distributed.Core.Exceptions;
-using LiteDb.Distributed.Infrastructure.Replication;
-using LiteDb.Distributed.Server.Filters;
+using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Core.Common;
+using LiteDb.Distributed.Server.Core.Exceptions;
+using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Core.Filters;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LiteDb.Distributed.Server.Controllers
@@ -65,11 +66,11 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.UpsertAsync(Common.CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.UpsertAsync(Common.CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-upsert");
                 stopwatch.Stop();
 
-                _logger.LogInformation("Cache set applied. Key={Key} TtlMs={TtlMs} ExpiresAtUtc={ExpiresAtUtc} Version={Version} DurationMs={DurationMs}", normalizedKey, ttlValue.TotalMilliseconds, expiresAtUtc, result.Version, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Cache set applied. Key={Key} TtlMs={TtlMs} ExpiresAtUtc={ExpiresAtUtc} Version={Version} DurationMs={DurationMs}", normalizedKey, ttlValue.TotalMilliseconds, expiresAtUtc, result.Version, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(new CacheSetResponse
                 {
@@ -154,11 +155,11 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.DeleteAsync(Common.CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.DeleteAsync(Common.CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-delete");
                 stopwatch.Stop();
 
-                _logger.LogInformation("Cache delete applied. Key={Key} Version={Version} DurationMs={DurationMs}", normalizedKey, result.Version, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Cache delete applied. Key={Key} Version={Version} DurationMs={DurationMs}", normalizedKey, result.Version, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(result);
             }

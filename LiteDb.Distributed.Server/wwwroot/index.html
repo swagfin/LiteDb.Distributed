@@ -9,25 +9,42 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-0: #f7f9fc;
-      --bg-1: #eef2f8;
-      --card: rgba(255, 255, 255, 0.88);
-      --ink: #0f2240;
-      --muted: #4d668d;
-      --line: #cfdef8;
-      --brand: #2c7ef7;
-      --brand-strong: #0b5de5;
-      --good: #1fa971;
-      --warn: #d7831f;
-      --bad: #d64b4b;
-      --info: #2f67d5;
-      --spark-http: #1575ff;
-      --spark-ws: #7f55ff;
-      --shadow: 0 20px 38px rgba(26, 82, 173, 0.12);
-      --radius: 18px;
+      color-scheme: dark;
+      --bg-0: #080a0d;
+      --bg-1: #11151b;
+      --card: rgba(19, 23, 30, 0.9);
+      --card-strong: rgba(24, 30, 39, 0.96);
+      --ink: #e8eef8;
+      --muted: #9aa8bc;
+      --line: #2a3444;
+      --line-strong: #3a4658;
+      --brand: #38bdf8;
+      --brand-strong: #22c55e;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --info: #38bdf8;
+      --spark-http: #22d3ee;
+      --spark-ws: #c084fc;
+      --shadow: 0 18px 36px rgba(0, 0, 0, 0.36);
+      --radius: 8px;
     }
 
     * { box-sizing: border-box; }
+
+    ::selection {
+      background: rgba(56, 189, 248, 0.28);
+      color: #f8fbff;
+    }
+
+    *:focus-visible {
+      outline: 2px solid rgba(56, 189, 248, 0.72);
+      outline-offset: 3px;
+    }
+
+    html {
+      scrollbar-color: #3a4658 #080a0d;
+    }
 
     body {
       margin: 0;
@@ -35,8 +52,6 @@
       color: var(--ink);
       font-family: "Outfit", "Segoe UI", sans-serif;
       background:
-        radial-gradient(circle at 18% -16%, rgba(82, 130, 200, 0.11), transparent 44%),
-        radial-gradient(circle at 100% 0%, rgba(95, 133, 186, 0.08), transparent 40%),
         linear-gradient(180deg, var(--bg-0), var(--bg-1));
       background-attachment: fixed;
       overflow-y: scroll;
@@ -47,8 +62,8 @@
       position: fixed;
       inset: 0;
       background-image:
-        linear-gradient(rgba(42, 74, 120, 0.022) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(42, 74, 120, 0.022) 1px, transparent 1px);
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
       background-size: 40px 40px;
       pointer-events: none;
       z-index: -1;
@@ -70,13 +85,14 @@
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       padding: 16px;
-      transition: transform 160ms ease, box-shadow 200ms ease, border-color 200ms ease;
+      transition: transform 160ms ease, box-shadow 200ms ease, border-color 200ms ease, background 200ms ease;
     }
 
     .panel:hover {
       transform: translateY(-1px);
-      box-shadow: 0 22px 42px rgba(26, 82, 173, 0.14);
-      border-color: #bdd2f6;
+      box-shadow: 0 22px 42px rgba(0, 0, 0, 0.44);
+      border-color: var(--line-strong);
+      background: var(--card-strong);
     }
 
     .hero {
@@ -89,17 +105,6 @@
       position: relative;
     }
 
-    .hero::after {
-      content: "";
-      position: absolute;
-      inset: auto -80px -80px auto;
-      width: 220px;
-      height: 220px;
-      border-radius: 50%;
-      background: radial-gradient(circle at center, rgba(57, 140, 255, 0.18), transparent 70%);
-      pointer-events: none;
-    }
-
     .eyebrow {
       display: inline-flex;
       align-items: center;
@@ -107,9 +112,9 @@
       margin: 0 0 8px;
       padding: 7px 12px;
       border-radius: 999px;
-      border: 1px solid #c7dafb;
-      background: #eef5ff;
-      color: #2a66cb;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.1);
+      color: #a5f3fc;
       font-size: 0.76rem;
       font-weight: 700;
       letter-spacing: 0.08em;
@@ -122,7 +127,7 @@
       height: 8px;
       border-radius: 50%;
       background: var(--brand);
-      box-shadow: 0 0 0 5px rgba(44, 126, 247, 0.15);
+      box-shadow: 0 0 0 5px rgba(56, 189, 248, 0.14);
     }
 
     h1 {
@@ -155,15 +160,15 @@
       align-items: center;
       gap: 8px;
       font-size: 0.84rem;
-      color: #2f4f80;
+      color: #b7c4d8;
       font-weight: 600;
     }
 
     .select {
-      border: 1px solid #bfd5fa;
-      background: #f7fbff;
-      color: #153b71;
-      border-radius: 10px;
+      border: 1px solid var(--line-strong);
+      background: #0f141b;
+      color: var(--ink);
+      border-radius: 8px;
       padding: 5px 9px;
       font-family: "Outfit", "Segoe UI", sans-serif;
       font-size: 0.84rem;
@@ -171,37 +176,41 @@
       min-width: 120px;
     }
 
+    .select:hover {
+      border-color: rgba(56, 189, 248, 0.45);
+    }
+
     .btn {
       appearance: none;
       border: none;
-      border-radius: 12px;
+      border-radius: 8px;
       padding: 11px 16px;
-      color: #fff;
+      color: #041015;
       font-weight: 700;
       font-family: "Outfit", "Segoe UI", sans-serif;
       letter-spacing: 0.02em;
       background: linear-gradient(135deg, var(--brand), var(--brand-strong));
-      box-shadow: 0 10px 22px rgba(44, 126, 247, 0.35);
+      box-shadow: 0 10px 24px rgba(34, 197, 94, 0.22);
       cursor: pointer;
       transition: transform 140ms ease, box-shadow 180ms ease, opacity 150ms ease;
     }
 
     .btn:hover {
       transform: translateY(-1px);
-      box-shadow: 0 14px 28px rgba(44, 126, 247, 0.38);
+      box-shadow: 0 14px 30px rgba(56, 189, 248, 0.22);
     }
 
     .btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
       transform: none;
-      box-shadow: 0 10px 22px rgba(44, 126, 247, 0.25);
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
     }
 
     .meta {
       margin: 0;
       font-family: "JetBrains Mono", "Consolas", monospace;
-      color: #3c5f95;
+      color: #8ea0b8;
       font-size: 0.78rem;
     }
 
@@ -220,12 +229,9 @@
     .metric::before {
       content: "";
       position: absolute;
-      right: -32px;
-      top: -36px;
-      width: 110px;
-      height: 110px;
-      border-radius: 50%;
-      background: radial-gradient(circle at center, rgba(67, 147, 255, 0.18), transparent 68%);
+      inset: 0 0 auto;
+      height: 2px;
+      background: linear-gradient(90deg, var(--brand), transparent 70%);
       pointer-events: none;
     }
 
@@ -233,7 +239,7 @@
       font-size: 0.78rem;
       text-transform: uppercase;
       letter-spacing: 0.09em;
-      color: #4f6ea1;
+      color: #a8b5c8;
       font-weight: 700;
       margin: 0 0 8px;
     }
@@ -243,7 +249,7 @@
       line-height: 1.1;
       margin: 0;
       font-weight: 800;
-      color: #0b3a88;
+      color: #f8fbff;
       word-break: break-word;
     }
 
@@ -285,8 +291,8 @@
     }
 
     .node-card.current-node {
-      border-color: #8db8f8;
-      box-shadow: 0 22px 42px rgba(11, 93, 229, 0.22);
+      border-color: rgba(56, 189, 248, 0.55);
+      box-shadow: 0 22px 42px rgba(56, 189, 248, 0.12);
     }
 
     .row {
@@ -302,7 +308,7 @@
       font-size: 1.04rem;
       font-weight: 700;
       letter-spacing: 0.01em;
-      color: #10294f;
+      color: #f4f8ff;
     }
 
     .pill {
@@ -326,48 +332,48 @@
     }
 
     .pill.ok {
-      color: #156b49;
-      background: #e8faf2;
-      border-color: #bfead5;
+      color: #bbf7d0;
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.34);
     }
 
     .pill.ok::before { background: var(--good); }
 
     .pill.warn {
-      color: #8b5b0e;
-      background: #fff5e6;
-      border-color: #ffd9a4;
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.13);
+      border-color: rgba(245, 158, 11, 0.35);
     }
 
     .pill.warn::before { background: var(--warn); }
 
     .pill.bad {
-      color: #8d2f2f;
-      background: #ffeaea;
-      border-color: #ffc1c1;
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.13);
+      border-color: rgba(239, 68, 68, 0.35);
     }
 
     .pill.bad::before { background: var(--bad); }
 
     .pill.info {
-      color: #174d9e;
-      background: #e8f2ff;
-      border-color: #c2ddff;
+      color: #bae6fd;
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.35);
     }
 
     .pill.info::before { background: var(--info); }
 
     .pill.neutral {
-      color: #305486;
-      background: #edf4ff;
-      border-color: #d5e4fb;
+      color: #cbd5e1;
+      background: rgba(148, 163, 184, 0.12);
+      border-color: rgba(148, 163, 184, 0.28);
     }
 
-    .pill.neutral::before { background: #6f92c5; }
+    .pill.neutral::before { background: #94a3b8; }
 
     .kv {
       margin: 6px 0 0;
-      color: #35537f;
+      color: #bcc8d8;
       font-size: 0.9rem;
       word-break: break-word;
     }
@@ -381,10 +387,10 @@
 
     .error {
       margin-top: 10px;
-      color: #8d2f2f;
-      background: #ffe9e9;
-      border: 1px solid #ffc7c7;
-      border-radius: 10px;
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.32);
+      border-radius: 8px;
       padding: 8px 10px;
       font-size: 0.86rem;
       white-space: pre-wrap;
@@ -393,16 +399,16 @@
 
     .spark-wrap {
       margin-top: 10px;
-      border: 1px solid #d2e3ff;
-      background: linear-gradient(180deg, #f8fbff, #f2f7ff);
-      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12, 16, 22, 0.95), rgba(15, 20, 28, 0.95));
+      border-radius: 8px;
       padding: 8px;
     }
 
     .spark-head {
       margin: 0 0 6px;
       font-size: 0.79rem;
-      color: #395789;
+      color: #a8b5c8;
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -413,10 +419,11 @@
       height: 58px;
       display: block;
       overflow: visible;
+      background: transparent;
     }
 
     .spark-grid {
-      stroke: #dbe8ff;
+      stroke: rgba(148, 163, 184, 0.22);
       stroke-width: 1;
     }
 
@@ -447,13 +454,13 @@
     }
 
     .spark-point-http {
-      fill: #ffffff;
+      fill: #081018;
       stroke: var(--spark-http);
       stroke-width: 2;
     }
 
     .spark-point-ws {
-      fill: #ffffff;
+      fill: #081018;
       stroke: var(--spark-ws);
       stroke-width: 2;
     }
@@ -470,9 +477,9 @@
       max-width: 240px;
       padding: 8px 10px;
       border-radius: 10px;
-      background: rgba(15, 34, 64, 0.96);
-      border: 1px solid rgba(173, 202, 248, 0.45);
-      color: #e9f2ff;
+      background: rgba(6, 10, 16, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: #f8fbff;
       font-size: 0.8rem;
       line-height: 1.35;
       box-shadow: 0 14px 32px rgba(8, 24, 51, 0.35);
@@ -485,7 +492,7 @@
       display: flex;
       align-items: center;
       gap: 14px;
-      color: #3e5f94;
+      color: #a8b5c8;
       font-size: 0.8rem;
       flex-wrap: wrap;
     }
@@ -722,6 +729,16 @@
       for (const db of databases) {
         const status = db.Status || "Unknown";
         const error = db.Error ? `<div class="error">${escapeHtml(db.Error)}</div>` : "";
+        const replicationPeers = Array.isArray(db.ReplicationPeers) ? db.ReplicationPeers : [];
+        const peerLag = replicationPeers.length === 0
+          ? `<p class="note">No replication peers registered.</p>`
+          : replicationPeers.map(peer => `
+              <p class="kv">${escapeHtml(peer.PeerNodeId)}:
+                ${escapeHtml(peer.CatchUpStatus || "Unknown")},
+                pending ~${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)},
+                pushed ${escapeHtml(peer.LastPushedLocalLogSequence ?? 0)},
+                pulled ${escapeHtml(peer.LastPulledPeerLogSequence ?? 0)}
+              </p>`).join("");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
           <article class="panel reveal">
@@ -730,8 +747,10 @@
               <span class="pill info">${escapeHtml(db.Name)}</span>
             </div>
             <p class="kv">Peers registered: ${escapeHtml(db.PeerCount)}</p>
-            <p class="kv">Business file: ${formatFile(db.BusinessFile)}</p>
-            <p class="kv">Metadata file: ${formatFile(db.MetadataFile)}</p>
+            <p class="kv">Log range: ${escapeHtml(db.OldestAvailableLogSequence ?? 0)} - ${escapeHtml(db.LocalMaxLogSequence ?? 0)}</p>
+            <p class="kv">Estimated pending push operations: ${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</p>
+            <p class="kv">Database file: ${formatFile(db.DatabaseFile)}</p>
+            ${peerLag}
             ${error}
           </article>`);
       }

@@ -44,9 +44,27 @@ namespace LiteDb.Distributed.Studio.Models
         public string Name { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public string? Error { get; set; }
-        public DashboardFileStatusDto? BusinessFile { get; set; }
-        public DashboardFileStatusDto? MetadataFile { get; set; }
+        public DashboardFileStatusDto? DatabaseFile { get; set; }
         public int PeerCount { get; set; }
+        public long OldestAvailableLogSequence { get; set; }
+        public long LocalMaxLogSequence { get; set; }
+        public long TotalEstimatedPendingPushOperations { get; set; }
+        public List<ReplicationPeerStatusDto> ReplicationPeers { get; set; } = [];
+    }
+
+    public class ReplicationPeerStatusDto
+    {
+        public string PeerNodeId { get; set; } = string.Empty;
+        public string BaseUrl { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public string CatchUpStatus { get; set; } = string.Empty;
+        public string CatchUpReason { get; set; } = string.Empty;
+        public long OldestAvailableLogSequence { get; set; }
+        public long LastPushedLocalLogSequence { get; set; }
+        public long LastPulledPeerLogSequence { get; set; }
+        public long LocalMaxLogSequence { get; set; }
+        public long EstimatedPendingPushOperations { get; set; }
+        public DateTime UpdatedUtc { get; set; }
     }
 
     public class DashboardFileStatusDto

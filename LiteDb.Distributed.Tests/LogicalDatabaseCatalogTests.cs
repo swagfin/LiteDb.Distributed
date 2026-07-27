@@ -1,5 +1,6 @@
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Infrastructure.Storage;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Data;
+using LiteDb.Distributed.Tests.TestSupport;
 
 namespace LiteDb.Distributed.Tests
 {
@@ -51,10 +52,7 @@ namespace LiteDb.Distributed.Tests
 
             public ValueTask DisposeAsync()
             {
-                if (Directory.Exists(_rootPath))
-                {
-                    Directory.Delete(_rootPath, recursive: true);
-                }
+                TestFileSystem.DeleteDirectoryIfExists(_rootPath);
 
                 return ValueTask.CompletedTask;
             }

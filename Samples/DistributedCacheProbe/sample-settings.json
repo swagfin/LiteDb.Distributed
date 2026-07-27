@@ -9,5 +9,8 @@
   "PollIntervalMilliseconds": 25,
   "VisibilityTimeoutSeconds": 20,
   "MinPauseMilliseconds": 500,
-  "MaxPauseMilliseconds": 1500
+  "MaxPauseMilliseconds": 1500,
+  "MinRandomTtlMinutes": 1,
+  "MaxRandomTtlMinutes": 3,
+  "HttpTimeoutSeconds": 10
 }

@@ -1,0 +1,18 @@
+{
+  "Nodes": [
+    "http://localhost:17001",
+    "http://localhost:17002",
+    "http://localhost:17003"
+  ],
+  "Database": "testapp",
+  "ApiKey": "root",
+  "CollectionName": "LoadOrders",
+  "DurationSeconds": 300,
+  "WriterConcurrency": 16,
+  "TargetWritesPerSecond": 500,
+  "ReplicationSampleRate": 0.02,
+  "ReplicationProbeConcurrency": 8,
+  "ReplicationTimeoutSeconds": 30,
+  "PollIntervalMilliseconds": 100,
+  "ReportIntervalSeconds": 5
+}

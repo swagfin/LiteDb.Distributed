@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Infrastructure.Context;
+using LiteDb.Distributed.Server.Core.Context;
 
 namespace LiteDb.Distributed.Tests
 {

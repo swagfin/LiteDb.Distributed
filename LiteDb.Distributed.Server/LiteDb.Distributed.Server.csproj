@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<ItemGroup>
 	  <None Remove="Data\README.txt" />
@@ -11,8 +11,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\LiteDb.Distributed.Core\LiteDb.Distributed.Core.csproj" />
-		<ProjectReference Include="..\LiteDb.Distributed.Infrastructure\LiteDb.Distributed.Infrastructure.csproj" />
+		<PackageReference Include="LiteDB" Version="5.0.21" />
 	</ItemGroup>
 
 	<PropertyGroup>
