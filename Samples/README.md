@@ -46,3 +46,31 @@ dotnet run --project .\Samples\DistributedCacheProbe\DistributedCacheProbe.cspro
 ```
 
 Stop it with `Ctrl+C`.
+
+## 3) ClusterSoakTest (Write + Replication Soak Runner)
+
+This sample runs sustained writes across multiple nodes and samples replication visibility on peer nodes. It is intended for load/soak testing with realistic write volume.
+
+It reads configuration from:
+
+- `Samples/ClusterSoakTest/sample-settings.json`
+
+Default config includes:
+
+- 3 node URLs (`17001`, `17002`, `17003`)
+- `Database` and `ApiKey`
+- `CollectionName`: `LoadOrders`
+- `WriterConcurrency`: `16`
+- `TargetWritesPerSecond`: `500`
+- `ReplicationSampleRate`: `0.02`
+- replication polling, timeout, queue, and reporting settings
+
+Run it with:
+
+```powershell
+dotnet run --project .\Samples\ClusterSoakTest\ClusterSoakTest.csproj
+```
+
+Stop it with `Ctrl+C`, or set `DurationSeconds` in `sample-settings.json`.
+
+Periodic output reports write totals, write RPS, write latency percentiles, replication visibility counts, replication timeouts, dropped replication samples, and replication latency percentiles.
