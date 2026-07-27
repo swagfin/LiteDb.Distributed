@@ -109,7 +109,14 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 DateTime olderThanUtc = DateTime.UtcNow.Subtract(_retentionAge);
                 OperationLogPruneResult pruneResult = await store.PruneOperationLogAsync(pruneThroughLogSequence, olderThanUtc, _batchSize, cancellationToken).ConfigureAwait(false);
 
-                _logger.LogInformation("Operation log pruning completed. Database={Database} PruneThroughLogSequence={PruneThroughLogSequence} Pruned={Pruned} MaxPrunedLogSequence={MaxPrunedLogSequence} PrunedReceipts={PrunedReceipts}", databaseName, pruneThroughLogSequence, pruneResult.PrunedCount, pruneResult.MaxPrunedLogSequence, receiptPruneResult.PrunedCount);
+                if (pruneResult.PrunedCount > 0 || receiptPruneResult.PrunedCount > 0)
+                {
+                    _logger.LogInformation("Operation log pruning completed. Database={Database} PruneThroughLogSequence={PruneThroughLogSequence} Pruned={Pruned} MaxPrunedLogSequence={MaxPrunedLogSequence} PrunedReceipts={PrunedReceipts}", databaseName, pruneThroughLogSequence, pruneResult.PrunedCount, pruneResult.MaxPrunedLogSequence, receiptPruneResult.PrunedCount);
+                }
+                else
+                {
+                    _logger.LogDebug("Operation log pruning completed without deletions. Database={Database} PruneThroughLogSequence={PruneThroughLogSequence} MaxPrunedLogSequence={MaxPrunedLogSequence}", databaseName, pruneThroughLogSequence, pruneResult.MaxPrunedLogSequence);
+                }
 
                 return new OperationLogPruningDatabaseResult
                 {

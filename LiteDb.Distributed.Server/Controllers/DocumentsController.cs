@@ -129,7 +129,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
                 stopwatch.Stop();
 
-                _logger.LogInformation("Document post applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, entityId, result.Version, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Document post applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, entityId, result.Version, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(result);
             }
@@ -163,7 +163,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 await _writer.EnsureCollectionAsync(documentName, cancellationToken).ConfigureAwait(false);
                 stopwatch.Stop();
 
-                _logger.LogInformation("Collection register completed. Collection={Collection} DurationMs={DurationMs}", documentName, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Collection register completed. Collection={Collection} DurationMs={DurationMs}", documentName, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok();
             }
@@ -199,7 +199,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
                 stopwatch.Stop();
 
-                _logger.LogInformation("Document put applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, id, result.Version, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Document put applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, id, result.Version, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(result);
             }
@@ -234,7 +234,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 _replicationSignalPublisher.NotifyLocalChange($"document-delete:{documentName}");
                 stopwatch.Stop();
 
-                _logger.LogInformation("Document delete applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, id, result.Version, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Document delete applied. Collection={Collection} Id={Id} Version={Version} DurationMs={DurationMs}", documentName, id, result.Version, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(result);
             }

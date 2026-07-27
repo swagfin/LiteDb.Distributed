@@ -70,7 +70,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 _replicationSignalPublisher.NotifyLocalChange("cache-upsert");
                 stopwatch.Stop();
 
-                _logger.LogInformation("Cache set applied. Key={Key} TtlMs={TtlMs} ExpiresAtUtc={ExpiresAtUtc} Version={Version} DurationMs={DurationMs}", normalizedKey, ttlValue.TotalMilliseconds, expiresAtUtc, result.Version, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Cache set applied. Key={Key} TtlMs={TtlMs} ExpiresAtUtc={ExpiresAtUtc} Version={Version} DurationMs={DurationMs}", normalizedKey, ttlValue.TotalMilliseconds, expiresAtUtc, result.Version, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(new CacheSetResponse
                 {
@@ -159,7 +159,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 _replicationSignalPublisher.NotifyLocalChange("cache-delete");
                 stopwatch.Stop();
 
-                _logger.LogInformation("Cache delete applied. Key={Key} Version={Version} DurationMs={DurationMs}", normalizedKey, result.Version, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Cache delete applied. Key={Key} Version={Version} DurationMs={DurationMs}", normalizedKey, result.Version, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(result);
             }
