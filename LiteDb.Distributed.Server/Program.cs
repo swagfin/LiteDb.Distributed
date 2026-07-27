@@ -42,7 +42,6 @@ builder.Configuration.GetSection("Node").Bind(nodeOptions);
 
 ApiKeyAuthorizationOptions authOptions = new ApiKeyAuthorizationOptions();
 builder.Configuration.GetSection("Auth").Bind(authOptions);
-ProductionConfigurationValidator.Validate(builder.Environment.EnvironmentName, nodeOptions, authOptions);
 
 builder.Services.AddLiteDbDistributedNode(nodeOptions);
 builder.Services.AddSingleton(authOptions);

@@ -13,6 +13,8 @@ LiteDb.Distributed is production-candidate software for small local-first cluste
 - Monitor `/api/replication/status`.
 - Decide backup/restore procedure before enabling aggressive pruning.
 
+The server does not block startup when development defaults are still configured. Treat default API keys as local-development conveniences only, and rotate them before exposing a node outside a trusted developer machine.
+
 ## Storage Rule
 
 Each logical database is stored as a single LiteDB file per node. Do not point multiple running node processes at the same database file.
