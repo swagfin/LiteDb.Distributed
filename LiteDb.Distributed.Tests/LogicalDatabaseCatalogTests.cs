@@ -1,5 +1,5 @@
 using LiteDb.Distributed.Server.Configuration;
-using LiteDb.Distributed.Server.Storage;
+using LiteDb.Distributed.Server.Data;
 using LiteDb.Distributed.Tests.TestSupport;
 
 namespace LiteDb.Distributed.Tests

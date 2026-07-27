@@ -1,8 +1,8 @@
 using LiteDb.Distributed.Server.Configuration;
-using LiteDb.Distributed.Server.Conflict;
-using LiteDb.Distributed.Server.Domain.Models;
-using LiteDb.Distributed.Server.Replication;
-using LiteDb.Distributed.Server.Storage;
+using LiteDb.Distributed.Server.Infrastructure.Conflict;
+using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Data;
 using LiteDb.Distributed.Tests.TestEntities;
 using LiteDb.Distributed.Tests.TestSupport;
 using LiteDB;

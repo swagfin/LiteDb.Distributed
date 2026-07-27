@@ -1,5 +1,5 @@
 using LiteDb.Distributed.Server.Controllers;
-using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Core.Models;
 using LiteDb.Distributed.Tests.TestSupport;
 
 namespace LiteDb.Distributed.Tests

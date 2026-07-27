@@ -1,10 +1,10 @@
-using LiteDb.Distributed.Server.Domain.Abstractions;
-using LiteDb.Distributed.Server.Cache;
+using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Infrastructure.Cache;
 using LiteDb.Distributed.Server.Configuration;
-using LiteDb.Distributed.Server.Conflict;
-using LiteDb.Distributed.Server.Context;
-using LiteDb.Distributed.Server.Replication;
-using LiteDb.Distributed.Server.Storage;
+using LiteDb.Distributed.Server.Infrastructure.Conflict;
+using LiteDb.Distributed.Server.Core.Context;
+using LiteDb.Distributed.Server.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Data;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LiteDb.Distributed.Server

@@ -1,6 +1,6 @@
 using LiteDb.Distributed.Server.Configuration;
-using LiteDb.Distributed.Server.Context;
-using LiteDb.Distributed.Server.Storage;
+using LiteDb.Distributed.Server.Core.Context;
+using LiteDb.Distributed.Server.Data;
 using LiteDb.Distributed.Tests.TestSupport;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;

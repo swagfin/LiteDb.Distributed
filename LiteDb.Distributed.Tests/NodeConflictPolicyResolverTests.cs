@@ -1,5 +1,5 @@
-using LiteDb.Distributed.Server.Domain.Models;
-using LiteDb.Distributed.Server.Conflict;
+using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Infrastructure.Conflict;
 
 namespace LiteDb.Distributed.Tests
 {

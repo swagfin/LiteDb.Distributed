@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Core.Models;
 
 namespace LiteDb.Distributed.Server.Configuration
 {

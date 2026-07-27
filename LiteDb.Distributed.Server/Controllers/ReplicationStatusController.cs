@@ -1,5 +1,5 @@
-using LiteDb.Distributed.Server.Filters;
-using LiteDb.Distributed.Server.Replication;
+using LiteDb.Distributed.Server.Core.Filters;
+using LiteDb.Distributed.Server.Infrastructure.Replication;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LiteDb.Distributed.Server.Controllers

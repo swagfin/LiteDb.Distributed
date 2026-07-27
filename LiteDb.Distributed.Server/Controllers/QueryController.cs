@@ -1,12 +1,12 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using LiteDb.Distributed.Server.Domain.Abstractions;
-using LiteDb.Distributed.Server.Domain.Common;
-using LiteDb.Distributed.Server.Domain.Exceptions;
-using LiteDb.Distributed.Server.Domain.Models;
-using LiteDb.Distributed.Server.Replication;
-using LiteDb.Distributed.Server.Filters;
-using LiteDb.Distributed.Server.Helpers;
+using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Core.Common;
+using LiteDb.Distributed.Server.Core.Exceptions;
+using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Core.Filters;
+using LiteDb.Distributed.Server.Infrastructure.Helpers;
 using LiteDB;
 using Microsoft.AspNetCore.Mvc;
 

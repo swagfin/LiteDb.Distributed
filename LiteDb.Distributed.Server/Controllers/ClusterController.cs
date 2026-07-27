@@ -1,7 +1,7 @@
-using LiteDb.Distributed.Server.Domain.Abstractions;
-using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Core.Models;
 using LiteDb.Distributed.Server.Configuration;
-using LiteDb.Distributed.Server.Filters;
+using LiteDb.Distributed.Server.Core.Filters;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
