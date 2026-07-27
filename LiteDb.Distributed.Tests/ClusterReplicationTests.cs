@@ -14,6 +14,8 @@ namespace LiteDb.Distributed.Tests
 {
     public class ClusterReplicationTests
     {
+        private const string CustomerCollection = "customers";
+
         [Fact]
         public async Task WriteOnOneNode_ReplicatesToOtherNodes()
         {
@@ -189,6 +191,111 @@ namespace LiteDb.Distributed.Tests
             Assert.Equal("cust-route-001", stored!["Id"]?.ToString());
         }
 
+        [Fact]
+        public async Task PushCheckpoint_AdvancesOnlyToPeerProcessedLogSequence()
+        {
+            string rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(rootPath);
+
+            try
+            {
+                using LiteDbNodeStore store = new LiteDbNodeStore(new LiteDbNodeStoreOptions
+                {
+                    NodeId = "node-a",
+                    DatabaseName = "testdb",
+                    BusinessDatabasePath = Path.Combine(rootPath, "node-a.testdb.db"),
+                    MetadataDatabasePath = Path.Combine(rootPath, "node-a.testdb.db.metadata")
+                });
+
+                await store.UpsertPeerAsync(new ClusterPeer
+                {
+                    NodeId = "node-b",
+                    BaseUrl = "inmemory://node-b",
+                    IsActive = true,
+                    UpdatedUtc = DateTime.UtcNow
+                });
+
+                await store.UpsertAsync(CustomerCollection, "cust-progress-001", new Customer { Id = "cust-progress-001", Name = "One", Email = "one@example.com", UpdatedUtc = DateTime.UtcNow });
+                await store.UpsertAsync(CustomerCollection, "cust-progress-002", new Customer { Id = "cust-progress-002", Name = "Two", Email = "two@example.com", UpdatedUtc = DateTime.UtcNow });
+
+                PartialPushPeerReplicationClient peerClient = new PartialPushPeerReplicationClient(lastProcessedLogSequence: 1);
+                PeerReplicationService replicationService = new PeerReplicationService(
+                    new ClusterNodeOptions
+                    {
+                        NodeId = "node-a",
+                        ReplicationBatchSize = 500
+                    },
+                    store,
+                    store,
+                    store,
+                    peerClient,
+                    new OperationIngestionService(store, new NodeConflictPolicyResolver("ApplyIncoming"), store, store, NullLogger<OperationIngestionService>.Instance),
+                    NullLogger<PeerReplicationService>.Instance);
+
+                await replicationService.ReplicateOnceAsync();
+
+                PeerCheckpointRecord checkpoint = await store.GetOrCreatePeerCheckpointAsync("node-a", "node-b");
+                IReadOnlyList<OperationRecord> remaining = await store.GetOperationsAfterLogSequenceAsync(checkpoint.LastPushedLocalLogSequence, 10);
+
+                Assert.Equal(1, checkpoint.LastPushedLocalLogSequence);
+                Assert.Single(remaining);
+                Assert.Equal("cust-progress-002", remaining[0].EntityId);
+            }
+            finally
+            {
+                if (Directory.Exists(rootPath))
+                {
+                    Directory.Delete(rootPath, recursive: true);
+                }
+            }
+        }
+
+        [Fact]
+        public async Task IngestAsync_CountsDuplicateOperationAsProcessedProgress()
+        {
+            string rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(rootPath);
+
+            try
+            {
+                using LiteDbNodeStore sourceStore = new LiteDbNodeStore(new LiteDbNodeStoreOptions
+                {
+                    NodeId = "node-a",
+                    DatabaseName = "testdb",
+                    BusinessDatabasePath = Path.Combine(rootPath, "node-a.testdb.db"),
+                    MetadataDatabasePath = Path.Combine(rootPath, "node-a.testdb.db.metadata")
+                });
+                using LiteDbNodeStore targetStore = new LiteDbNodeStore(new LiteDbNodeStoreOptions
+                {
+                    NodeId = "node-b",
+                    DatabaseName = "testdb",
+                    BusinessDatabasePath = Path.Combine(rootPath, "node-b.testdb.db"),
+                    MetadataDatabasePath = Path.Combine(rootPath, "node-b.testdb.db.metadata")
+                });
+
+                await sourceStore.UpsertAsync(CustomerCollection, "cust-dup-001", new Customer { Id = "cust-dup-001", Name = "Dup", Email = "dup@example.com", UpdatedUtc = DateTime.UtcNow });
+                IReadOnlyList<OperationRecord> operations = await sourceStore.GetOperationsAfterLogSequenceAsync(0, 10);
+
+                OperationIngestionService ingestionService = new OperationIngestionService(targetStore, new NodeConflictPolicyResolver("ApplyIncoming"), targetStore, targetStore, NullLogger<OperationIngestionService>.Instance);
+                OperationIngestionResult first = await ingestionService.IngestAsync("node-b", operations);
+                OperationIngestionResult second = await ingestionService.IngestAsync("node-b", operations);
+
+                Assert.Equal(1, first.ProcessedCount);
+                Assert.Equal(1, first.AcceptedCount);
+                Assert.Equal(1, first.LastProcessedLogSequence);
+                Assert.Equal(1, second.ProcessedCount);
+                Assert.Equal(0, second.AcceptedCount);
+                Assert.Equal(1, second.LastProcessedLogSequence);
+            }
+            finally
+            {
+                if (Directory.Exists(rootPath))
+                {
+                    Directory.Delete(rootPath, recursive: true);
+                }
+            }
+        }
+
         private class TestCluster : IAsyncDisposable
         {
             private readonly string _rootPath;
@@ -259,7 +366,6 @@ namespace LiteDb.Distributed.Tests
 
         private class TestNode : IAsyncDisposable
         {
-            private const string CustomerCollection = "customers";
             private readonly string _nodeId;
             private readonly IOperationIngestionService _ingestionService;
             private readonly PeerReplicationService _replicationService;
@@ -390,7 +496,9 @@ namespace LiteDb.Distributed.Tests
                 OperationIngestionResult result = await _ingestionService.IngestAsync(_nodeId, request.Operations, cancellationToken);
                 return new ReplicationPushResponse
                 {
-                    AcceptedCount = result.AcceptedCount
+                    ProcessedCount = result.ProcessedCount,
+                    AcceptedCount = result.AcceptedCount,
+                    LastProcessedLogSequence = result.LastProcessedLogSequence
                 };
             }
 
@@ -435,6 +543,32 @@ namespace LiteDb.Distributed.Tests
         {
             public void NotifyLocalChange(string reason)
             {
+            }
+        }
+
+        private class PartialPushPeerReplicationClient : IPeerReplicationClient
+        {
+            private readonly long _lastProcessedLogSequence;
+
+            public PartialPushPeerReplicationClient(long lastProcessedLogSequence)
+            {
+                _lastProcessedLogSequence = lastProcessedLogSequence;
+            }
+
+            public Task<ReplicationPushResponse> PushAsync(ClusterPeer peer, ReplicationPushRequest request, CancellationToken cancellationToken = default)
+            {
+                int processedCount = request.Operations.Count(x => x.LogSequence <= _lastProcessedLogSequence);
+                return Task.FromResult(new ReplicationPushResponse
+                {
+                    ProcessedCount = processedCount,
+                    AcceptedCount = processedCount,
+                    LastProcessedLogSequence = _lastProcessedLogSequence
+                });
+            }
+
+            public Task<ReplicationPullResponse> PullAsync(ClusterPeer peer, ReplicationPullRequest request, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(new ReplicationPullResponse { Operations = Array.Empty<OperationRecord>() });
             }
         }
 

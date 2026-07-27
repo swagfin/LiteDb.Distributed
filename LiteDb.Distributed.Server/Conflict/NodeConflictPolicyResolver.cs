@@ -50,7 +50,7 @@ namespace LiteDb.Distributed.Server.Conflict
 
             return Task.FromResult(new ConflictResolutionResult
             {
-                Action = ConflictResolutionAction.KeepLocal,
+                Action = ConflictResolutionAction.KeepLocalAndRecordConflict,
                 Reason = "Node conflict policy is KeepLocal."
             });
         }

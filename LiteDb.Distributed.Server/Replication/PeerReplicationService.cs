@@ -119,13 +119,14 @@ namespace LiteDb.Distributed.Server.Replication
                         cancellationToken)
                     .ConfigureAwait(false);
                 pushAcceptedCount = pushResponse.AcceptedCount;
+                long lastProcessedPushLogSequence = GetSafeLastProcessedPushLogSequence(checkpoint.LastPushedLocalLogSequence, pendingForPush, pushResponse);
 
-                // Advance the push checkpoint only after a successful peer acknowledgement.
+                // Advance only through source log entries the peer confirms it processed.
                 checkpoint = new PeerCheckpointRecord
                 {
                     LocalNodeId = checkpoint.LocalNodeId,
                     PeerNodeId = checkpoint.PeerNodeId,
-                    LastPushedLocalLogSequence = pendingForPush.Max(x => x.LogSequence),
+                    LastPushedLocalLogSequence = lastProcessedPushLogSequence,
                     LastPulledPeerLogSequence = checkpoint.LastPulledPeerLogSequence,
                     UpdatedUtc = DateTime.UtcNow
                 };
@@ -174,6 +175,23 @@ namespace LiteDb.Distributed.Server.Replication
             LogLevel logLevel = pushedCount > 0 || pulledCount > 0 || pulledConflictCount > 0 ? LogLevel.Information : LogLevel.Debug;
 
             _logger.Log(logLevel, "Peer replication completed. LocalNodeId={LocalNodeId} PeerNodeId={PeerNodeId} Pushed={Pushed} PushAccepted={PushAccepted} Pulled={Pulled} PullAccepted={PullAccepted} PullConflicts={PullConflicts} CheckpointPush={CheckpointPush} CheckpointPull={CheckpointPull} DurationMs={DurationMs}", _localNodeId, peer.NodeId, pushedCount, pushAcceptedCount, pulledCount, pulledAcceptedCount, pulledConflictCount, checkpoint.LastPushedLocalLogSequence, checkpoint.LastPulledPeerLogSequence, peerStopwatch.Elapsed.TotalMilliseconds);
+        }
+
+        private static long GetSafeLastProcessedPushLogSequence(long currentCheckpoint, IReadOnlyList<OperationRecord> pendingOperations, ReplicationPushResponse pushResponse)
+        {
+            if (pendingOperations.Count == 0 || pushResponse.LastProcessedLogSequence <= currentCheckpoint)
+            {
+                return currentCheckpoint;
+            }
+
+            long highestSentLogSequence = pendingOperations.Max(x => x.LogSequence);
+            if (pushResponse.LastProcessedLogSequence > highestSentLogSequence)
+            {
+                return currentCheckpoint;
+            }
+
+            bool matchedSentOperation = pendingOperations.Any(x => x.LogSequence == pushResponse.LastProcessedLogSequence);
+            return matchedSentOperation ? pushResponse.LastProcessedLogSequence : currentCheckpoint;
         }
     }
 

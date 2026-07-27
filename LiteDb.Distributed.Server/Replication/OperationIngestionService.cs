@@ -31,8 +31,10 @@ namespace LiteDb.Distributed.Server.Replication
 
             ArgumentNullException.ThrowIfNull(operations);
 
+            int processedCount = 0;
             int acceptedCount = 0;
             int conflictCount = 0;
+            long lastProcessedLogSequence = 0;
             Stopwatch batchStopwatch = Stopwatch.StartNew();
 
             _logger.LogDebug("Starting operation ingestion. LocalNodeId={LocalNodeId} IncomingOperationCount={IncomingOperationCount}", localNodeId, operations.Count);
@@ -79,6 +81,8 @@ namespace LiteDb.Distributed.Server.Replication
                     bool applied = await _remoteOperationApplier.ApplyRemoteOperationAsync(syncedOperation, cancellationToken).ConfigureAwait(false);
 
                     applyStopwatch.Stop();
+                    processedCount += 1;
+                    lastProcessedLogSequence = Math.Max(lastProcessedLogSequence, operation.LogSequence);
 
                     if (applied)
                     {
@@ -113,23 +117,31 @@ namespace LiteDb.Distributed.Server.Replication
                             cancellationToken)
                         .ConfigureAwait(false);
 
+                    processedCount += 1;
+                    lastProcessedLogSequence = Math.Max(lastProcessedLogSequence, operation.LogSequence);
+
                     _logger.LogWarning("Conflict recorded for {Collection}/{EntityId} from operation {OperationId}. Reason={Reason}", operation.Collection, operation.EntityId, operation.Id, decision.Reason);
 
                     continue;
                 }
 
+                processedCount += 1;
+                lastProcessedLogSequence = Math.Max(lastProcessedLogSequence, operation.LogSequence);
+
                 _logger.LogInformation("Skipped incoming operation after conflict resolution. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationId={OperationId} Collection={Collection} EntityId={EntityId} Reason={Reason}", localNodeId, operation.NodeId, operation.Id, operation.Collection, operation.EntityId, decision.Reason);
             }
 
             batchStopwatch.Stop();
-            int notAppliedCount = Math.Max(0, operations.Count - acceptedCount);
+            int notAppliedCount = Math.Max(0, processedCount - acceptedCount);
 
-            _logger.LogInformation("Operation ingestion completed. LocalNodeId={LocalNodeId} Incoming={Incoming} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} DurationMs={DurationMs}", localNodeId, operations.Count, acceptedCount, conflictCount, notAppliedCount, batchStopwatch.Elapsed.TotalMilliseconds);
+            _logger.LogInformation("Operation ingestion completed. LocalNodeId={LocalNodeId} Incoming={Incoming} Processed={Processed} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} LastProcessedLogSequence={LastProcessedLogSequence} DurationMs={DurationMs}", localNodeId, operations.Count, processedCount, acceptedCount, conflictCount, notAppliedCount, lastProcessedLogSequence, batchStopwatch.Elapsed.TotalMilliseconds);
 
             return new OperationIngestionResult
             {
+                ProcessedCount = processedCount,
                 AcceptedCount = acceptedCount,
-                ConflictCount = conflictCount
+                ConflictCount = conflictCount,
+                LastProcessedLogSequence = lastProcessedLogSequence
             };
         }
     }

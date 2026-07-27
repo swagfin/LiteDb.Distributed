@@ -30,7 +30,7 @@ namespace LiteDb.Distributed.Server.Replication
             response.EnsureSuccessStatusCode();
 
             ReplicationPushResponse? payload = await response.Content.ReadFromJsonAsync<ReplicationPushResponse>(cancellationToken).ConfigureAwait(false);
-            return payload ?? new ReplicationPushResponse { AcceptedCount = 0 };
+            return payload ?? new ReplicationPushResponse { ProcessedCount = 0, AcceptedCount = 0 };
         }
 
         public async Task<ReplicationPullResponse> PullAsync(ClusterPeer peer, ReplicationPullRequest request, CancellationToken cancellationToken = default)
