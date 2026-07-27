@@ -39,6 +39,7 @@ namespace LiteDb.Distributed.Server
 
             services.AddSingleton<IOperationIngestionService, OperationIngestionService>();
             services.AddSingleton<IClusterReplicationService, PeerReplicationService>();
+            services.AddSingleton<IReplicationStatusService, ReplicationStatusService>();
             services.AddSingleton<IReplicationOrchestrator, ReplicationOrchestrator>();
             services.AddSingleton<PeerReplicationSignalService>();
             services.AddSingleton<IReplicationSignalPublisher>(sp => sp.GetRequiredService<PeerReplicationSignalService>());

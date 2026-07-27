@@ -330,6 +330,47 @@ namespace LiteDb.Distributed.Tests
             }
         }
 
+        [Fact]
+        public async Task ReplicationStatus_ReportsPendingPushBeforeSync()
+        {
+            await using TestCluster cluster = new TestCluster();
+            TestNode nodeA = cluster.AddNode("node-a");
+            TestNode nodeB = cluster.AddNode("node-b");
+
+            await cluster.ConnectAllAsync();
+            await nodeA.UpsertCustomerAsync("cust-lag-001", "Lag One");
+
+            ReplicationStatusSnapshot status = await nodeA.GetReplicationStatusAsync();
+            ReplicationDatabaseStatus databaseStatus = Assert.Single(status.Databases);
+            ReplicationPeerStatus peerStatus = Assert.Single(databaseStatus.Peers.Where(x => x.PeerNodeId == "node-b"));
+
+            Assert.Equal(1, databaseStatus.LocalMaxLogSequence);
+            Assert.Equal(1, databaseStatus.TotalPendingPushOperations);
+            Assert.Equal(1, peerStatus.PendingPushOperations);
+            Assert.Equal(0, peerStatus.LastPushedLocalLogSequence);
+        }
+
+        [Fact]
+        public async Task ReplicationStatus_ReportsZeroPendingPushAfterSync()
+        {
+            await using TestCluster cluster = new TestCluster();
+            TestNode nodeA = cluster.AddNode("node-a");
+            TestNode nodeB = cluster.AddNode("node-b");
+
+            await cluster.ConnectAllAsync();
+            await nodeA.UpsertCustomerAsync("cust-lag-002", "Lag Two");
+            await cluster.ReplicateAllAsync(rounds: 2);
+
+            ReplicationStatusSnapshot status = await nodeA.GetReplicationStatusAsync();
+            ReplicationDatabaseStatus databaseStatus = Assert.Single(status.Databases);
+            ReplicationPeerStatus peerStatus = Assert.Single(databaseStatus.Peers.Where(x => x.PeerNodeId == "node-b"));
+
+            Assert.Equal(1, databaseStatus.LocalMaxLogSequence);
+            Assert.Equal(0, databaseStatus.TotalPendingPushOperations);
+            Assert.Equal(0, peerStatus.PendingPushOperations);
+            Assert.Equal(1, peerStatus.LastPushedLocalLogSequence);
+        }
+
         private class TestCluster : IAsyncDisposable
         {
             private readonly string _rootPath;
@@ -403,6 +444,7 @@ namespace LiteDb.Distributed.Tests
             private readonly string _nodeId;
             private readonly IOperationIngestionService _ingestionService;
             private readonly PeerReplicationService _replicationService;
+            private readonly ReplicationStatusService _replicationStatusService;
             private readonly QueryController _queryController;
             private readonly DocumentsController _documentsController;
 
@@ -437,6 +479,14 @@ namespace LiteDb.Distributed.Tests
                     peerClient,
                     _ingestionService,
                     NullLogger<PeerReplicationService>.Instance);
+                _replicationStatusService = new ReplicationStatusService(
+                    new ClusterNodeOptions
+                    {
+                        NodeId = nodeId
+                    },
+                    new InMemoryLogicalDatabaseCatalog("testdb"),
+                    new InMemoryLogicalDatabaseStoreProvider(Store),
+                    NullLogger<ReplicationStatusService>.Instance);
 
                 _queryController = new QueryController(Store, Store, new InMemoryReplicationSignalPublisher(), NullLogger<QueryController>.Instance);
                 _documentsController = new DocumentsController(Store, Store, new InMemoryLogicalDatabaseStoreProvider(Store), new InMemoryReplicationSignalPublisher(), NullLogger<DocumentsController>.Instance);
@@ -458,6 +508,11 @@ namespace LiteDb.Distributed.Tests
             public Task ReplicateOnceAsync()
             {
                 return _replicationService.ReplicateOnceAsync();
+            }
+
+            public Task<ReplicationStatusSnapshot> GetReplicationStatusAsync()
+            {
+                return _replicationStatusService.GetStatusAsync();
             }
 
             public Task UpsertCustomerAsync(string customerId, string customerName)
@@ -626,6 +681,43 @@ namespace LiteDb.Distributed.Tests
 
             public void Dispose()
             {
+            }
+        }
+
+        private class InMemoryLogicalDatabaseCatalog : ILogicalDatabaseCatalog
+        {
+            private readonly string _databaseName;
+
+            public InMemoryLogicalDatabaseCatalog(string databaseName)
+            {
+                _databaseName = databaseName;
+            }
+
+            public Task<LogicalDatabaseRegistration> GetOrCreateAsync(string databaseName, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(CreateRegistration());
+            }
+
+            public Task<bool> ExistsAsync(string databaseName, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(string.Equals(databaseName, _databaseName, StringComparison.Ordinal));
+            }
+
+            public Task<IReadOnlyList<LogicalDatabaseRegistration>> GetAllAsync(CancellationToken cancellationToken = default)
+            {
+                IReadOnlyList<LogicalDatabaseRegistration> registrations = new[] { CreateRegistration() };
+                return Task.FromResult(registrations);
+            }
+
+            private LogicalDatabaseRegistration CreateRegistration()
+            {
+                DateTime now = DateTime.UtcNow;
+                return new LogicalDatabaseRegistration
+                {
+                    DatabaseName = _databaseName,
+                    CreatedUtc = now,
+                    UpdatedUtc = now
+                };
             }
         }
     }

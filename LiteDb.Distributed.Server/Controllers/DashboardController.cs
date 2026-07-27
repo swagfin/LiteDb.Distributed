@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using LiteDb.Distributed.Server.Domain.Models;
 using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Replication;
 using LiteDb.Distributed.Server.Storage;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,14 +19,16 @@ namespace LiteDb.Distributed.Server.Controllers
         private readonly ClusterNodeOptions _nodeOptions;
         private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
         private readonly ILogicalDatabaseStoreProvider _logicalDatabaseStoreProvider;
+        private readonly IReplicationStatusService _replicationStatusService;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<DashboardController> _logger;
 
-        public DashboardController(ClusterNodeOptions nodeOptions, ILogicalDatabaseCatalog logicalDatabaseCatalog, ILogicalDatabaseStoreProvider logicalDatabaseStoreProvider, IHttpClientFactory httpClientFactory, ILogger<DashboardController> logger)
+        public DashboardController(ClusterNodeOptions nodeOptions, ILogicalDatabaseCatalog logicalDatabaseCatalog, ILogicalDatabaseStoreProvider logicalDatabaseStoreProvider, IReplicationStatusService replicationStatusService, IHttpClientFactory httpClientFactory, ILogger<DashboardController> logger)
         {
             _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
             _logicalDatabaseCatalog = logicalDatabaseCatalog ?? throw new ArgumentNullException(nameof(logicalDatabaseCatalog));
             _logicalDatabaseStoreProvider = logicalDatabaseStoreProvider ?? throw new ArgumentNullException(nameof(logicalDatabaseStoreProvider));
+            _replicationStatusService = replicationStatusService ?? throw new ArgumentNullException(nameof(replicationStatusService));
             _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -37,6 +40,8 @@ namespace LiteDb.Distributed.Server.Controllers
             string dataRootPath = ResolveDataDirectory(_nodeOptions.DataDirectory);
             string nodeDataPath = Path.Combine(dataRootPath, _nodeOptions.NodeId);
             IReadOnlyList<LogicalDatabaseRegistration> registrations = await _logicalDatabaseCatalog.GetAllAsync(cancellationToken).ConfigureAwait(false);
+            ReplicationStatusSnapshot replicationStatus = await _replicationStatusService.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+            Dictionary<string, ReplicationDatabaseStatus> replicationStatusByDatabase = replicationStatus.Databases.ToDictionary(x => x.DatabaseName, StringComparer.Ordinal);
             Dictionary<string, DashboardPeerTarget> peerTargetsByNode = new Dictionary<string, DashboardPeerTarget>(StringComparer.Ordinal);
 
             foreach (ClusterPeer seedPeer in _nodeOptions.SeedPeers)
@@ -50,6 +55,7 @@ namespace LiteDb.Distributed.Server.Controllers
             {
                 string databasePath = Path.Combine(nodeDataPath, $"{registration.DatabaseName}.db");
                 DashboardFileStatusDto databaseFile = BuildFileStatus(databasePath);
+                replicationStatusByDatabase.TryGetValue(registration.DatabaseName, out ReplicationDatabaseStatus? databaseReplicationStatus);
 
                 try
                 {
@@ -67,7 +73,10 @@ namespace LiteDb.Distributed.Server.Controllers
                         Status = "Healthy",
                         Error = null,
                         DatabaseFile = databaseFile,
-                        PeerCount = peers.Count
+                        PeerCount = peers.Count,
+                        LocalMaxLogSequence = databaseReplicationStatus?.LocalMaxLogSequence ?? 0,
+                        TotalPendingPushOperations = databaseReplicationStatus?.TotalPendingPushOperations ?? 0,
+                        ReplicationPeers = databaseReplicationStatus?.Peers ?? Array.Empty<ReplicationPeerStatus>()
                     });
                 }
                 catch (Exception ex)
@@ -80,7 +89,10 @@ namespace LiteDb.Distributed.Server.Controllers
                         Status = "Error",
                         Error = ex.Message,
                         DatabaseFile = databaseFile,
-                        PeerCount = 0
+                        PeerCount = 0,
+                        LocalMaxLogSequence = databaseReplicationStatus?.LocalMaxLogSequence ?? 0,
+                        TotalPendingPushOperations = databaseReplicationStatus?.TotalPendingPushOperations ?? 0,
+                        ReplicationPeers = databaseReplicationStatus?.Peers ?? Array.Empty<ReplicationPeerStatus>()
                     });
                 }
             }
@@ -552,6 +564,9 @@ namespace LiteDb.Distributed.Server.Controllers
             public required string? Error { get; set; }
             public required DashboardFileStatusDto DatabaseFile { get; set; }
             public required int PeerCount { get; set; }
+            public required long LocalMaxLogSequence { get; set; }
+            public required long TotalPendingPushOperations { get; set; }
+            public IReadOnlyList<ReplicationPeerStatus> ReplicationPeers { get; set; } = Array.Empty<ReplicationPeerStatus>();
         }
 
         public class DashboardFileStatusDto

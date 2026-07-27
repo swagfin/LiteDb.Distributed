@@ -722,6 +722,15 @@
       for (const db of databases) {
         const status = db.Status || "Unknown";
         const error = db.Error ? `<div class="error">${escapeHtml(db.Error)}</div>` : "";
+        const replicationPeers = Array.isArray(db.ReplicationPeers) ? db.ReplicationPeers : [];
+        const peerLag = replicationPeers.length === 0
+          ? `<p class="note">No replication peers registered.</p>`
+          : replicationPeers.map(peer => `
+              <p class="kv">${escapeHtml(peer.PeerNodeId)}:
+                pending ${escapeHtml(peer.PendingPushOperations ?? 0)},
+                pushed ${escapeHtml(peer.LastPushedLocalLogSequence ?? 0)},
+                pulled ${escapeHtml(peer.LastPulledPeerLogSequence ?? 0)}
+              </p>`).join("");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
           <article class="panel reveal">
@@ -730,7 +739,10 @@
               <span class="pill info">${escapeHtml(db.Name)}</span>
             </div>
             <p class="kv">Peers registered: ${escapeHtml(db.PeerCount)}</p>
+            <p class="kv">Local log sequence: ${escapeHtml(db.LocalMaxLogSequence ?? 0)}</p>
+            <p class="kv">Pending push operations: ${escapeHtml(db.TotalPendingPushOperations ?? 0)}</p>
             <p class="kv">Database file: ${formatFile(db.DatabaseFile)}</p>
+            ${peerLag}
             ${error}
           </article>`);
       }
