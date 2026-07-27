@@ -40,6 +40,8 @@ namespace LiteDb.Distributed.Server
             services.AddSingleton<IOperationIngestionService, OperationIngestionService>();
             services.AddSingleton<IClusterReplicationService, PeerReplicationService>();
             services.AddSingleton<IReplicationStatusService, ReplicationStatusService>();
+            services.AddSingleton<OperationLogPruningService>();
+            services.AddSingleton<IOperationLogPruningService>(sp => sp.GetRequiredService<OperationLogPruningService>());
             services.AddSingleton<IReplicationOrchestrator, ReplicationOrchestrator>();
             services.AddSingleton<PeerReplicationSignalService>();
             services.AddSingleton<IReplicationSignalPublisher>(sp => sp.GetRequiredService<PeerReplicationSignalService>());
@@ -47,6 +49,7 @@ namespace LiteDb.Distributed.Server
             services.AddHostedService(sp => sp.GetRequiredService<PeerReplicationSignalService>());
             services.AddHostedService<ClusterReplicationBackgroundService>();
             services.AddHostedService<CacheExpirationBackgroundService>();
+            services.AddHostedService(sp => sp.GetRequiredService<OperationLogPruningService>());
 
             return services;
         }

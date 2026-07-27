@@ -309,5 +309,6 @@ The server allows Studio browser calls via CORS. Configure origins in:
 - WebSocket signal ack wait timeout is configurable with `Node:ReplicationSignalAckTimeoutMilliseconds` (default `10000`).
 - Conflict resolution is controlled per node by `Node:ConflictResolutionPolicy` (`ApplyIncoming` or `KeepLocal`).
 - API keys are application-level authorization values and independent of LiteDB file encryption.
+- Operation-log pruning is enabled by default and only removes payloads already covered by active peer checkpoints while retaining a recent operation window. Compact operation receipts are kept longer (`Node:OperationReceiptRetentionDays`, default `90`) for duplicate suppression, but pruned payloads are no longer available to bootstrap brand-new peers.
 
 

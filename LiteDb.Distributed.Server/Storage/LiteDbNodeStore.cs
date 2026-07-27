@@ -27,6 +27,7 @@ namespace LiteDb.Distributed.Server.Storage
         private const string LastModifiedUtcField = "_sys_last_modified_utc";
         private const string PeerCheckpointsCollectionName = "_sys_peer_checkpoints";
         private const string ClusterPeersCollectionName = "_sys_cluster_peers";
+        private const string OperationReceiptsCollectionName = "_sys_operation_receipts";
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -492,6 +493,125 @@ namespace LiteDb.Distributed.Server.Storage
             }
         }
 
+        public Task<OperationLogPruneResult> PruneOperationLogAsync(long throughLogSequence, DateTime olderThanUtc, int batchSize, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (throughLogSequence <= 0 || batchSize <= 0)
+            {
+                return Task.FromResult(new OperationLogPruneResult { PrunedCount = 0 });
+            }
+
+            int cappedBatchSize = Math.Clamp(batchSize, 1, 10_000);
+
+            lock (_gate)
+            {
+                List<OperationEntity> pruneCandidates = OperationsCollection()
+                    .Query()
+                    .Where(x => x.LogSequence <= throughLogSequence && x.TimestampUtc < olderThanUtc)
+                    .OrderBy(x => x.LogSequence)
+                    .Limit(cappedBatchSize)
+                    .ToList();
+
+                if (pruneCandidates.Count == 0)
+                {
+                    return Task.FromResult(new OperationLogPruneResult { PrunedCount = 0 });
+                }
+
+                BeginTransaction();
+
+                try
+                {
+                    DateTime prunedUtc = DateTime.UtcNow;
+                    ILiteCollection<OperationReceiptEntity> receipts = OperationReceiptsCollection();
+                    ILiteCollection<OperationEntity> operations = OperationsCollection();
+
+                    foreach (OperationEntity operation in pruneCandidates)
+                    {
+                        if (receipts.FindById(operation.Id) is null)
+                        {
+                            receipts.Insert(new OperationReceiptEntity
+                            {
+                                Id = operation.Id,
+                                NodeId = operation.NodeId,
+                                LogSequence = operation.LogSequence,
+                                TimestampUtc = operation.TimestampUtc,
+                                PrunedUtc = prunedUtc
+                            });
+                        }
+
+                        operations.Delete(operation.Id);
+                    }
+
+                    CommitTransaction();
+
+                    return Task.FromResult(new OperationLogPruneResult
+                    {
+                        PrunedCount = pruneCandidates.Count,
+                        MaxPrunedLogSequence = pruneCandidates.Max(x => x.LogSequence)
+                    });
+                }
+                catch
+                {
+                    RollbackTransaction();
+                    throw;
+                }
+            }
+        }
+
+        public Task<OperationReceiptPruneResult> PruneOperationReceiptsAsync(DateTime olderThanPrunedUtc, int batchSize, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (batchSize <= 0)
+            {
+                return Task.FromResult(new OperationReceiptPruneResult { PrunedCount = 0 });
+            }
+
+            int cappedBatchSize = Math.Clamp(batchSize, 1, 10_000);
+
+            lock (_gate)
+            {
+                List<OperationReceiptEntity> pruneCandidates = OperationReceiptsCollection()
+                    .Query()
+                    .Where(x => x.PrunedUtc < olderThanPrunedUtc)
+                    .OrderBy(x => x.PrunedUtc)
+                    .Limit(cappedBatchSize)
+                    .ToList();
+
+                if (pruneCandidates.Count == 0)
+                {
+                    return Task.FromResult(new OperationReceiptPruneResult { PrunedCount = 0 });
+                }
+
+                BeginTransaction();
+
+                try
+                {
+                    ILiteCollection<OperationReceiptEntity> receipts = OperationReceiptsCollection();
+
+                    foreach (OperationReceiptEntity receipt in pruneCandidates)
+                    {
+                        receipts.Delete(receipt.Id);
+                    }
+
+                    CommitTransaction();
+
+                    return Task.FromResult(new OperationReceiptPruneResult
+                    {
+                        PrunedCount = pruneCandidates.Count,
+                        OldestPrunedUtc = pruneCandidates.Min(x => x.PrunedUtc),
+                        NewestPrunedUtc = pruneCandidates.Max(x => x.PrunedUtc)
+                    });
+                }
+                catch
+                {
+                    RollbackTransaction();
+                    throw;
+                }
+            }
+        }
+
         public Task<PeerCheckpointRecord> GetOrCreatePeerCheckpointAsync(string localNodeId, string peerNodeId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -787,6 +907,7 @@ namespace LiteDb.Distributed.Server.Storage
             operations.EnsureIndex(x => x.Sequence);
             operations.EnsureIndex(x => x.LogSequence);
             operations.EnsureIndex(x => x.TimestampUtc);
+            OperationReceiptsCollection().EnsureIndex(x => x.PrunedUtc);
 
             NodeMetadataCollection().EnsureIndex(x => x.NodeId, unique: true);
             ConflictsCollection().EnsureIndex(x => x.CreatedUtc);
@@ -802,6 +923,11 @@ namespace LiteDb.Distributed.Server.Storage
         private ILiteCollection<OperationEntity> OperationsCollection()
         {
             return _database.GetCollection<OperationEntity>(SystemCollections.Operations);
+        }
+
+        private ILiteCollection<OperationReceiptEntity> OperationReceiptsCollection()
+        {
+            return _database.GetCollection<OperationReceiptEntity>(OperationReceiptsCollectionName);
         }
 
         private ILiteCollection<NodeMetadataEntity> NodeMetadataCollection()
@@ -918,7 +1044,7 @@ namespace LiteDb.Distributed.Server.Storage
 
         private bool ContainsOperationInternal(string operationId)
         {
-            return OperationsCollection().FindById(operationId) is not null;
+            return OperationsCollection().FindById(operationId) is not null || OperationReceiptsCollection().FindById(operationId) is not null;
         }
 
         private static BsonDocument ParsePayloadAsDocument(string payload)

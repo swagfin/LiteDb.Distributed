@@ -19,6 +19,16 @@ namespace LiteDb.Distributed.Server.Storage.Internal
         public bool IsTombstone { get; set; }
     }
 
+    internal class OperationReceiptEntity
+    {
+        [BsonId]
+        public string Id { get; set; } = string.Empty;
+        public string NodeId { get; set; } = string.Empty;
+        public long LogSequence { get; set; }
+        public DateTime TimestampUtc { get; set; }
+        public DateTime PrunedUtc { get; set; }
+    }
+
     internal class NodeMetadataEntity
     {
         [BsonId]
