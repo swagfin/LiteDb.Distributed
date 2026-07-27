@@ -843,7 +843,10 @@ namespace LiteDb.Distributed.Server.Data
 
             lock (_gate)
             {
-                List<string> names = _database.GetCollectionNames().Where(name => !string.IsNullOrWhiteSpace(name)).OrderBy(name => name, StringComparer.Ordinal).ToList();
+                List<string> names = _database.GetCollectionNames()
+                    .Where(name => !string.IsNullOrWhiteSpace(name) && !LiteDbSystemCollections.IsSystemCollection(name))
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .ToList();
 
                 return Task.FromResult<IReadOnlyList<string>>(names);
             }

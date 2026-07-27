@@ -200,12 +200,14 @@ Collection listing endpoint:
 
 ```text
 1. Client writes on Node A.
-2. Node A commits local document + operation log.
+2. Node A commits local document + operation log in the same LiteDB file.
 3. Node A schedules immediate replication.
-4. Node A pushes new ops to Node B and pulls anything missing from Node B.
-5. Node A sends WebSocket signal to Node B for faster follow-up sync.
-6. Node B applies remote operations to local state and metadata.
-7. Both nodes advance checkpoints.
+4. Node A pushes new ops to Node B.
+5. Node B idempotently ingests the batch and reports the last processed source log sequence.
+6. Node A advances its push checkpoint only to Node B's confirmed processed sequence.
+7. Node A pulls anything missing from Node B and applies those operations locally.
+8. Node A sends a WebSocket signal to Node B for faster follow-up sync.
+9. Periodic pruning removes old operation payloads only after active peer checkpoints are safely past them, while compact receipts remain for duplicate suppression.
 ```
 
 ### Mermaid Sequence Diagram
@@ -214,20 +216,32 @@ Collection listing endpoint:
 sequenceDiagram
     participant Client
     participant NodeA as Node A
+    participant LogA as Node A LiteDB file
     participant NodeB as Node B
+    participant LogB as Node B LiteDB file
+    participant Pruner
 
     Client->>NodeA: Write request
-    NodeA->>NodeA: Save document + append operation log
+    NodeA->>LogA: Transaction: save document + append operation
     NodeA-->>Client: Success (local-first)
 
     Note over NodeA,NodeB: Async replication cycle
-    NodeA->>NodeB: Push new operations
-    NodeB->>NodeB: Apply operations to local state
-    NodeA->>NodeB: Pull missing operations (if any)
-    NodeA->>NodeA: Apply pulled operations + update checkpoints
+    NodeA->>NodeB: Push operations after peer checkpoint
+    NodeB->>LogB: Idempotently apply unseen operations
+    NodeB-->>NodeA: ProcessedCount + LastProcessedLogSequence
+    NodeA->>LogA: Advance push checkpoint only to confirmed sequence
+    NodeA->>NodeB: Pull operations after local pull checkpoint
+    NodeB-->>NodeA: Missing peer operations
+    NodeA->>LogA: Apply pulled operations + update pull checkpoint
 
     NodeA->>NodeB: WebSocket sync hint
     Note over NodeA,NodeB: Retries + periodic safety sweep ensure eventual convergence
+
+    Pruner->>LogA: Prune old covered operation payloads
+    LogA->>LogA: Keep operation receipts for duplicate suppression
+    alt Peer checkpoint is older than retained log
+        NodeA-->>NodeA: Replication status = TooOldNeedsSnapshot
+    end
 ```
 
 ### Latency Measurement Notes

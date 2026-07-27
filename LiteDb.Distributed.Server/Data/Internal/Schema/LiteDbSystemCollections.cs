@@ -10,5 +10,10 @@ namespace LiteDb.Distributed.Server.Data.Internal.Schema
         public const string PeerCheckpoints = "_sys_peer_checkpoints";
         public const string ClusterPeers = "_sys_cluster_peers";
         public const string OperationReceipts = "_sys_operation_receipts";
+
+        public static bool IsSystemCollection(string collectionName)
+        {
+            return !string.IsNullOrWhiteSpace(collectionName) && collectionName.StartsWith("_sys_", StringComparison.Ordinal);
+        }
     }
 }
