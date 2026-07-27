@@ -344,9 +344,11 @@ namespace LiteDb.Distributed.Tests
             ReplicationDatabaseStatus databaseStatus = Assert.Single(status.Databases);
             ReplicationPeerStatus peerStatus = Assert.Single(databaseStatus.Peers.Where(x => x.PeerNodeId == "node-b"));
 
+            Assert.Equal(1, databaseStatus.OldestAvailableLogSequence);
             Assert.Equal(1, databaseStatus.LocalMaxLogSequence);
-            Assert.Equal(1, databaseStatus.TotalPendingPushOperations);
-            Assert.Equal(1, peerStatus.PendingPushOperations);
+            Assert.Equal(1, databaseStatus.TotalEstimatedPendingPushOperations);
+            Assert.Equal("CatchingUp", peerStatus.CatchUpStatus);
+            Assert.Equal(1, peerStatus.EstimatedPendingPushOperations);
             Assert.Equal(0, peerStatus.LastPushedLocalLogSequence);
         }
 
@@ -365,10 +367,57 @@ namespace LiteDb.Distributed.Tests
             ReplicationDatabaseStatus databaseStatus = Assert.Single(status.Databases);
             ReplicationPeerStatus peerStatus = Assert.Single(databaseStatus.Peers.Where(x => x.PeerNodeId == "node-b"));
 
+            Assert.Equal(1, databaseStatus.OldestAvailableLogSequence);
             Assert.Equal(1, databaseStatus.LocalMaxLogSequence);
-            Assert.Equal(0, databaseStatus.TotalPendingPushOperations);
-            Assert.Equal(0, peerStatus.PendingPushOperations);
+            Assert.Equal(0, databaseStatus.TotalEstimatedPendingPushOperations);
+            Assert.Equal("Ready", peerStatus.CatchUpStatus);
+            Assert.Equal(0, peerStatus.EstimatedPendingPushOperations);
             Assert.Equal(1, peerStatus.LastPushedLocalLogSequence);
+        }
+
+        [Fact]
+        public async Task ReplicationStatus_ReportsTooOldNeedsSnapshot_WhenPeerCheckpointFallsBehindPrunedLog()
+        {
+            string rootPath = Path.Combine(Path.GetTempPath(), "LiteDb.Distributed.Tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(rootPath);
+
+            try
+            {
+                using LiteDbNodeStore store = new LiteDbNodeStore(new LiteDbNodeStoreOptions
+                {
+                    NodeId = "node-a",
+                    DatabaseName = "testdb",
+                    DatabasePath = Path.Combine(rootPath, "node-a.testdb.db")
+                });
+
+                await store.UpsertPeerAsync(new ClusterPeer { NodeId = "node-b", BaseUrl = "inmemory://node-b", IsActive = true, UpdatedUtc = DateTime.UtcNow });
+                await store.UpsertAsync(CustomerCollection, "cust-old-001", new Customer { Id = "cust-old-001", Name = "One", Email = "one@example.com", UpdatedUtc = DateTime.UtcNow });
+                await store.UpsertAsync(CustomerCollection, "cust-old-002", new Customer { Id = "cust-old-002", Name = "Two", Email = "two@example.com", UpdatedUtc = DateTime.UtcNow });
+                await store.UpsertAsync(CustomerCollection, "cust-old-003", new Customer { Id = "cust-old-003", Name = "Three", Email = "three@example.com", UpdatedUtc = DateTime.UtcNow });
+                await store.PruneOperationLogAsync(throughLogSequence: 2, olderThanUtc: DateTime.UtcNow.AddDays(1), batchSize: 100);
+
+                ReplicationStatusService statusService = new ReplicationStatusService(
+                    new ClusterNodeOptions { NodeId = "node-a" },
+                    new InMemoryLogicalDatabaseCatalog("testdb"),
+                    new InMemoryLogicalDatabaseStoreProvider(store),
+                    NullLogger<ReplicationStatusService>.Instance);
+
+                ReplicationStatusSnapshot status = await statusService.GetStatusAsync();
+                ReplicationDatabaseStatus databaseStatus = Assert.Single(status.Databases);
+                ReplicationPeerStatus peerStatus = Assert.Single(databaseStatus.Peers);
+
+                Assert.Equal(3, databaseStatus.OldestAvailableLogSequence);
+                Assert.Equal(3, databaseStatus.LocalMaxLogSequence);
+                Assert.Equal("TooOldNeedsSnapshot", peerStatus.CatchUpStatus);
+                Assert.Contains("Restore from snapshot", peerStatus.CatchUpReason);
+            }
+            finally
+            {
+                if (Directory.Exists(rootPath))
+                {
+                    Directory.Delete(rootPath, recursive: true);
+                }
+            }
         }
 
         [Fact]

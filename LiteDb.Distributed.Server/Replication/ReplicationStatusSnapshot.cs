@@ -12,9 +12,10 @@ namespace LiteDb.Distributed.Server.Replication
         public required string DatabaseName { get; set; }
         public required string Status { get; set; }
         public string? Error { get; set; }
+        public long OldestAvailableLogSequence { get; set; }
         public long LocalMaxLogSequence { get; set; }
         public int ActivePeerCount { get; set; }
-        public long TotalPendingPushOperations { get; set; }
+        public long TotalEstimatedPendingPushOperations { get; set; }
         public IReadOnlyList<ReplicationPeerStatus> Peers { get; set; } = Array.Empty<ReplicationPeerStatus>();
     }
 
@@ -23,10 +24,13 @@ namespace LiteDb.Distributed.Server.Replication
         public required string PeerNodeId { get; set; }
         public required string BaseUrl { get; set; }
         public required bool IsActive { get; set; }
+        public required string CatchUpStatus { get; set; }
+        public string CatchUpReason { get; set; } = string.Empty;
+        public long OldestAvailableLogSequence { get; set; }
         public long LastPushedLocalLogSequence { get; set; }
         public long LastPulledPeerLogSequence { get; set; }
         public long LocalMaxLogSequence { get; set; }
-        public long PendingPushOperations { get; set; }
+        public long EstimatedPendingPushOperations { get; set; }
         public DateTime UpdatedUtc { get; set; }
     }
 }

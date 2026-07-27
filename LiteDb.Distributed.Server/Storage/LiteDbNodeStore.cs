@@ -493,6 +493,24 @@ namespace LiteDb.Distributed.Server.Storage
             }
         }
 
+        public Task<OperationLogBounds> GetOperationLogBoundsAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            lock (_gate)
+            {
+                ILiteQueryable<OperationEntity> query = OperationsCollection().Query();
+                OperationEntity? oldest = query.OrderBy(x => x.LogSequence).Limit(1).FirstOrDefault();
+                OperationEntity? newest = OperationsCollection().Query().OrderByDescending(x => x.LogSequence).Limit(1).FirstOrDefault();
+
+                return Task.FromResult(new OperationLogBounds
+                {
+                    OldestLogSequence = oldest?.LogSequence ?? 0,
+                    NewestLogSequence = newest?.LogSequence ?? 0
+                });
+            }
+        }
+
         public Task<OperationLogPruneResult> PruneOperationLogAsync(long throughLogSequence, DateTime olderThanUtc, int batchSize, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

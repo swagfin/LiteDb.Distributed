@@ -7,7 +7,11 @@ namespace LiteDb.Distributed.Server.Replication
 {
     public class ReplicationStatusService : IReplicationStatusService
     {
-        private const int MaxLagScanBatchSize = 10_000;
+        private const string ReadyStatus = "Ready";
+        private const string CatchingUpStatus = "CatchingUp";
+        private const string TooOldNeedsSnapshotStatus = "TooOldNeedsSnapshot";
+        private const string InactiveStatus = "Inactive";
+
         private readonly ClusterNodeOptions _nodeOptions;
         private readonly ILogicalDatabaseCatalog _logicalDatabaseCatalog;
         private readonly ILogicalDatabaseStoreProvider _logicalDatabaseStoreProvider;
@@ -45,40 +49,42 @@ namespace LiteDb.Distributed.Server.Replication
             {
                 LiteDbNodeStore store = await _logicalDatabaseStoreProvider.GetStoreAsync(databaseName, cancellationToken).ConfigureAwait(false);
                 IReadOnlyList<ClusterPeer> peers = await store.GetPeersAsync(cancellationToken).ConfigureAwait(false);
-                long localMaxLogSequence = await GetLocalMaxLogSequenceAsync(store, cancellationToken).ConfigureAwait(false);
+                OperationLogBounds bounds = await store.GetOperationLogBoundsAsync(cancellationToken).ConfigureAwait(false);
                 List<ReplicationPeerStatus> peerStatuses = new List<ReplicationPeerStatus>(peers.Count);
 
                 foreach (ClusterPeer peer in peers.OrderBy(x => x.NodeId, StringComparer.Ordinal))
                 {
                     PeerCheckpointRecord checkpoint = await store.GetOrCreatePeerCheckpointAsync(_nodeOptions.NodeId, peer.NodeId, cancellationToken).ConfigureAwait(false);
-                    long pendingPushOperations = peer.IsActive && !string.Equals(peer.NodeId, _nodeOptions.NodeId, StringComparison.Ordinal)
-                        ? await CountOperationsAfterLogSequenceAsync(store, checkpoint.LastPushedLocalLogSequence, cancellationToken).ConfigureAwait(false)
-                        : 0;
+                    ReplicationCatchUpState catchUpState = GetCatchUpState(peer, checkpoint, bounds);
 
                     peerStatuses.Add(new ReplicationPeerStatus
                     {
                         PeerNodeId = peer.NodeId,
                         BaseUrl = peer.BaseUrl,
                         IsActive = peer.IsActive,
+                        CatchUpStatus = catchUpState.Status,
+                        CatchUpReason = catchUpState.Reason,
+                        OldestAvailableLogSequence = bounds.OldestLogSequence,
                         LastPushedLocalLogSequence = checkpoint.LastPushedLocalLogSequence,
                         LastPulledPeerLogSequence = checkpoint.LastPulledPeerLogSequence,
-                        LocalMaxLogSequence = localMaxLogSequence,
-                        PendingPushOperations = pendingPushOperations,
+                        LocalMaxLogSequence = bounds.NewestLogSequence,
+                        EstimatedPendingPushOperations = catchUpState.EstimatedPendingPushOperations,
                         UpdatedUtc = checkpoint.UpdatedUtc
                     });
                 }
 
                 int activePeerCount = peerStatuses.Count(x => x.IsActive && !string.Equals(x.PeerNodeId, _nodeOptions.NodeId, StringComparison.Ordinal));
-                long totalPendingPushOperations = peerStatuses.Sum(x => x.PendingPushOperations);
+                long totalEstimatedPendingPushOperations = peerStatuses.Sum(x => x.EstimatedPendingPushOperations);
 
                 return new ReplicationDatabaseStatus
                 {
                     DatabaseName = databaseName,
                     Status = "Healthy",
                     Error = null,
-                    LocalMaxLogSequence = localMaxLogSequence,
+                    OldestAvailableLogSequence = bounds.OldestLogSequence,
+                    LocalMaxLogSequence = bounds.NewestLogSequence,
                     ActivePeerCount = activePeerCount,
-                    TotalPendingPushOperations = totalPendingPushOperations,
+                    TotalEstimatedPendingPushOperations = totalEstimatedPendingPushOperations,
                     Peers = peerStatuses
                 };
             }
@@ -90,54 +96,55 @@ namespace LiteDb.Distributed.Server.Replication
                     DatabaseName = databaseName,
                     Status = "Error",
                     Error = ex.Message,
+                    OldestAvailableLogSequence = 0,
                     LocalMaxLogSequence = 0,
                     ActivePeerCount = 0,
-                    TotalPendingPushOperations = 0,
+                    TotalEstimatedPendingPushOperations = 0,
                     Peers = Array.Empty<ReplicationPeerStatus>()
                 };
             }
         }
 
-        private static async Task<long> GetLocalMaxLogSequenceAsync(LiteDbNodeStore store, CancellationToken cancellationToken)
+        private static ReplicationCatchUpState GetCatchUpState(ClusterPeer peer, PeerCheckpointRecord checkpoint, OperationLogBounds bounds)
         {
-            IReadOnlyList<OperationRecord> operations = await store.GetOperationsAfterLogSequenceAsync(0, MaxLagScanBatchSize, cancellationToken).ConfigureAwait(false);
-            long maxLogSequence = 0;
-
-            while (operations.Count > 0)
+            if (!peer.IsActive)
             {
-                maxLogSequence = Math.Max(maxLogSequence, operations.Max(x => x.LogSequence));
-                if (operations.Count < MaxLagScanBatchSize)
-                {
-                    break;
-                }
-
-                operations = await store.GetOperationsAfterLogSequenceAsync(maxLogSequence, MaxLagScanBatchSize, cancellationToken).ConfigureAwait(false);
+                return new ReplicationCatchUpState(InactiveStatus, "Peer is inactive.", 0);
             }
 
-            return maxLogSequence;
+            if (!bounds.HasOperations)
+            {
+                return new ReplicationCatchUpState(ReadyStatus, "No local operations are available.", 0);
+            }
+
+            if (checkpoint.LastPushedLocalLogSequence >= bounds.NewestLogSequence)
+            {
+                return new ReplicationCatchUpState(ReadyStatus, "Peer push checkpoint is current.", 0);
+            }
+
+            long nextRequiredLogSequence = checkpoint.LastPushedLocalLogSequence + 1;
+            if (nextRequiredLogSequence < bounds.OldestLogSequence)
+            {
+                string reason = $"Peer requires log sequence {nextRequiredLogSequence}, but oldest available local operation is {bounds.OldestLogSequence}. Restore from snapshot before normal catch-up can continue.";
+                return new ReplicationCatchUpState(TooOldNeedsSnapshotStatus, reason, Math.Max(0, bounds.NewestLogSequence - checkpoint.LastPushedLocalLogSequence));
+            }
+
+            long estimatedPending = Math.Max(0, bounds.NewestLogSequence - checkpoint.LastPushedLocalLogSequence);
+            return new ReplicationCatchUpState(CatchingUpStatus, "Peer can catch up from the local operation log.", estimatedPending);
         }
 
-        private static async Task<long> CountOperationsAfterLogSequenceAsync(LiteDbNodeStore store, long afterLogSequence, CancellationToken cancellationToken)
+        private class ReplicationCatchUpState
         {
-            long count = 0;
-            long cursor = afterLogSequence;
-
-            while (true)
+            public ReplicationCatchUpState(string status, string reason, long estimatedPendingPushOperations)
             {
-                IReadOnlyList<OperationRecord> operations = await store.GetOperationsAfterLogSequenceAsync(cursor, MaxLagScanBatchSize, cancellationToken).ConfigureAwait(false);
-                if (operations.Count == 0)
-                {
-                    return count;
-                }
-
-                count += operations.Count;
-                cursor = operations.Max(x => x.LogSequence);
-
-                if (operations.Count < MaxLagScanBatchSize)
-                {
-                    return count;
-                }
+                Status = status;
+                Reason = reason;
+                EstimatedPendingPushOperations = estimatedPendingPushOperations;
             }
+
+            public string Status { get; set; }
+            public string Reason { get; set; }
+            public long EstimatedPendingPushOperations { get; set; }
         }
     }
 }

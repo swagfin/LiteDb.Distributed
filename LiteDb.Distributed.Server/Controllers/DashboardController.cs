@@ -74,8 +74,9 @@ namespace LiteDb.Distributed.Server.Controllers
                         Error = null,
                         DatabaseFile = databaseFile,
                         PeerCount = peers.Count,
+                        OldestAvailableLogSequence = databaseReplicationStatus?.OldestAvailableLogSequence ?? 0,
                         LocalMaxLogSequence = databaseReplicationStatus?.LocalMaxLogSequence ?? 0,
-                        TotalPendingPushOperations = databaseReplicationStatus?.TotalPendingPushOperations ?? 0,
+                        TotalEstimatedPendingPushOperations = databaseReplicationStatus?.TotalEstimatedPendingPushOperations ?? 0,
                         ReplicationPeers = databaseReplicationStatus?.Peers ?? Array.Empty<ReplicationPeerStatus>()
                     });
                 }
@@ -90,8 +91,9 @@ namespace LiteDb.Distributed.Server.Controllers
                         Error = ex.Message,
                         DatabaseFile = databaseFile,
                         PeerCount = 0,
+                        OldestAvailableLogSequence = databaseReplicationStatus?.OldestAvailableLogSequence ?? 0,
                         LocalMaxLogSequence = databaseReplicationStatus?.LocalMaxLogSequence ?? 0,
-                        TotalPendingPushOperations = databaseReplicationStatus?.TotalPendingPushOperations ?? 0,
+                        TotalEstimatedPendingPushOperations = databaseReplicationStatus?.TotalEstimatedPendingPushOperations ?? 0,
                         ReplicationPeers = databaseReplicationStatus?.Peers ?? Array.Empty<ReplicationPeerStatus>()
                     });
                 }
@@ -564,8 +566,9 @@ namespace LiteDb.Distributed.Server.Controllers
             public required string? Error { get; set; }
             public required DashboardFileStatusDto DatabaseFile { get; set; }
             public required int PeerCount { get; set; }
+            public required long OldestAvailableLogSequence { get; set; }
             public required long LocalMaxLogSequence { get; set; }
-            public required long TotalPendingPushOperations { get; set; }
+            public required long TotalEstimatedPendingPushOperations { get; set; }
             public IReadOnlyList<ReplicationPeerStatus> ReplicationPeers { get; set; } = Array.Empty<ReplicationPeerStatus>();
         }
 
