@@ -1,10 +1,13 @@
 using System.Text.Json;
 using LiteDb.Distributed.Server.Domain.Abstractions;
-using LiteDb.Distributed.Server.Domain.Collections;
-using LiteDb.Distributed.Server.Domain.Exceptions;
 using LiteDb.Distributed.Server.Domain.Models;
 using LiteDb.Distributed.Server.Storage.Internal;
+using LiteDb.Distributed.Server.Storage.Internal.Entities;
+using LiteDb.Distributed.Server.Storage.Internal.Schema;
 using LiteDB;
+using static LiteDb.Distributed.Server.Storage.Internal.LiteDbStoreGuards;
+using static LiteDb.Distributed.Server.Storage.Internal.Mapping.LiteDbDocumentMapper;
+using static LiteDb.Distributed.Server.Storage.Internal.Mapping.LiteDbSystemMapper;
 using SystemTextJsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace LiteDb.Distributed.Server.Storage
@@ -20,15 +23,6 @@ namespace LiteDb.Distributed.Server.Storage
         IClusterPeerRegistry,
         IDisposable
     {
-        private const string VersionField = "_sys_version";
-        private const string DeletedField = "_sys_deleted";
-        private const string TombstoneField = "_sys_tombstone";
-        private const string LastWriterNodeIdField = "_sys_last_writer_node_id";
-        private const string LastModifiedUtcField = "_sys_last_modified_utc";
-        private const string PeerCheckpointsCollectionName = "_sys_peer_checkpoints";
-        private const string ClusterPeersCollectionName = "_sys_cluster_peers";
-        private const string OperationReceiptsCollectionName = "_sys_operation_receipts";
-
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNameCaseInsensitive = true
@@ -101,7 +95,7 @@ namespace LiteDb.Distributed.Server.Storage
 
                     ValidateParentVersion(parentVersion, existing, collection, entityId);
 
-                    OperationType operationType = existing is null || ReadBoolean(existing, DeletedField) ? OperationType.Insert : OperationType.Update;
+                    OperationType operationType = existing is null || ReadBoolean(existing, LiteDbSystemFields.Deleted) ? OperationType.Insert : OperationType.Update;
 
                     BsonDocument materialized = existing ?? new BsonDocument();
                     ReplacePayload(materialized, payloadDocument, entityId);
@@ -259,7 +253,7 @@ namespace LiteDb.Distributed.Server.Storage
             {
                 BsonDocument? materialized = BusinessCollection(collection).FindById(entityId);
 
-                if (materialized is null || ReadBoolean(materialized, DeletedField))
+                if (materialized is null || ReadBoolean(materialized, LiteDbSystemFields.Deleted))
                 {
                     return Task.FromResult<TDocument?>(default);
                 }
@@ -285,7 +279,7 @@ namespace LiteDb.Distributed.Server.Storage
 
             lock (_gate)
             {
-                List<BsonDocument> materialized = BusinessCollection(collection).FindAll().Where(d => !ReadBoolean(d, DeletedField)).Skip(safeSkip).Take(safeTake).ToList();
+                List<BsonDocument> materialized = BusinessCollection(collection).FindAll().Where(d => !ReadBoolean(d, LiteDbSystemFields.Deleted)).Skip(safeSkip).Take(safeTake).ToList();
 
                 List<TDocument> result = new List<TDocument>(materialized.Count);
 
@@ -373,10 +367,10 @@ namespace LiteDb.Distributed.Server.Storage
                 {
                     Collection = collection,
                     EntityId = entityId,
-                    Version = ReadString(materialized, VersionField),
-                    LastWriterNodeId = ReadString(materialized, LastWriterNodeIdField),
-                    LastModifiedUtc = ReadDateTime(materialized, LastModifiedUtcField),
-                    IsDeleted = ReadBoolean(materialized, DeletedField),
+                    Version = ReadString(materialized, LiteDbSystemFields.Version),
+                    LastWriterNodeId = ReadString(materialized, LiteDbSystemFields.LastWriterNodeId),
+                    LastModifiedUtc = ReadDateTime(materialized, LiteDbSystemFields.LastModifiedUtc),
+                    IsDeleted = ReadBoolean(materialized, LiteDbSystemFields.Deleted),
                     Payload = SerializePayloadOnly(materialized)
                 };
 
@@ -920,17 +914,13 @@ namespace LiteDb.Distributed.Server.Storage
 
         private void EnsureSystemIndexes()
         {
-            ILiteCollection<OperationEntity> operations = OperationsCollection();
-            operations.EnsureIndex(x => x.NodeId);
-            operations.EnsureIndex(x => x.Sequence);
-            operations.EnsureIndex(x => x.LogSequence);
-            operations.EnsureIndex(x => x.TimestampUtc);
-            OperationReceiptsCollection().EnsureIndex(x => x.PrunedUtc);
-
-            NodeMetadataCollection().EnsureIndex(x => x.NodeId, unique: true);
-            ConflictsCollection().EnsureIndex(x => x.CreatedUtc);
-            PeerCheckpointsCollection().EnsureIndex(x => x.Id, unique: true);
-            ClusterPeersCollection().EnsureIndex(x => x.NodeId, unique: true);
+            LiteDbIndexes.EnsureSystemIndexes(
+                OperationsCollection(),
+                OperationReceiptsCollection(),
+                NodeMetadataCollection(),
+                ConflictsCollection(),
+                PeerCheckpointsCollection(),
+                ClusterPeersCollection());
         }
 
         private ILiteCollection<BsonDocument> BusinessCollection(string collectionName)
@@ -940,32 +930,32 @@ namespace LiteDb.Distributed.Server.Storage
 
         private ILiteCollection<OperationEntity> OperationsCollection()
         {
-            return _database.GetCollection<OperationEntity>(SystemCollections.Operations);
+            return _database.GetCollection<OperationEntity>(LiteDbSystemCollections.Operations);
         }
 
         private ILiteCollection<OperationReceiptEntity> OperationReceiptsCollection()
         {
-            return _database.GetCollection<OperationReceiptEntity>(OperationReceiptsCollectionName);
+            return _database.GetCollection<OperationReceiptEntity>(LiteDbSystemCollections.OperationReceipts);
         }
 
         private ILiteCollection<NodeMetadataEntity> NodeMetadataCollection()
         {
-            return _database.GetCollection<NodeMetadataEntity>(SystemCollections.NodeMetadata);
+            return _database.GetCollection<NodeMetadataEntity>(LiteDbSystemCollections.NodeMetadata);
         }
 
         private ILiteCollection<ConflictEntity> ConflictsCollection()
         {
-            return _database.GetCollection<ConflictEntity>(SystemCollections.Conflicts);
+            return _database.GetCollection<ConflictEntity>(LiteDbSystemCollections.Conflicts);
         }
 
         private ILiteCollection<PeerCheckpointEntity> PeerCheckpointsCollection()
         {
-            return _database.GetCollection<PeerCheckpointEntity>(PeerCheckpointsCollectionName);
+            return _database.GetCollection<PeerCheckpointEntity>(LiteDbSystemCollections.PeerCheckpoints);
         }
 
         private ILiteCollection<ClusterPeerEntity> ClusterPeersCollection()
         {
-            return _database.GetCollection<ClusterPeerEntity>(ClusterPeersCollectionName);
+            return _database.GetCollection<ClusterPeerEntity>(LiteDbSystemCollections.ClusterPeers);
         }
 
         private long ReserveNextLocalSequence(DateTime writeUtc)
@@ -1002,59 +992,6 @@ namespace LiteDb.Distributed.Server.Storage
             nodeMetadata.Upsert(existing);
         }
 
-        private static void ValidateParentVersion(string? parentVersion, BsonDocument? existing, string collection, string entityId)
-        {
-            if (string.IsNullOrWhiteSpace(parentVersion))
-            {
-                return;
-            }
-
-            string? currentVersion = existing is null ? null : ReadString(existing, VersionField);
-
-            if (!string.Equals(currentVersion, parentVersion, StringComparison.Ordinal))
-            {
-                throw new VersionMismatchException($"Version mismatch for {collection}/{entityId}. Expected '{parentVersion}', current is '{currentVersion ?? "<null>"}'.");
-            }
-        }
-
-        private static void ValidateBusinessCollection(string collection)
-        {
-            if (string.IsNullOrWhiteSpace(collection))
-            {
-                throw new ArgumentException("Collection name is required.", nameof(collection));
-            }
-
-            if (collection.StartsWith("_sys_", StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException("System collections are internal and cannot be used as business collections.");
-            }
-        }
-
-        private static void ValidateOperation(OperationRecord operation)
-        {
-            ArgumentNullException.ThrowIfNull(operation);
-
-            if (string.IsNullOrWhiteSpace(operation.Id))
-            {
-                throw new ArgumentException("Operation id is required.", nameof(operation));
-            }
-
-            if (string.IsNullOrWhiteSpace(operation.NodeId))
-            {
-                throw new ArgumentException("Operation node id is required.", nameof(operation));
-            }
-
-            if (string.IsNullOrWhiteSpace(operation.Collection))
-            {
-                throw new ArgumentException("Operation collection is required.", nameof(operation));
-            }
-
-            if (string.IsNullOrWhiteSpace(operation.EntityId))
-            {
-                throw new ArgumentException("Operation entity id is required.", nameof(operation));
-            }
-        }
-
         private void InsertOperationInternal(OperationRecord operation)
         {
             OperationsCollection().Insert(MapToOperationEntity(operation));
@@ -1063,143 +1000,6 @@ namespace LiteDb.Distributed.Server.Storage
         private bool ContainsOperationInternal(string operationId)
         {
             return OperationsCollection().FindById(operationId) is not null || OperationReceiptsCollection().FindById(operationId) is not null;
-        }
-
-        private static BsonDocument ParsePayloadAsDocument(string payload)
-        {
-            if (string.IsNullOrWhiteSpace(payload))
-            {
-                return new BsonDocument();
-            }
-
-            BsonValue value = LiteDB.JsonSerializer.Deserialize(payload);
-
-            if (value.IsDocument)
-            {
-                return value.AsDocument;
-            }
-
-            throw new InvalidOperationException("Operation payload must be a JSON document.");
-        }
-
-        private static void ReplacePayload(BsonDocument target, BsonDocument payload, string entityId)
-        {
-            // Keep system metadata untouched and only replace business fields.
-            ClearBusinessFields(target);
-            target["_id"] = entityId;
-
-            foreach (KeyValuePair<string, BsonValue> entry in payload)
-            {
-                if (string.Equals(entry.Key, "_id", StringComparison.OrdinalIgnoreCase) || entry.Key.StartsWith("_sys_", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                target[entry.Key] = entry.Value;
-            }
-        }
-
-        private static void ApplySystemMetadata(
-            BsonDocument target,
-            string version,
-            bool isDeleted,
-            bool isTombstone,
-            string lastWriterNodeId,
-            DateTime modifiedUtc)
-        {
-            target[VersionField] = version;
-            target[DeletedField] = isDeleted;
-            target[TombstoneField] = isTombstone;
-            target[LastWriterNodeIdField] = lastWriterNodeId;
-            target[LastModifiedUtcField] = modifiedUtc;
-        }
-
-        private static void ClearBusinessFields(BsonDocument document)
-        {
-            List<string> keysToRemove = document.Keys.Where(key => !string.Equals(key, "_id", StringComparison.Ordinal) && !key.StartsWith("_sys_", StringComparison.Ordinal)).ToList();
-
-            foreach (string? key in keysToRemove)
-            {
-                document.Remove(key);
-            }
-        }
-
-        private static string SerializePayloadOnly(BsonDocument materialized)
-        {
-            BsonDocument payload = new BsonDocument();
-
-            foreach (KeyValuePair<string, BsonValue> entry in materialized)
-            {
-                if (string.Equals(entry.Key, "_id", StringComparison.Ordinal) || entry.Key.StartsWith("_sys_", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                payload[entry.Key] = entry.Value;
-            }
-
-            return LiteDB.JsonSerializer.Serialize(payload);
-        }
-
-        private static string ReadString(BsonDocument document, string field)
-        {
-            return document.TryGetValue(field, out BsonValue? value) && value.IsString
-                ? value.AsString
-                : string.Empty;
-        }
-
-        private static bool ReadBoolean(BsonDocument document, string field)
-        {
-            return document.TryGetValue(field, out BsonValue? value) && value.IsBoolean && value.AsBoolean;
-        }
-
-        private static DateTime ReadDateTime(BsonDocument document, string field)
-        {
-            if (!document.TryGetValue(field, out BsonValue? value) || !value.IsDateTime)
-            {
-                return DateTime.MinValue;
-            }
-
-            return DateTime.SpecifyKind(value.AsDateTime, DateTimeKind.Utc);
-        }
-
-        private static OperationRecord MapToOperationRecord(OperationEntity entity)
-        {
-            return new OperationRecord
-            {
-                Id = entity.Id,
-                NodeId = entity.NodeId,
-                TimestampUtc = entity.TimestampUtc,
-                Collection = entity.Collection,
-                EntityId = entity.EntityId,
-                OperationType = (OperationType)entity.OperationType,
-                Payload = entity.Payload,
-                Sequence = entity.Sequence,
-                LogSequence = entity.LogSequence,
-                ParentVersion = entity.ParentVersion,
-                GlobalSequence = null,
-                IsSynced = entity.IsSynced,
-                IsTombstone = entity.IsTombstone
-            };
-        }
-
-        private static OperationEntity MapToOperationEntity(OperationRecord operation)
-        {
-            return new OperationEntity
-            {
-                Id = operation.Id,
-                NodeId = operation.NodeId,
-                TimestampUtc = operation.TimestampUtc,
-                Collection = operation.Collection,
-                EntityId = operation.EntityId,
-                OperationType = (int)operation.OperationType,
-                Payload = operation.Payload,
-                Sequence = operation.Sequence,
-                LogSequence = operation.LogSequence,
-                ParentVersion = operation.ParentVersion,
-                IsSynced = operation.IsSynced,
-                IsTombstone = operation.IsTombstone
-            };
         }
 
         private void SeedPeers(IReadOnlyList<ClusterPeer> peers)
@@ -1231,29 +1031,6 @@ namespace LiteDb.Distributed.Server.Storage
                     });
                 }
             }
-        }
-
-        private static PeerCheckpointRecord MapToPeerCheckpointRecord(PeerCheckpointEntity entity)
-        {
-            return new PeerCheckpointRecord
-            {
-                LocalNodeId = entity.LocalNodeId,
-                PeerNodeId = entity.PeerNodeId,
-                LastPushedLocalLogSequence = entity.LastPushedLocalLogSequence,
-                LastPulledPeerLogSequence = entity.LastPulledPeerLogSequence,
-                UpdatedUtc = entity.UpdatedUtc
-            };
-        }
-
-        private static ClusterPeer MapToClusterPeer(ClusterPeerEntity entity)
-        {
-            return new ClusterPeer
-            {
-                NodeId = entity.NodeId,
-                BaseUrl = entity.BaseUrl,
-                IsActive = entity.IsActive,
-                UpdatedUtc = entity.UpdatedUtc
-            };
         }
 
         private static string BuildPeerCheckpointKey(string localNodeId, string peerNodeId)

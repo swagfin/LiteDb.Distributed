@@ -1,6 +1,6 @@
 using LiteDB;
 
-namespace LiteDb.Distributed.Server.Storage.Internal
+namespace LiteDb.Distributed.Server.Storage.Internal.Entities
 {
     internal class OperationEntity
     {
@@ -72,5 +72,4 @@ namespace LiteDb.Distributed.Server.Storage.Internal
         public bool IsActive { get; set; }
         public DateTime UpdatedUtc { get; set; }
     }
-
 }
