@@ -89,7 +89,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                         acceptedCount += 1;
                     }
 
-                    _logger.LogInformation("Processed incoming operation. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationId={OperationId} Collection={Collection} EntityId={EntityId} Applied={Applied} ApplyDurationMs={ApplyDurationMs}", localNodeId, operation.NodeId, operation.Id, operation.Collection, operation.EntityId, applied, applyStopwatch.Elapsed.TotalMilliseconds);
+                    _logger.LogDebug("Processed incoming operation. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationId={OperationId} Collection={Collection} EntityId={EntityId} Applied={Applied} ApplyDurationMs={ApplyDurationMs}", localNodeId, operation.NodeId, operation.Id, operation.Collection, operation.EntityId, applied, applyStopwatch.Elapsed.TotalMilliseconds);
 
                     continue;
                 }
@@ -128,13 +128,13 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 processedCount += 1;
                 lastProcessedLogSequence = Math.Max(lastProcessedLogSequence, operation.LogSequence);
 
-                _logger.LogInformation("Skipped incoming operation after conflict resolution. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationId={OperationId} Collection={Collection} EntityId={EntityId} Reason={Reason}", localNodeId, operation.NodeId, operation.Id, operation.Collection, operation.EntityId, decision.Reason);
+                _logger.LogDebug("Skipped incoming operation after conflict resolution. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} OperationId={OperationId} Collection={Collection} EntityId={EntityId} Reason={Reason}", localNodeId, operation.NodeId, operation.Id, operation.Collection, operation.EntityId, decision.Reason);
             }
 
             batchStopwatch.Stop();
             int notAppliedCount = Math.Max(0, processedCount - acceptedCount);
 
-            _logger.LogInformation("Operation ingestion completed. LocalNodeId={LocalNodeId} Incoming={Incoming} Processed={Processed} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} LastProcessedLogSequence={LastProcessedLogSequence} DurationMs={DurationMs}", localNodeId, operations.Count, processedCount, acceptedCount, conflictCount, notAppliedCount, lastProcessedLogSequence, batchStopwatch.Elapsed.TotalMilliseconds);
+            _logger.LogDebug("Operation ingestion completed. LocalNodeId={LocalNodeId} Incoming={Incoming} Processed={Processed} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} LastProcessedLogSequence={LastProcessedLogSequence} DurationMs={DurationMs}", localNodeId, operations.Count, processedCount, acceptedCount, conflictCount, notAppliedCount, lastProcessedLogSequence, batchStopwatch.Elapsed.TotalMilliseconds);
 
             return new OperationIngestionResult
             {

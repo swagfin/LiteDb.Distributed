@@ -50,7 +50,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
                 int notAppliedCount = Math.Max(0, result.ProcessedCount - result.AcceptedCount);
 
-                _logger.LogInformation("Replication push applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Received={Received} Processed={Processed} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} LastProcessedLogSequence={LastProcessedLogSequence} ApplyDurationMs={ApplyDurationMs}", _nodeOptions.NodeId, request.SourceNodeId, operationCount, result.ProcessedCount, result.AcceptedCount, result.ConflictCount, notAppliedCount, result.LastProcessedLogSequence, stopwatch.Elapsed.TotalMilliseconds);
+                _logger.LogDebug("Replication push applied. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId} Received={Received} Processed={Processed} Accepted={Accepted} Conflicts={Conflicts} NotApplied={NotApplied} LastProcessedLogSequence={LastProcessedLogSequence} ApplyDurationMs={ApplyDurationMs}", _nodeOptions.NodeId, request.SourceNodeId, operationCount, result.ProcessedCount, result.AcceptedCount, result.ConflictCount, notAppliedCount, result.LastProcessedLogSequence, stopwatch.Elapsed.TotalMilliseconds);
 
                 return Ok(new ReplicationPushResponse
                 {
