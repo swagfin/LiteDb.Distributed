@@ -1,13 +1,11 @@
+using DistributedCacheProbe.Support;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json;
-
-const int MinRandomTtlMinutes = 1;
-const int MaxRandomTtlMinutes = 3;
 
 CacheProbeSettings settings = CacheProbeSettings.Load();
 CancellationTokenSource cancellation = new CancellationTokenSource();
+CacheProbeMetrics metrics = new CacheProbeMetrics();
 
 Console.CancelKeyPress += (_, args) =>
 {
@@ -21,70 +19,85 @@ Console.WriteLine("Distributed Cache Probe");
 Console.WriteLine($"Database: {settings.Database}");
 Console.WriteLine($"Nodes: {string.Join(", ", nodes.Select(x => $"{x.Name}@{x.BaseUrl}"))}");
 Console.WriteLine($"Poll interval: {settings.PollIntervalMilliseconds} ms (measurement floor is approximately this value)");
-Console.WriteLine($"TTL range: {MinRandomTtlMinutes}-{MaxRandomTtlMinutes} minutes (random per key)");
+Console.WriteLine($"Visibility timeout: {settings.VisibilityTimeoutSeconds} seconds");
+Console.WriteLine($"TTL range: {settings.MinRandomTtlMinutes}-{settings.MaxRandomTtlMinutes} minutes (random per key)");
+Console.WriteLine("Goal: measure how long a written cache key takes to appear on all peer nodes.");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 long iteration = 0L;
 
-while (!cancellation.Token.IsCancellationRequested)
+try
 {
-    iteration++;
+    while (!cancellation.Token.IsCancellationRequested)
+    {
+        iteration++;
+        CacheProbeIterationResult result = await RunProbeIterationAsync(iteration, nodes, settings, cancellation.Token).ConfigureAwait(false);
+        metrics.Record(result);
+        PrintIterationResult(iteration, result);
+
+        int pauseMs = Random.Shared.Next(settings.MinPauseMilliseconds, settings.MaxPauseMilliseconds + 1);
+        await SafeDelayAsync(TimeSpan.FromMilliseconds(pauseMs), cancellation.Token).ConfigureAwait(false);
+    }
+}
+finally
+{
+    foreach (CacheProbeNode node in nodes)
+    {
+        node.Client.Dispose();
+    }
+
+    metrics.PrintFinal();
+}
+
+return;
+
+static async Task<CacheProbeIterationResult> RunProbeIterationAsync(long iteration, IReadOnlyList<CacheProbeNode> nodes, CacheProbeSettings settings, CancellationToken cancellationToken)
+{
     CacheProbeNode writer = nodes[Random.Shared.Next(0, nodes.Count)];
-    string key = $"cache-{Guid.NewGuid():N}";
-    string value = Convert.ToHexString(Guid.NewGuid().ToByteArray());
-    int ttlMinutes = Random.Shared.Next(MinRandomTtlMinutes, MaxRandomTtlMinutes + 1);
-    string ttl = $"{ttlMinutes}m";
+    string key = $"cache-probe-{iteration:D8}-{Guid.NewGuid():N}";
+    string ttl = CreateRandomTtl(settings);
     CacheValue payload = new CacheValue
     {
-        Value = value,
+        Value = Convert.ToHexString(Guid.NewGuid().ToByteArray()),
         OriginNode = writer.Name,
         WrittenUtc = DateTime.UtcNow,
         Ttl = ttl
     };
 
-    bool writeOk = await TryWriteAsync(writer, key, payload, ttl, cancellation.Token).ConfigureAwait(false);
+    bool writeOk = await TryWriteAsync(writer, key, payload, ttl, cancellationToken).ConfigureAwait(false);
     if (!writeOk)
     {
-        await SafeDelayAsync(TimeSpan.FromMilliseconds(500), cancellation.Token).ConfigureAwait(false);
-        continue;
+        return new CacheProbeIterationResult
+        {
+            Key = key,
+            WriterNodeName = writer.Name,
+            WriterBaseUrl = writer.BaseUrl,
+            Ttl = ttl,
+            WriteSucceeded = false
+        };
     }
 
-    List<CacheProbeNode> readers = nodes.Where(node => !ReferenceEquals(node, writer)).ToList();
-    List<Task<ReplicationProbeResult>> measureTasks = readers.Select(node => WaitForReplicationAsync(node, key, settings, cancellation.Token)).ToList();
+    List<CacheProbeNode> peers = nodes.Where(node => !ReferenceEquals(node, writer)).ToList();
+    List<Task<ReplicationProbeResult>> probeTasks = peers.Select(node => WaitForReplicationAsync(node, key, settings, cancellationToken)).ToList();
+    ReplicationProbeResult[] peerResults = await Task.WhenAll(probeTasks).ConfigureAwait(false);
 
-    ReplicationProbeResult[] results = await Task.WhenAll(measureTasks).ConfigureAwait(false);
-
-    Console.WriteLine($"[{iteration:D4}] Wrote key {key} ttl={ttl} on {writer.Name} ({writer.BaseUrl})");
-
-    foreach (ReplicationProbeResult? result in results.OrderBy(x => x.NodeName, StringComparer.Ordinal))
+    return new CacheProbeIterationResult
     {
-        if (result.Found)
-        {
-            Console.WriteLine($"  -> {result.NodeName}: found in {result.Elapsed.TotalMilliseconds:F0} ms");
-        }
-        else
-        {
-            Console.WriteLine($"  -> {result.NodeName}: timeout after {result.Elapsed.TotalMilliseconds:F0} ms");
-        }
-    }
-
-    int pauseMs = Random.Shared.Next(settings.MinPauseMilliseconds, settings.MaxPauseMilliseconds + 1);
-    await SafeDelayAsync(TimeSpan.FromMilliseconds(pauseMs), cancellation.Token).ConfigureAwait(false);
+        Key = key,
+        WriterNodeName = writer.Name,
+        WriterBaseUrl = writer.BaseUrl,
+        Ttl = ttl,
+        WriteSucceeded = true,
+        PeerResults = peerResults
+    };
 }
-
-foreach (CacheProbeNode? node in nodes)
-{
-    node.Client.Dispose();
-}
-
-return;
 
 static HttpClient CreateNodeClient(string baseUrl, CacheProbeSettings settings)
 {
     HttpClient client = new HttpClient
     {
         BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)),
-        Timeout = TimeSpan.FromSeconds(10)
+        Timeout = TimeSpan.FromSeconds(settings.HttpTimeoutSeconds)
     };
 
     client.DefaultRequestHeaders.Add("Database", settings.Database);
@@ -145,19 +158,37 @@ static async Task<bool> CheckKeyExistsAsync(CacheProbeNode node, string key, Can
     try
     {
         using HttpResponseMessage response = await node.Client.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode)
-        {
-            return true;
-        }
-
-        return false;
+        return response.IsSuccessStatusCode;
     }
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
     {
         Console.WriteLine($"Read check failed on {node.Name} ({node.BaseUrl}) Key={key}. Error={ex.Message}");
         return false;
     }
+}
+
+static void PrintIterationResult(long iteration, CacheProbeIterationResult result)
+{
+    if (!result.WriteSucceeded)
+    {
+        Console.WriteLine($"[{iteration:D4}] Write failed for key {result.Key} on {result.WriterNodeName} ({result.WriterBaseUrl})");
+        return;
+    }
+
+    string allPeerSummary = result.AllPeersVisibleElapsed is TimeSpan elapsed ? $"all peers visible in {elapsed.TotalMilliseconds:F0} ms" : "timed out before all peers saw key";
+    Console.WriteLine($"[{iteration:D4}] Wrote key {result.Key} ttl={result.Ttl} on {result.WriterNodeName} ({result.WriterBaseUrl}) -> {allPeerSummary}");
+
+    foreach (ReplicationProbeResult peer in result.PeerResults.OrderBy(x => x.NodeName, StringComparer.Ordinal))
+    {
+        string peerSummary = peer.Found ? $"found in {peer.Elapsed.TotalMilliseconds:F0} ms" : $"timeout after {peer.Elapsed.TotalMilliseconds:F0} ms";
+        Console.WriteLine($"  -> {peer.NodeName}: {peerSummary}");
+    }
+}
+
+static string CreateRandomTtl(CacheProbeSettings settings)
+{
+    int ttlMinutes = Random.Shared.Next(settings.MinRandomTtlMinutes, settings.MaxRandomTtlMinutes + 1);
+    return $"{ttlMinutes}m";
 }
 
 static async Task SafeDelayAsync(TimeSpan duration, CancellationToken cancellationToken)
@@ -175,101 +206,4 @@ static async Task SafeDelayAsync(TimeSpan duration, CancellationToken cancellati
 static string NormalizeBaseUrl(string baseUrl)
 {
     return baseUrl.TrimEnd('/');
-}
-
-public class CacheProbeSettings
-{
-    public string[] Nodes { get; set; } = new[]
-    {
-        "http://localhost:17001",
-        "http://localhost:17002",
-        "http://localhost:17003"
-    };
-
-    public string Database { get; set; } = "testapp";
-    public string ApiKey { get; set; } = "root";
-    public int PollIntervalMilliseconds { get; set; } = 25;
-    public int VisibilityTimeoutSeconds { get; set; } = 20;
-    public int MinPauseMilliseconds { get; set; } = 500;
-    public int MaxPauseMilliseconds { get; set; } = 1500;
-
-    public static CacheProbeSettings Load()
-    {
-        string path = Path.Combine(AppContext.BaseDirectory, "sample-settings.json");
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException($"Missing configuration file '{path}'.");
-        }
-
-        CacheProbeSettings settings = JsonSerializer.Deserialize<CacheProbeSettings>(File.ReadAllText(path)) ?? new CacheProbeSettings();
-
-        if (settings.Nodes.Length < 3)
-        {
-            throw new InvalidOperationException("sample-settings.json must define at least 3 node URLs.");
-        }
-
-        if (string.IsNullOrWhiteSpace(settings.Database) || string.IsNullOrWhiteSpace(settings.ApiKey))
-        {
-            throw new InvalidOperationException("sample-settings.json is missing required Database/ApiKey.");
-        }
-
-        string[] normalizedNodes = settings.Nodes.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().TrimEnd('/')).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-
-        if (normalizedNodes.Length < 3)
-        {
-            throw new InvalidOperationException("sample-settings.json must define at least 3 unique node URLs.");
-        }
-
-        int pollMs = Math.Max(10, settings.PollIntervalMilliseconds);
-        int timeoutSeconds = Math.Max(2, settings.VisibilityTimeoutSeconds);
-        int minPauseMs = Math.Max(100, settings.MinPauseMilliseconds);
-        int maxPauseMs = Math.Max(minPauseMs, settings.MaxPauseMilliseconds);
-
-        return new CacheProbeSettings
-        {
-            Nodes = normalizedNodes,
-            Database = settings.Database.Trim(),
-            ApiKey = settings.ApiKey.Trim(),
-            PollIntervalMilliseconds = pollMs,
-            VisibilityTimeoutSeconds = timeoutSeconds,
-            MinPauseMilliseconds = minPauseMs,
-            MaxPauseMilliseconds = maxPauseMs
-        };
-    }
-}
-
-public class CacheValue
-{
-    public required string Value { get; set; }
-    public required string OriginNode { get; set; }
-    public required DateTime WrittenUtc { get; set; }
-    public required string Ttl { get; set; }
-}
-
-public class CacheProbeNode
-{
-    public CacheProbeNode(string name, string baseUrl, HttpClient client)
-    {
-        Name = name;
-        BaseUrl = baseUrl;
-        Client = client;
-    }
-
-    public string Name { get; set; }
-    public string BaseUrl { get; set; }
-    public HttpClient Client { get; set; }
-}
-
-public class ReplicationProbeResult
-{
-    public ReplicationProbeResult(string nodeName, bool found, TimeSpan elapsed)
-    {
-        NodeName = nodeName;
-        Found = found;
-        Elapsed = elapsed;
-    }
-
-    public string NodeName { get; set; }
-    public bool Found { get; set; }
-    public TimeSpan Elapsed { get; set; }
 }
