@@ -1,7 +1,7 @@
-using LiteDb.Distributed.Core.Models;
-using LiteDb.Distributed.Infrastructure;
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Infrastructure.Context;
+using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Context;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(builder.Configuration["urls"] ?? "http://localhost:1446");

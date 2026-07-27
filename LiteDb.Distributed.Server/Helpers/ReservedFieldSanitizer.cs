@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Core.Common;
+using LiteDb.Distributed.Server.Domain.Common;
 
 namespace LiteDb.Distributed.Server.Helpers
 {

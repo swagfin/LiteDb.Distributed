@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Replication;
 using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
 

@@ -1,8 +1,9 @@
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Common;
-using LiteDb.Distributed.Core.Exceptions;
-using LiteDb.Distributed.Infrastructure.Storage;
-using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Domain.Abstractions;
+using LiteDb.Distributed.Server.Domain.Common;
+using LiteDb.Distributed.Server.Domain.Exceptions;
+using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Storage;
+using LiteDb.Distributed.Server.Replication;
 using LiteDb.Distributed.Server.Filters;
 using LiteDb.Distributed.Server.Helpers;
 using Microsoft.AspNetCore.Mvc;
@@ -124,7 +125,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, entityId, normalizedPayload, parentVersion, cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.UpsertAsync(documentName, entityId, normalizedPayload, parentVersion, cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
                 stopwatch.Stop();
 
@@ -194,7 +195,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.UpsertAsync(documentName, id, normalizedPayload, parentVersion, cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.UpsertAsync(documentName, id, normalizedPayload, parentVersion, cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange($"document-upsert:{documentName}");
                 stopwatch.Stop();
 
@@ -229,7 +230,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.DeleteAsync(documentName, id, parentVersion, cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.DeleteAsync(documentName, id, parentVersion, cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange($"document-delete:{documentName}");
                 stopwatch.Stop();
 

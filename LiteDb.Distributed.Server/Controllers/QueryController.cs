@@ -1,9 +1,10 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Common;
-using LiteDb.Distributed.Core.Exceptions;
-using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Domain.Abstractions;
+using LiteDb.Distributed.Server.Domain.Common;
+using LiteDb.Distributed.Server.Domain.Exceptions;
+using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Replication;
 using LiteDb.Distributed.Server.Filters;
 using LiteDb.Distributed.Server.Helpers;
 using LiteDB;
@@ -116,7 +117,7 @@ namespace LiteDb.Distributed.Server.Controllers
             try
             {
                 await _writer.EnsureCollectionAsync(collection, cancellationToken).ConfigureAwait(false);
-                Core.Models.WriteResult result = await _writer.UpsertAsync(collection, entityId, payload, cancellationToken: cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.UpsertAsync(collection, entityId, payload, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange($"query-insert:{collection}");
 
                 Dictionary<string, object?> row = new Dictionary<string, object?>
@@ -189,7 +190,7 @@ namespace LiteDb.Distributed.Server.Controllers
                     }
 
                     Dictionary<string, object?> mergedDocument = MergePatch(existing, patchPayload, entityId);
-                    Core.Models.WriteResult result = await _writer.UpsertAsync(collection, entityId, mergedDocument, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    WriteResult result = await _writer.UpsertAsync(collection, entityId, mergedDocument, cancellationToken: cancellationToken).ConfigureAwait(false);
                     rows.Add(new Dictionary<string, object?>
                     {
                         ["operation"] = "UPDATE",
@@ -264,7 +265,7 @@ namespace LiteDb.Distributed.Server.Controllers
                 List<Dictionary<string, object?>> rows = new List<Dictionary<string, object?>>(targetIds.Count);
                 foreach (string entityId in targetIds)
                 {
-                    Core.Models.WriteResult result = await _writer.DeleteAsync(collection, entityId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    WriteResult result = await _writer.DeleteAsync(collection, entityId, cancellationToken: cancellationToken).ConfigureAwait(false);
                     rows.Add(new Dictionary<string, object?>
                     {
                         ["operation"] = "DELETE",

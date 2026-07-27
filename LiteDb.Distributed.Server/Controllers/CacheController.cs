@@ -1,9 +1,10 @@
 using System.Globalization;
 using System.Text.Json;
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Common;
-using LiteDb.Distributed.Core.Exceptions;
-using LiteDb.Distributed.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Domain.Abstractions;
+using LiteDb.Distributed.Server.Domain.Common;
+using LiteDb.Distributed.Server.Domain.Exceptions;
+using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Replication;
 using LiteDb.Distributed.Server.Filters;
 using Microsoft.AspNetCore.Mvc;
 
@@ -65,7 +66,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.UpsertAsync(Common.CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.UpsertAsync(Common.CacheCollectionName, normalizedKey, document, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-upsert");
                 stopwatch.Stop();
 
@@ -154,7 +155,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             try
             {
-                Core.Models.WriteResult result = await _writer.DeleteAsync(Common.CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+                WriteResult result = await _writer.DeleteAsync(Common.CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-delete");
                 stopwatch.Stop();
 

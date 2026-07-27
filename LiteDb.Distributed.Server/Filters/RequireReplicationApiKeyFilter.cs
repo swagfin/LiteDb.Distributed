@@ -1,4 +1,4 @@
-using LiteDb.Distributed.Infrastructure.Configuration;
+using LiteDb.Distributed.Server.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;

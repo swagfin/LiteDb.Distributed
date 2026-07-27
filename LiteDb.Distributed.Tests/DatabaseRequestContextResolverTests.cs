@@ -1,6 +1,6 @@
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Infrastructure.Context;
-using LiteDb.Distributed.Infrastructure.Storage;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Context;
+using LiteDb.Distributed.Server.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 

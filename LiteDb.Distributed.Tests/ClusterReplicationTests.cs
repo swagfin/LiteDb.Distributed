@@ -1,9 +1,9 @@
-using LiteDb.Distributed.Core.Abstractions;
-using LiteDb.Distributed.Core.Models;
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Infrastructure.Conflict;
-using LiteDb.Distributed.Infrastructure.Replication;
-using LiteDb.Distributed.Infrastructure.Storage;
+using LiteDb.Distributed.Server.Domain.Abstractions;
+using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Conflict;
+using LiteDb.Distributed.Server.Replication;
+using LiteDb.Distributed.Server.Storage;
 using LiteDb.Distributed.Server.Controllers;
 using LiteDb.Distributed.Tests.TestEntities;
 using Microsoft.AspNetCore.Mvc;
@@ -300,7 +300,7 @@ namespace LiteDb.Distributed.Tests
                     NullLogger<PeerReplicationService>.Instance);
 
                 _queryController = new QueryController(Store, Store, new InMemoryReplicationSignalPublisher(), NullLogger<QueryController>.Instance);
-                _documentsController = new DocumentsController(Store, Store, new InMemoryReplicationSignalPublisher(), NullLogger<DocumentsController>.Instance);
+                _documentsController = new DocumentsController(Store, Store, new InMemoryLogicalDatabaseStoreProvider(Store), new InMemoryReplicationSignalPublisher(), NullLogger<DocumentsController>.Instance);
             }
 
             public LiteDbNodeStore Store { get; }
@@ -352,7 +352,7 @@ namespace LiteDb.Distributed.Tests
                 {
                     Query = query,
                     Take = take
-                }, CancellationToken.None);
+                }, false, CancellationToken.None);
 
                 if (result is OkObjectResult okResult && okResult.Value is QueryController.QueryResponse response)
                 {
@@ -434,6 +434,30 @@ namespace LiteDb.Distributed.Tests
         private class InMemoryReplicationSignalPublisher : IReplicationSignalPublisher
         {
             public void NotifyLocalChange(string reason)
+            {
+            }
+        }
+
+        private class InMemoryLogicalDatabaseStoreProvider : ILogicalDatabaseStoreProvider
+        {
+            private readonly LiteDbNodeStore _store;
+
+            public InMemoryLogicalDatabaseStoreProvider(LiteDbNodeStore store)
+            {
+                _store = store;
+            }
+
+            public Task<LiteDbNodeStore> GetCurrentStoreAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(_store);
+            }
+
+            public Task<LiteDbNodeStore> GetStoreAsync(string databaseName, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(_store);
+            }
+
+            public void Dispose()
             {
             }
         }

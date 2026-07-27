@@ -3,9 +3,9 @@ using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using LiteDb.Distributed.Core.Models;
-using LiteDb.Distributed.Infrastructure.Configuration;
-using LiteDb.Distributed.Infrastructure.Storage;
+using LiteDb.Distributed.Server.Domain.Models;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Storage;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LiteDb.Distributed.Server.Controllers
