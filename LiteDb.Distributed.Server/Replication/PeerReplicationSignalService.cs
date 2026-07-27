@@ -17,6 +17,7 @@ namespace LiteDb.Distributed.Server.Replication
         private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan RetryMaxDelay = TimeSpan.FromSeconds(30);
+        private const int MaxWebSocketTextMessageBytes = 16 * 1024;
 
         private readonly ClusterNodeOptions _nodeOptions;
         private readonly IDatabaseContextAccessor _databaseContextAccessor;
@@ -70,7 +71,18 @@ namespace LiteDb.Distributed.Server.Replication
 
             while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
-                string? payload = await ReceiveTextMessageAsync(webSocket, cancellationToken).ConfigureAwait(false);
+                string? payload;
+                try
+                {
+                    payload = await ReceiveTextMessageAsync(webSocket, cancellationToken).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _logger.LogWarning(ex, "Replication websocket connection closed due to invalid message size. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
+                    await TryCloseAsync(webSocket, WebSocketCloseStatus.MessageTooBig, "message-too-big", cancellationToken).ConfigureAwait(false);
+                    break;
+                }
+
                 if (payload is null)
                 {
                     break;
@@ -373,6 +385,11 @@ namespace LiteDb.Distributed.Server.Replication
 
                     stream.Write(rented, 0, result.Count);
 
+                    if (stream.Length > MaxWebSocketTextMessageBytes)
+                    {
+                        throw new InvalidOperationException($"Replication websocket text message exceeded {MaxWebSocketTextMessageBytes} bytes.");
+                    }
+
                     if (result.EndOfMessage)
                     {
                         break;
@@ -403,6 +420,23 @@ namespace LiteDb.Distributed.Server.Replication
             catch
             {
                 // Intentionally ignored: peer may close immediately after sending signal.
+            }
+        }
+
+        private static async Task TryCloseAsync(WebSocket webSocket, WebSocketCloseStatus status, string statusDescription, CancellationToken cancellationToken)
+        {
+            if (webSocket.State != WebSocketState.Open && webSocket.State != WebSocketState.CloseReceived)
+            {
+                return;
+            }
+
+            try
+            {
+                await webSocket.CloseAsync(status, statusDescription, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Best effort close; the peer may already have gone away.
             }
         }
 

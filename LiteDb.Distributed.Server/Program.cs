@@ -52,14 +52,12 @@ ClusterNodeOptions nodeOptions = new ClusterNodeOptions
     SeedPeers = builder.Configuration.GetSection("Node:SeedPeers").Get<ClusterPeer[]>() ?? Array.Empty<ClusterPeer>()
 };
 
-builder.Services.AddLiteDbDistributedNode(nodeOptions);
+ApiKeyAuthorizationOptions authOptions = new ApiKeyAuthorizationOptions();
+builder.Configuration.GetSection("Auth").Bind(authOptions);
+ProductionConfigurationValidator.Validate(builder.Environment.EnvironmentName, nodeOptions, authOptions);
 
-builder.Services.AddSingleton(sp =>
-{
-    ApiKeyAuthorizationOptions authOptions = new ApiKeyAuthorizationOptions();
-    builder.Configuration.GetSection("Auth").Bind(authOptions);
-    return authOptions;
-});
+builder.Services.AddLiteDbDistributedNode(nodeOptions);
+builder.Services.AddSingleton(authOptions);
 builder.Services.AddSingleton<IApiKeyAuthorizationService, ApiKeyAuthorizationService>();
 
 WebApplication app = builder.Build();
