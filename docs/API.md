@@ -1,5 +1,10 @@
 # API
 
+For hands-on walkthroughs, see:
+
+- [API Quickstart](./API_QUICKSTART.md)
+- [Cache API](./CACHE_API.md)
+
 All normal API requests require:
 
 - `Database`: logical database name

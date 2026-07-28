@@ -115,6 +115,8 @@ Use something else when you need:
 
 - [Architecture](./docs/ARCHITECTURE.md)
 - [API](./docs/API.md)
+- [API Quickstart](./docs/API_QUICKSTART.md)
+- [Cache API](./docs/CACHE_API.md)
 - [Configuration](./docs/CONFIGURATION.md)
 - [Production Notes](./docs/PRODUCTION.md)
 - [Samples](./docs/SAMPLES.md)
