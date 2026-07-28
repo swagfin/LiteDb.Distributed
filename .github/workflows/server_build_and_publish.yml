@@ -1,0 +1,71 @@
+name: Build and Publish Server Docker Image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish_image:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    outputs:
+      IMAGE_TAG: ${{ steps.version.outputs.TAG }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve release version from project file
+        id: version
+        run: |
+          set -euo pipefail
+          RELEASE_VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ./LiteDb.Distributed.Server/LiteDb.Distributed.Server.csproj | head -n 1 | tr -d '[:space:]')
+          if [[ -z "$RELEASE_VERSION" ]]; then
+            echo "Could not resolve <Version> from LiteDb.Distributed.Server.csproj."
+            exit 1
+          fi
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Project <Version> must be in format X.X.X.X (e.g. 1.0.0.0)."
+            exit 1
+          fi
+          echo "TAG=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using project version: $RELEASE_VERSION"
+
+      - name: Docker login
+        run: docker login -u ${{ secrets.DOCKER_USER }} -p ${{ secrets.DOCKER_PASSWORD }} ghcr.io
+
+      - name: Fail if release version already exists in GHCR
+        env:
+          IMAGE_REF: ghcr.io/${{ secrets.DOCKER_USER }}/litedb-distributed-server:${{ steps.version.outputs.TAG }}
+        run: |
+          set -euo pipefail
+          if docker manifest inspect "$IMAGE_REF" > /dev/null 2>&1; then
+            echo "Release version already exists in GHCR: $IMAGE_REF"
+            exit 1
+          fi
+          echo "Release version is available: $IMAGE_REF"
+
+      - name: Build Docker image
+        run: docker build . --file ./LiteDb.Distributed.Server/Dockerfile --tag ghcr.io/${{ secrets.DOCKER_USER }}/litedb-distributed-server:${{ steps.version.outputs.TAG }}
+
+      - name: Push Docker image
+        run: docker push ghcr.io/${{ secrets.DOCKER_USER }}/litedb-distributed-server:${{ steps.version.outputs.TAG }}
+
+  update_helm_version:
+    name: Update Helm Version
+    runs-on: ubuntu-latest
+    needs: [publish_image]
+    steps:
+      - name: Trigger Helm Version Update in infra-configs
+        run: |
+          curl -X POST https://api.github.com/repos/${{ secrets.DOCKER_USER }}/infra-configs/actions/workflows/update-version.yaml/dispatches \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.DOCKER_PASSWORD }}" \
+          -d '{
+            "ref": "master",
+            "inputs": {
+              "app": "litedb-distributed-server",
+              "version": "${{ needs.publish_image.outputs.IMAGE_TAG }}"
+            }
+          }'

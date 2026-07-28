@@ -12,12 +12,16 @@
 
 	<ItemGroup>
 		<PackageReference Include="LiteDB" Version="5.0.21" />
+		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
 	</ItemGroup>
 
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
+		<Version>1.0.0.0</Version>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>b59c1594-36b4-4bc1-a7b7-1f3d72950b70</UserSecretsId>
+		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 	</PropertyGroup>
 
 </Project>
