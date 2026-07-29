@@ -180,54 +180,6 @@
       font-size: 0.76rem;
     }
 
-    .tabs {
-      display: flex;
-      align-items: flex-end;
-      gap: 4px;
-      overflow: hidden;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .tab {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 42px;
-      color: var(--fg-muted);
-      padding: 0 12px;
-      font-size: 0.88rem;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    .tab.active {
-      color: var(--fg);
-    }
-
-    .tab.active::after {
-      content: "";
-      position: absolute;
-      right: 8px;
-      bottom: -1px;
-      left: 8px;
-      height: 2px;
-      border-radius: 999px;
-      background: #f78166;
-    }
-
-    .tab-count {
-      min-width: 18px;
-      height: 18px;
-      display: inline-grid;
-      place-items: center;
-      color: var(--fg);
-      border-radius: 999px;
-      background: var(--surface-muted);
-      padding: 0 6px;
-      font-size: 0.72rem;
-    }
-
     .metrics {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -333,7 +285,7 @@
 
     .database-card .fact-row {
       min-height: 22px;
-      grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+      grid-template-columns: minmax(72px, max-content) minmax(0, 1fr);
       font-size: 0.8rem;
     }
 
@@ -469,6 +421,20 @@
       color: var(--accent);
       font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 0.8rem;
+    }
+
+    .metric-icon-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--fg-subtle);
+      font-weight: 600;
+    }
+
+    .metric-icon {
+      color: var(--accent);
+      font-size: 0.9rem;
+      line-height: 1;
     }
 
     .status-label {
@@ -713,8 +679,8 @@
   <main class="shell">
     <header class="hero">
       <div class="hero-copy">
-        <h1>Operations dashboard</h1>
-        <p class="subtext" id="summary">Loading cluster telemetry...</p>
+        <h1>Dashboard</h1>
+        <p class="subtext" id="summary">Monitor cluster health, peer connectivity, and logical database state.</p>
       </div>
       <div class="hero-actions">
         <div class="controls">
@@ -733,12 +699,6 @@
         <div class="error" id="errorLine" hidden></div>
       </div>
     </header>
-
-    <nav class="tabs" aria-label="Dashboard sections">
-      <div class="tab active">Overview <span class="tab-count" id="tabNodeCount">0</span></div>
-      <div class="tab">Peers <span class="tab-count" id="tabPeerCount">0</span></div>
-      <div class="tab">Databases <span class="tab-count" id="tabDbCount">0</span></div>
-    </nav>
 
     <section class="metrics" aria-label="Cluster summary">
       <article class="panel metric reveal">
@@ -788,10 +748,6 @@
     const kpiCurrentNode = document.getElementById("kpiCurrentNode");
     const kpiNodeCount = document.getElementById("kpiNodeCount");
     const kpiDbCount = document.getElementById("kpiDbCount");
-    const tabNodeCount = document.getElementById("tabNodeCount");
-    const tabPeerCount = document.getElementById("tabPeerCount");
-    const tabDbCount = document.getElementById("tabDbCount");
-
     let refreshTimer = null;
 
     async function refreshDashboard() {
@@ -821,16 +777,12 @@
       const peerConnections = data.PeerConnections || [];
       const timestamp = toUtcText(data.TimestampUtc);
       const intervalMs = readRefreshIntervalMs();
-      summary.textContent = `${nodes.length} nodes, ${databases.length} logical databases, refresh ${intervalMs}ms`;
+      summary.textContent = "Monitor cluster health, peer connectivity, and logical database state.";
       metaLine.textContent = `Refreshed: ${timestamp}`;
 
       kpiCurrentNode.textContent = data.NodeId || "-";
       kpiNodeCount.textContent = String(nodes.length);
       kpiDbCount.textContent = String(databases.length);
-      tabNodeCount.textContent = String(nodes.length);
-      tabPeerCount.textContent = String(peerConnections.length);
-      tabDbCount.textContent = String(databases.length);
-
       renderPeerConnections(peerConnections);
       renderDatabases(databases);
     }
@@ -888,7 +840,7 @@
               <div class="fact-row peer-fact">
                 <span class="fact-label">${escapeHtml(peer.PeerNodeId)}</span>
                 <span class="fact-value"><span class="status-label ${replicationStatusClass(peer.CatchUpStatus)}">${escapeHtml(formatReplicationStatus(peer.CatchUpStatus))}</span>
-                pending ~${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)}</span>
+                <span class="metric-icon" title="Pending push" aria-label="Pending push">⇧</span>${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)}</span>
               </div>`).join("");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
@@ -898,7 +850,7 @@
               <span class="pill info">${escapeHtml(db.Name)}</span>
             </div>
             <div class="fact-list">
-              <div class="fact-row"><span class="fact-label">Pending push</span><span class="fact-value">${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</span></div>
+              <div class="fact-row"><span class="fact-label metric-icon-label"><span class="metric-icon" title="Pending push" aria-label="Pending push">⇧</span> Push</span><span class="fact-value">${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</span></div>
               <div class="fact-row"><span class="fact-label">Database file</span><span class="fact-value">${formatFile(db.DatabaseFile)}</span></div>
               ${peerLag}
             </div>
