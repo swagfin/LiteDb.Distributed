@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Components.Web;
 
 namespace LiteDb.Distributed.Studio.Pages
 {
-    public partial class Home : ComponentBase
+    public partial class Home : ComponentBase, IAsyncDisposable
     {
         private const int DefaultBrowseTake = 100;
 
@@ -65,6 +65,8 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _editingProfile;
         private bool _showDocumentEditorModal;
         private bool _documentEditorMaximized;
+        private bool _documentEditorInitialized;
+        private bool _documentEditorNeedsLayout;
         private bool _showDeleteConfirmModal;
         private bool _showQueryConfirmModal;
         private bool _showRowContextMenu;
@@ -78,6 +80,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private string _queryConfirmMessage = string.Empty;
         private string? _errorMessage;
         private string? _infoMessage;
+        private DotNetObjectReference<Home>? _jsonEditorDotNetRef;
 
         private ConnectionProfile? ActiveProfile => _activeProfileId is null ? null : _profiles.FirstOrDefault(x => x.Id == _activeProfileId.Value);
 
@@ -101,6 +104,29 @@ namespace LiteDb.Distributed.Studio.Pages
         protected override async Task OnInitializedAsync()
         {
             await LoadProfilesAsync().ConfigureAwait(false);
+        }
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (!_showDocumentEditorModal)
+            {
+                return;
+            }
+
+            if (!_documentEditorInitialized)
+            {
+                _jsonEditorDotNetRef ??= DotNetObjectReference.Create(this);
+                await JSRuntime.InvokeVoidAsync("studioJsonEditor.init", "document-json-editor", _documentJson, SelectedCollectionIsSystem, _jsonEditorDotNetRef);
+                _documentEditorInitialized = true;
+                _documentEditorNeedsLayout = false;
+                return;
+            }
+
+            if (_documentEditorNeedsLayout)
+            {
+                await JSRuntime.InvokeVoidAsync("studioJsonEditor.layout");
+                _documentEditorNeedsLayout = false;
+            }
         }
 
         private async Task LoadProfilesAsync()
@@ -974,6 +1000,8 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             SelectDocument(document);
             _showDocumentEditorModal = true;
+            _documentEditorInitialized = false;
+            _documentEditorNeedsLayout = true;
             DismissRowContextMenu();
         }
 
@@ -981,6 +1009,8 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             CreateDocumentTemplate();
             _showDocumentEditorModal = true;
+            _documentEditorInitialized = false;
+            _documentEditorNeedsLayout = true;
             DismissRowContextMenu();
         }
 
@@ -988,11 +1018,15 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             _showDocumentEditorModal = false;
             _documentEditorMaximized = false;
+            _documentEditorInitialized = false;
+            _documentEditorNeedsLayout = false;
+            _ = JSRuntime.InvokeVoidAsync("studioJsonEditor.dispose").AsTask();
         }
 
         private void ToggleDocumentEditorMaximized()
         {
             _documentEditorMaximized = !_documentEditorMaximized;
+            _documentEditorNeedsLayout = true;
         }
 
         private void ShowRowContextMenu(MouseEventArgs args, Dictionary<string, JsonElement> document)
@@ -1075,6 +1109,8 @@ namespace LiteDb.Distributed.Studio.Pages
         private async Task SaveDocumentAsync()
         {
             ConnectionProfile? profile = ActiveProfile;
+            await SyncDocumentJsonFromEditorAsync().ConfigureAwait(false);
+
             if (profile is null)
             {
                 _errorMessage = "Connect a profile first.";
@@ -1201,16 +1237,19 @@ namespace LiteDb.Distributed.Studio.Pages
             ValidateDocumentJson(requireId: false, out _, out _);
         }
 
-        private void OnDocumentJsonChanged(ChangeEventArgs args)
+        [JSInvokable]
+        public Task OnJsonEditorChanged(string value)
         {
-            _documentJson = args.Value?.ToString() ?? string.Empty;
+            _documentJson = value ?? string.Empty;
             ValidateDocumentJson(requireId: false, out _, out _);
+            return InvokeAsync(StateHasChanged);
         }
 
         private async Task CopyDocumentJsonAsync()
         {
             try
             {
+                await SyncDocumentJsonFromEditorAsync().ConfigureAwait(false);
                 await JSRuntime.InvokeVoidAsync("studioClipboard.copyText", _documentJson);
                 _documentEditorMessage = "JSON copied to clipboard.";
             }
@@ -1220,8 +1259,10 @@ namespace LiteDb.Distributed.Studio.Pages
             }
         }
 
-        private void FormatDocumentJson()
+        private async Task FormatDocumentJson()
         {
+            await SyncDocumentJsonFromEditorAsync().ConfigureAwait(false);
+
             if (!ValidateDocumentJson(requireId: false, out _, out string normalizedJson))
             {
                 return;
@@ -1229,6 +1270,7 @@ namespace LiteDb.Distributed.Studio.Pages
 
             _documentJson = normalizedJson;
             _documentEditorMessage = "JSON formatted.";
+            await JSRuntime.InvokeVoidAsync("studioJsonEditor.setValue", _documentJson).ConfigureAwait(false);
         }
 
         private string GetJsonValidationBadgeClass()
@@ -1272,6 +1314,17 @@ namespace LiteDb.Distributed.Studio.Pages
                 _documentEditorMessage = $"JSON parse error: {ex.Message}";
                 return false;
             }
+        }
+
+        private async Task SyncDocumentJsonFromEditorAsync()
+        {
+            if (!_showDocumentEditorModal || !_documentEditorInitialized)
+            {
+                return;
+            }
+
+            string? editorValue = await JSRuntime.InvokeAsync<string>("studioJsonEditor.getValue").ConfigureAwait(false);
+            _documentJson = editorValue ?? string.Empty;
         }
 
         private string GetDocumentRowClass(Dictionary<string, JsonElement> document)
@@ -1696,6 +1749,20 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             _errorMessage = null;
             _infoMessage = null;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("studioJsonEditor.dispose").ConfigureAwait(false);
+            }
+            catch (JSException)
+            {
+                // The browser runtime can already be gone during teardown.
+            }
+
+            _jsonEditorDotNetRef?.Dispose();
         }
     }
 

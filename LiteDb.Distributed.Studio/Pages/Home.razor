@@ -419,7 +419,7 @@
                 {
                     <div class="json-editor-message @(_documentJsonIsValid ? "valid" : "invalid")">@_documentEditorMessage</div>
                 }
-                <textarea class="document-editor-textarea" value="@_documentJson" @oninput="OnDocumentJsonChanged" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
+                <div id="document-json-editor" class="document-json-editor" aria-label="Document JSON editor"></div>
             </div>
 
             <div class="action-row">

@@ -394,29 +394,15 @@ textarea:focus {
     background: rgba(248, 81, 73, 0.08);
 }
 
-.document-editor-textarea {
+.document-json-editor {
     min-height: 420px;
-    border: 0;
-    border-radius: 0;
-    background: linear-gradient(180deg, #0b1017 0%, #0d1117 100%);
-    color: #e6edf3;
-    font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: 0.8rem;
-    line-height: 1.45;
-    padding: 0.85rem 0.95rem;
-    resize: vertical;
-    tab-size: 4;
-    caret-color: var(--accent-cyan);
+    height: 420px;
+    background: #0d1117;
 }
 
-.document-editor-modal.maximized .document-editor-textarea {
+.document-editor-modal.maximized .document-json-editor {
     min-height: 0;
     height: 100%;
-    resize: none;
-}
-
-.document-editor-textarea:focus {
-    box-shadow: none;
 }
 
 .workspace-panel {

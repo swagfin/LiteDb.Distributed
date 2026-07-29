@@ -44,6 +44,148 @@
                 document.body.removeChild(textArea);
             }
         };
+
+        window.studioJsonEditor = (function () {
+            let editor;
+            let changeSubscription;
+            let monacoReady;
+
+            function loadMonaco() {
+                if (window.monaco) {
+                    return Promise.resolve(window.monaco);
+                }
+
+                if (monacoReady) {
+                    return monacoReady;
+                }
+
+                monacoReady = new Promise((resolve, reject) => {
+                    const loader = document.createElement("script");
+                    loader.src = "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js";
+                    loader.onload = function () {
+                        window.require.config({
+                            paths: {
+                                vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs"
+                            }
+                        });
+
+                        window.require(["vs/editor/editor.main"], function () {
+                            resolve(window.monaco);
+                        });
+                    };
+                    loader.onerror = function () {
+                        reject(new Error("Monaco editor failed to load."));
+                    };
+                    document.body.appendChild(loader);
+                });
+
+                return monacoReady;
+            }
+
+            function defineTheme(monaco) {
+                monaco.editor.defineTheme("github-dark-lite", {
+                    base: "vs-dark",
+                    inherit: true,
+                    rules: [
+                        { token: "string.key.json", foreground: "79c0ff" },
+                        { token: "string.value.json", foreground: "a5d6ff" },
+                        { token: "number", foreground: "79c0ff" },
+                        { token: "keyword", foreground: "ff7b72" }
+                    ],
+                    colors: {
+                        "editor.background": "#0d1117",
+                        "editor.foreground": "#e6edf3",
+                        "editor.lineHighlightBackground": "#161b22",
+                        "editorLineNumber.foreground": "#6e7681",
+                        "editorCursor.foreground": "#58a6ff",
+                        "editor.selectionBackground": "#1f6feb55",
+                        "editorIndentGuide.background": "#30363d",
+                        "editorIndentGuide.activeBackground": "#8b949e",
+                        "editorWidget.background": "#161b22",
+                        "editorWidget.border": "#30363d"
+                    }
+                });
+            }
+
+            return {
+                init: async function (elementId, value, readOnly, dotNetRef) {
+                    const monaco = await loadMonaco();
+                    const element = document.getElementById(elementId);
+                    if (!element) {
+                        return;
+                    }
+
+                    if (editor) {
+                        this.dispose();
+                    }
+
+                    defineTheme(monaco);
+
+                    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+                        validate: true,
+                        allowComments: false,
+                        trailingCommas: "error"
+                    });
+
+                    editor = monaco.editor.create(element, {
+                        value: value || "",
+                        language: "json",
+                        theme: "github-dark-lite",
+                        automaticLayout: true,
+                        readOnly: !!readOnly,
+                        minimap: { enabled: false },
+                        scrollBeyondLastLine: false,
+                        wordWrap: "on",
+                        tabSize: 4,
+                        fontSize: 13,
+                        lineHeight: 21,
+                        fontFamily: "ui-monospace, SFMono-Regular, SFMono, Consolas, 'Liberation Mono', Menlo, monospace",
+                        padding: { top: 14, bottom: 14 },
+                        overviewRulerBorder: false,
+                        renderLineHighlight: "line",
+                        fixedOverflowWidgets: true
+                    });
+
+                    changeSubscription = editor.onDidChangeModelContent(function () {
+                        dotNetRef.invokeMethodAsync("OnJsonEditorChanged", editor.getValue());
+                    });
+
+                    setTimeout(function () {
+                        editor.layout();
+                        editor.focus();
+                    }, 0);
+                },
+                getValue: function () {
+                    return editor ? editor.getValue() : "";
+                },
+                setValue: function (value) {
+                    if (!editor) {
+                        return;
+                    }
+
+                    editor.setValue(value || "");
+                    editor.getAction("editor.action.formatDocument").run();
+                },
+                layout: function () {
+                    if (editor) {
+                        setTimeout(function () {
+                            editor.layout();
+                        }, 0);
+                    }
+                },
+                dispose: function () {
+                    if (changeSubscription) {
+                        changeSubscription.dispose();
+                        changeSubscription = null;
+                    }
+
+                    if (editor) {
+                        editor.dispose();
+                        editor = null;
+                    }
+                }
+            };
+        })();
     </script>
     <script src="_framework/blazor.webassembly.js"></script>
 </body>
