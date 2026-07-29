@@ -389,6 +389,55 @@
       width: fit-content;
     }
 
+    .probe-value {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .probe-light {
+      position: relative;
+      width: 9px;
+      height: 9px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--neutral);
+      box-shadow: 0 0 0 4px rgba(139, 148, 158, 0.12);
+    }
+
+    .probe-light::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.18;
+      animation: breathe 1.8s ease-in-out infinite;
+    }
+
+    .probe-light.ok {
+      color: var(--success);
+      background: var(--success);
+      box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.14);
+    }
+
+    .probe-light.warn {
+      color: var(--attention);
+      background: var(--attention);
+      box-shadow: 0 0 0 4px rgba(210, 153, 34, 0.14);
+    }
+
+    .probe-light.bad {
+      color: var(--danger);
+      background: var(--danger);
+      box-shadow: 0 0 0 4px rgba(248, 81, 73, 0.14);
+    }
+
+    .probe-light.neutral {
+      color: var(--neutral);
+      background: var(--neutral);
+    }
+
     .fact-list {
       margin-top: 8px;
       border-top: 1px solid var(--border-muted);
@@ -629,6 +678,11 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
+    @keyframes breathe {
+      0%, 100% { transform: scale(0.72); opacity: 0.12; }
+      50% { transform: scale(1.35); opacity: 0.25; }
+    }
+
     @media (max-width: 980px) {
       .metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -802,7 +856,7 @@
       for (const peer of peers) {
         const overallStatus = peer.OverallStatus || "Unknown";
         const checked = toUtcText(peer.LastCheckedUtc);
-        const activeStatus = peer.IsPeerActive ? "Active Peer" : "Inactive Peer";
+        const activeStatusPill = peer.IsPeerActive ? "" : `<span class="pill warn">Inactive Peer</span>`;
         const error = peer.Error ? `<div class="error">${escapeHtml(peer.Error)}</div>` : "";
         const httpLatency = formatLatency(peer.HttpProbeDurationMs);
         const wsLatency = formatLatency(peer.WebSocketProbeDurationMs);
@@ -811,13 +865,13 @@
         peerConnectivityGrid.insertAdjacentHTML("beforeend", `
           <article class="panel card reveal">
             <div class="row">
-              <span class="pill ${statusClass(overallStatus)}">${escapeHtml(overallStatus)}</span>
-              <span class="pill ${peer.IsPeerActive ? "ok" : "warn"}">${escapeHtml(activeStatus)}</span>
+              <span class="pill ${statusClass(overallStatus)}">${escapeHtml(formatPeerOverallStatus(overallStatus))}</span>
+              ${activeStatusPill}
             </div>
             <h3 class="title">${escapeHtml(peer.PeerNodeId)}</h3>
             <p class="kv"><strong>Base URL</strong><span>${escapeHtml(peer.BaseUrl || "(not set)")}</span></p>
-            <p class="kv"><strong>HTTP</strong><span><span class="pill ${statusClass(peer.HttpStatus || "Unknown")}">${escapeHtml(peer.HttpStatus || "Unknown")}</span> ${httpLatency}</span></p>
-            <p class="kv"><strong>WebSocket</strong><span><span class="pill ${statusClass(peer.WebSocketStatus || "Unknown")}">${escapeHtml(peer.WebSocketStatus || "Unknown")}</span> ${wsLatency}</span></p>
+            <p class="kv"><strong>HTTP</strong><span class="probe-value"><span class="probe-light ${statusClass(peer.HttpStatus || "Unknown")}" title="${escapeHtml(peer.HttpStatus || "Unknown")}" aria-label="${escapeHtml(peer.HttpStatus || "Unknown")}"></span>${httpLatency}</span></p>
+            <p class="kv"><strong>WebSocket</strong><span class="probe-value"><span class="probe-light ${statusClass(peer.WebSocketStatus || "Unknown")}" title="${escapeHtml(peer.WebSocketStatus || "Unknown")}" aria-label="${escapeHtml(peer.WebSocketStatus || "Unknown")}"></span>${wsLatency}</span></p>
             <p class="kv"><strong>Last checked</strong><span>${escapeHtml(checked)}</span></p>
             ${sparkline}
             ${error}
@@ -841,7 +895,7 @@
           ? `<div class="fact-row"><span class="fact-label">Replication</span><span class="fact-value">No replication peers registered.</span></div>`
           : replicationPeers.map(peer => `
               <div class="fact-row peer-fact">
-                <span class="fact-label">${escapeHtml(peer.PeerNodeId)}</span>
+                <span class="fact-label" title="${escapeHtml(peer.PeerNodeId)}">${escapeHtml(formatCompactNodeName(peer.PeerNodeId))}</span>
                 <span class="fact-value"><span class="status-label ${replicationStatusClass(peer.CatchUpStatus)}">${escapeHtml(formatReplicationStatus(peer.CatchUpStatus))}</span>
                 <span class="metric-icon" title="Pending push" aria-label="Pending push">⇧</span>${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)}</span>
               </div>`).join("");
@@ -1035,6 +1089,20 @@
       return formatBytes(file.SizeBytes || 0);
     }
 
+    function formatCompactNodeName(value) {
+      const raw = String(value ?? "").trim();
+      if (!raw) {
+        return "-";
+      }
+
+      const parts = raw.split("-").filter(x => x.length > 0);
+      if (parts.length <= 2) {
+        return raw;
+      }
+
+      return parts.slice(-2).join("-");
+    }
+
     function formatBytes(bytes) {
       const value = Number(bytes);
       if (!Number.isFinite(value) || value <= 0) {
@@ -1115,6 +1183,15 @@
 
       if (normalized === "TooOldNeedsSnapshot") {
         return "Needs Snapshot";
+      }
+
+      return normalized || "Unknown";
+    }
+
+    function formatPeerOverallStatus(status) {
+      const normalized = String(status || "");
+      if (normalized === "Connected") {
+        return "Online";
       }
 
       return normalized || "Unknown";
