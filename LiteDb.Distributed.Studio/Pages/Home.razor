@@ -424,7 +424,7 @@
 
             <div class="action-row">
                 <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem || !_documentJsonIsValid)">Save</button>
-                <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
+                <button type="button" class="btn btn-danger" @onclick="OpenDeleteConfirmationForCurrentDocument" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
             </div>
         </section>
     </div>

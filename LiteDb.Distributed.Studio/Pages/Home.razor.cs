@@ -1134,6 +1134,20 @@ namespace LiteDb.Distributed.Studio.Pages
             _showDeleteConfirmModal = true;
         }
 
+        private void OpenDeleteConfirmationForCurrentDocument()
+        {
+            _pendingDeleteDocumentId = _selectedDocumentId.Trim();
+
+            if (string.IsNullOrWhiteSpace(_pendingDeleteDocumentId))
+            {
+                _errorMessage = "Select a document with a valid Id before deleting.";
+                _infoMessage = null;
+                return;
+            }
+
+            _showDeleteConfirmModal = true;
+        }
+
         private void CancelDeleteConfirmation()
         {
             _showDeleteConfirmModal = false;
