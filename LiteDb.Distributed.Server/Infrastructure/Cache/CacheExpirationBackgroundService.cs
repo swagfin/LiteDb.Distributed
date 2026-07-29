@@ -1,12 +1,11 @@
-using LiteDb.Distributed.Server.Core.Abstractions;
-using LiteDb.Distributed.Server.Core.Common;
-using LiteDb.Distributed.Server.Core.Exceptions;
 using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Core.Cache;
+using LiteDb.Distributed.Server.Core.Common;
 using LiteDb.Distributed.Server.Core.Context;
-using LiteDb.Distributed.Server.Infrastructure.Replication;
+using LiteDb.Distributed.Server.Core.Exceptions;
 using LiteDb.Distributed.Server.Data;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using LiteDb.Distributed.Server.Infrastructure.Replication;
 
 namespace LiteDb.Distributed.Server.Infrastructure.Cache
 {
@@ -140,20 +139,20 @@ namespace LiteDb.Distributed.Server.Infrastructure.Cache
 
             for (int page = 0; page < maxScanPages; page++)
             {
-                IReadOnlyList<CacheSweepEntry> entries = await _reader.ListAsync<CacheSweepEntry>(Common.CacheCollectionName, skip, batchSize, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<CacheEntryDocument> entries = await _reader.ListAsync<CacheEntryDocument>(Common.CacheCollectionName, skip, batchSize, cancellationToken).ConfigureAwait(false);
                 if (entries.Count == 0)
                 {
                     break;
                 }
 
-                foreach (CacheSweepEntry entry in entries)
+                foreach (CacheEntryDocument entry in entries)
                 {
                     if (string.IsNullOrWhiteSpace(entry.Id))
                     {
                         continue;
                     }
 
-                    if (NormalizeUtc(entry.ExpiresAtUtc) <= utcNow)
+                    if (CachePolicy.NormalizeUtc(entry.ExpiresAtUtc) <= utcNow)
                     {
                         keys.Add(entry.Id);
                         if (keys.Count >= batchSize)
@@ -174,15 +173,5 @@ namespace LiteDb.Distributed.Server.Infrastructure.Cache
             return keys.ToList();
         }
 
-        private static DateTime NormalizeUtc(DateTime value)
-        {
-            return value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
-        }
-
-        private class CacheSweepEntry
-        {
-            public string Id { get; set; } = string.Empty;
-            public DateTime ExpiresAtUtc { get; set; }
-        }
     }
 }

@@ -1,23 +1,17 @@
-using System.Buffers;
+using LiteDb.Distributed.Server.Configuration;
+using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Core.Context;
+using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Infrastructure.Replication.Signals;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
-using System.Text;
 using System.Text.Json;
-using LiteDb.Distributed.Server.Core.Abstractions;
-using LiteDb.Distributed.Server.Core.Models;
-using LiteDb.Distributed.Server.Configuration;
-using LiteDb.Distributed.Server.Core.Context;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace LiteDb.Distributed.Server.Infrastructure.Replication
 {
     public class PeerReplicationSignalService : BackgroundService, IReplicationSignalPublisher, IReplicationWebSocketHandler
     {
         private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-        private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(1);
-        private static readonly TimeSpan RetryMaxDelay = TimeSpan.FromSeconds(30);
-        private const int MaxWebSocketTextMessageBytes = 16 * 1024;
 
         private readonly ClusterNodeOptions _nodeOptions;
         private readonly IDatabaseContextAccessor _databaseContextAccessor;
@@ -74,12 +68,12 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 string? payload;
                 try
                 {
-                    payload = await ReceiveTextMessageAsync(webSocket, cancellationToken).ConfigureAwait(false);
+                    payload = await ReplicationSignalWebSocketTransport.ReceiveTextMessageAsync(webSocket, cancellationToken).ConfigureAwait(false);
                 }
                 catch (InvalidOperationException ex)
                 {
                     _logger.LogWarning(ex, "Replication websocket connection closed due to invalid message size. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
-                    await TryCloseAsync(webSocket, WebSocketCloseStatus.MessageTooBig, "message-too-big", cancellationToken).ConfigureAwait(false);
+                    await ReplicationSignalWebSocketTransport.TryCloseAsync(webSocket, WebSocketCloseStatus.MessageTooBig, "message-too-big", cancellationToken).ConfigureAwait(false);
                     break;
                 }
 
@@ -96,7 +90,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 catch (JsonException ex)
                 {
                     _logger.LogWarning(ex, "Replication websocket payload rejected due to invalid JSON. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
-                    await TrySendAckAsync(webSocket, accepted: false, error: "invalid-json", cancellationToken).ConfigureAwait(false);
+                    await SendAckAsync(webSocket, accepted: false, error: "invalid-json", cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -105,12 +99,12 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                     if (IsHealthCheck(message))
                     {
                         _logger.LogDebug("Replication websocket health-check received. LocalNodeId={LocalNodeId} SourceNodeId={SourceNodeId}", _nodeOptions.NodeId, message!.SourceNodeId);
-                        await TrySendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
+                        await SendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
                     _logger.LogWarning("Replication websocket payload rejected due to invalid content. LocalNodeId={LocalNodeId}", _nodeOptions.NodeId);
-                    await TrySendAckAsync(webSocket, accepted: false, error: "invalid-payload", cancellationToken).ConfigureAwait(false);
+                    await SendAckAsync(webSocket, accepted: false, error: "invalid-payload", cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -120,7 +114,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 try
                 {
                     // Acknowledge immediately so sender does not block on receiver-side replication work.
-                    await TrySendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
+                    await SendAckAsync(webSocket, accepted: true, error: null, cancellationToken).ConfigureAwait(false);
                     await _replicationOrchestrator.ReplicateDatabaseAsync(message.Database, _nodeOptions.ReplicationApiKey, $"websocket:{message.SourceNodeId}", cancellationToken).ConfigureAwait(false);
                     applyStopwatch.Stop();
 
@@ -212,11 +206,11 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 dispatchStopwatch.Stop();
 
                 int nextAttempt = dispatch.Attempt + 1;
-                TimeSpan retryDelay = ComputeRetryDelay(nextAttempt);
+                TimeSpan retryDelay = ReplicationSignalRetryPolicy.ComputeRetryDelay(nextAttempt);
                 DateTime retryDueUtc = DateTime.UtcNow.Add(retryDelay);
                 ScheduledDispatch retryDispatch = new ScheduledDispatch(dispatch.DatabaseName, dispatch.Reason, nextAttempt, retryDueUtc, DateTime.UtcNow);
 
-                _scheduledDispatches.AddOrUpdate(dispatch.DatabaseName, _ => retryDispatch, (_, existing) => MergeRetry(existing, retryDispatch));
+                _scheduledDispatches.AddOrUpdate(dispatch.DatabaseName, _ => retryDispatch, (_, existing) => ReplicationSignalRetryPolicy.MergeRetry(existing, retryDispatch));
 
                 _logger.LogWarning(ex, "Replication dispatch failed; retry scheduled. Database={Database} Attempt={Attempt} RetryInMs={RetryInMs} DurationMs={DurationMs}", dispatch.DatabaseName, nextAttempt, retryDelay.TotalMilliseconds, dispatchStopwatch.Elapsed.TotalMilliseconds);
             }
@@ -224,11 +218,11 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
 
         private async Task BroadcastSignalToPeersAsync(ScheduledDispatch dispatch, CancellationToken cancellationToken)
         {
-                using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
-                {
-                    DatabaseName = dispatch.DatabaseName,
-                    ApiKey = _nodeOptions.ReplicationApiKey,
-                    IsRoot = true,
+            using IDisposable scope = _databaseContextAccessor.BeginScope(new DatabaseRequestContext
+            {
+                DatabaseName = dispatch.DatabaseName,
+                ApiKey = _nodeOptions.ReplicationApiKey,
+                IsRoot = true,
                 CanAddDatabase = true,
                 CanDeleteDatabase = true,
                 CanReadDocument = true,
@@ -273,7 +267,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
 
         private async Task<bool> SendSignalToPeerAsync(ClusterPeer peer, string databaseName, byte[] payload, CancellationToken cancellationToken)
         {
-            Uri endpoint = BuildWebSocketEndpoint(peer.BaseUrl);
+            Uri endpoint = ReplicationSignalWebSocketTransport.BuildWebSocketEndpoint(peer.BaseUrl);
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
             try
@@ -288,7 +282,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 await webSocket.ConnectAsync(endpoint, ackTimeout.Token).ConfigureAwait(false);
                 await webSocket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, ackTimeout.Token).ConfigureAwait(false);
 
-                string? ackPayload = await ReceiveTextMessageAsync(webSocket, ackTimeout.Token).ConfigureAwait(false);
+                string? ackPayload = await ReplicationSignalWebSocketTransport.ReceiveTextMessageAsync(webSocket, ackTimeout.Token).ConfigureAwait(false);
                 if (ackPayload is null)
                 {
                     stopwatch.Stop();
@@ -327,19 +321,6 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
             }
         }
 
-        private static Uri BuildWebSocketEndpoint(string baseUrl)
-        {
-            Uri baseUri = new Uri(baseUrl, UriKind.Absolute);
-            string scheme = string.Equals(baseUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
-
-            return new UriBuilder(baseUri)
-            {
-                Scheme = scheme,
-                Path = "/ws/replication",
-                Query = string.Empty
-            }.Uri;
-        }
-
         private bool IsValidSyncRequest(ReplicationSignalMessage? message)
         {
             return message is not null
@@ -356,97 +337,14 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
             return message is not null && string.Equals(message.Type, "health-check", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static async Task<string?> ReceiveTextMessageAsync(WebSocket webSocket, CancellationToken cancellationToken)
+        private static Task SendAckAsync(WebSocket webSocket, bool accepted, string? error, CancellationToken cancellationToken)
         {
-            byte[] rented = ArrayPool<byte>.Shared.Rent(8 * 1024);
-
-            try
+            ReplicationSignalAck ack = new ReplicationSignalAck
             {
-                using MemoryStream stream = new MemoryStream();
-
-                while (true)
-                {
-                    WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(rented), cancellationToken).ConfigureAwait(false);
-
-                    if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        if (webSocket.State == WebSocketState.CloseReceived)
-                        {
-                            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closing", cancellationToken).ConfigureAwait(false);
-                        }
-
-                        return null;
-                    }
-
-                    if (result.MessageType != WebSocketMessageType.Text)
-                    {
-                        continue;
-                    }
-
-                    stream.Write(rented, 0, result.Count);
-
-                    if (stream.Length > MaxWebSocketTextMessageBytes)
-                    {
-                        throw new InvalidOperationException($"Replication websocket text message exceeded {MaxWebSocketTextMessageBytes} bytes.");
-                    }
-
-                    if (result.EndOfMessage)
-                    {
-                        break;
-                    }
-                }
-
-                return Encoding.UTF8.GetString(stream.ToArray());
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
-        }
-
-        private static async Task TrySendAckAsync(WebSocket webSocket, bool accepted, string? error, CancellationToken cancellationToken)
-        {
-            if (webSocket.State != WebSocketState.Open)
-            {
-                return;
-            }
-
-            byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new ReplicationSignalAck { Accepted = accepted, Error = error }, JsonOptions);
-
-            try
-            {
-                await webSocket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Intentionally ignored: peer may close immediately after sending signal.
-            }
-        }
-
-        private static async Task TryCloseAsync(WebSocket webSocket, WebSocketCloseStatus status, string statusDescription, CancellationToken cancellationToken)
-        {
-            if (webSocket.State != WebSocketState.Open && webSocket.State != WebSocketState.CloseReceived)
-            {
-                return;
-            }
-
-            try
-            {
-                await webSocket.CloseAsync(status, statusDescription, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                // Best effort close; the peer may already have gone away.
-            }
-        }
-
-        private static TimeSpan ComputeRetryDelay(int attempt)
-        {
-            int boundedAttempt = Math.Clamp(attempt, 1, 10);
-            double exponent = Math.Pow(2, boundedAttempt - 1);
-            double delayMs = Math.Min(RetryBaseDelay.TotalMilliseconds * exponent, RetryMaxDelay.TotalMilliseconds);
-            int jitterMs = Random.Shared.Next(0, 250);
-            return TimeSpan.FromMilliseconds(delayMs + jitterMs);
+                Accepted = accepted,
+                Error = error
+            };
+            return ReplicationSignalWebSocketTransport.TrySendAckAsync(webSocket, ack, JsonOptions, cancellationToken);
         }
 
         private void DrainDispatchSignal()
@@ -456,54 +354,5 @@ namespace LiteDb.Distributed.Server.Infrastructure.Replication
                 _dispatchSignal.Wait(0);
             }
         }
-
-        private static ScheduledDispatch MergeRetry(ScheduledDispatch existing, ScheduledDispatch retry)
-        {
-            if (existing.Attempt == 0 && existing.DueUtc <= DateTime.UtcNow)
-            {
-                return existing;
-            }
-
-            DateTime dueUtc = existing.DueUtc <= retry.DueUtc ? existing.DueUtc : retry.DueUtc;
-            int attempt = existing.Attempt == 0 ? 0 : Math.Max(existing.Attempt, retry.Attempt);
-            string reason = string.IsNullOrWhiteSpace(existing.Reason) ? retry.Reason : existing.Reason;
-
-            return new ScheduledDispatch(existing.DatabaseName, reason, attempt, dueUtc, DateTime.UtcNow);
-        }
-
-        private class ScheduledDispatch
-        {
-            public ScheduledDispatch(string databaseName, string reason, int attempt, DateTime dueUtc, DateTime updatedUtc)
-            {
-                DatabaseName = databaseName;
-                Reason = reason;
-                Attempt = attempt;
-                DueUtc = dueUtc;
-                UpdatedUtc = updatedUtc;
-            }
-
-            public string DatabaseName { get; set; }
-            public string Reason { get; set; }
-            public int Attempt { get; set; }
-            public DateTime DueUtc { get; set; }
-            public DateTime UpdatedUtc { get; set; }
-        }
-
-        private class ReplicationSignalMessage
-        {
-            public string Type { get; set; } = string.Empty;
-            public string SourceNodeId { get; set; } = string.Empty;
-            public string Database { get; set; } = string.Empty;
-            public string ReplicationApiKey { get; set; } = string.Empty;
-            public string Reason { get; set; } = string.Empty;
-            public DateTime TimestampUtc { get; set; }
-        }
-
-        private class ReplicationSignalAck
-        {
-            public bool Accepted { get; set; }
-            public string? Error { get; set; }
-        }
     }
-
 }

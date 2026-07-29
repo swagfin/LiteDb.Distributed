@@ -1,9 +1,10 @@
-using System.Globalization;
 using System.Text.Json;
 using LiteDb.Distributed.Server.Core.Abstractions;
+using LiteDb.Distributed.Server.Core.Cache;
 using LiteDb.Distributed.Server.Core.Common;
 using LiteDb.Distributed.Server.Core.Exceptions;
 using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Infrastructure.Cache;
 using LiteDb.Distributed.Server.Infrastructure.Replication;
 using LiteDb.Distributed.Server.Core.Filters;
 using Microsoft.AspNetCore.Mvc;
@@ -15,9 +16,6 @@ namespace LiteDb.Distributed.Server.Controllers
     [Route("api/cache")]
     public class CacheController : ControllerBase
     {
-        private static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(5);
-        private static readonly TimeSpan MaximumTtl = TimeSpan.FromDays(30);
-
         private readonly ILocalDocumentWriter _writer;
         private readonly ILocalDocumentReader _reader;
         private readonly IReplicationSignalPublisher _replicationSignalPublisher;
@@ -36,14 +34,14 @@ namespace LiteDb.Distributed.Server.Controllers
         {
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            if (!TryNormalizeKey(key, out string? normalizedKey, out string? keyError))
+            if (!CachePolicy.TryNormalizeKey(key, out string normalizedKey, out string keyError))
             {
                 stopwatch.Stop();
                 _logger.LogWarning("Cache set rejected due to invalid key. Key={Key} DurationMs={DurationMs}", key, stopwatch.Elapsed.TotalMilliseconds);
                 return BadRequest(new { Error = keyError });
             }
 
-            if (!TryParseTtl(ttl, out TimeSpan ttlValue, out string? ttlError))
+            if (!CachePolicy.TryParseTtl(ttl, out TimeSpan ttlValue, out string ttlError))
             {
                 stopwatch.Stop();
                 _logger.LogWarning("Cache set rejected due to invalid ttl. Key={Key} Ttl={Ttl} DurationMs={DurationMs}", normalizedKey, ttl, stopwatch.Elapsed.TotalMilliseconds);
@@ -52,7 +50,7 @@ namespace LiteDb.Distributed.Server.Controllers
 
             DateTime now = DateTime.UtcNow;
             CacheEntryDocument? existing = await _reader.GetByIdAsync<CacheEntryDocument>(Common.CacheCollectionName, normalizedKey, cancellationToken).ConfigureAwait(false);
-            DateTime createdUtc = existing is not null && !IsExpired(existing, now) ? NormalizeUtc(existing.CreatedUtc) : now;
+            DateTime createdUtc = existing is not null && !CachePolicy.IsExpired(existing, now) ? CachePolicy.NormalizeUtc(existing.CreatedUtc) : now;
             DateTime expiresAtUtc = now.Add(ttlValue);
             CacheEntryDocument document = new CacheEntryDocument
             {
@@ -78,7 +76,7 @@ namespace LiteDb.Distributed.Server.Controllers
                     Version = result.Version,
                     CommittedUtc = result.CommittedUtc,
                     ExpiresAtUtc = expiresAtUtc,
-                    Ttl = FormatTtl(ttlValue)
+                    Ttl = CachePolicy.FormatTtl(ttlValue)
                 });
             }
             catch (VersionMismatchException ex)
@@ -100,7 +98,7 @@ namespace LiteDb.Distributed.Server.Controllers
         {
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            if (!TryNormalizeKey(key, out string? normalizedKey, out string? keyError))
+            if (!CachePolicy.TryNormalizeKey(key, out string normalizedKey, out string keyError))
             {
                 stopwatch.Stop();
                 _logger.LogWarning("Cache get rejected due to invalid key. Key={Key} DurationMs={DurationMs}", key, stopwatch.Elapsed.TotalMilliseconds);
@@ -116,7 +114,7 @@ namespace LiteDb.Distributed.Server.Controllers
             }
 
             DateTime now = DateTime.UtcNow;
-            if (IsExpired(entry, now))
+            if (CachePolicy.IsExpired(entry, now))
             {
                 await _writer.DeleteAsync(Common.CacheCollectionName, normalizedKey, cancellationToken: cancellationToken).ConfigureAwait(false);
                 _replicationSignalPublisher.NotifyLocalChange("cache-expired-delete");
@@ -134,10 +132,10 @@ namespace LiteDb.Distributed.Server.Controllers
             {
                 Key = normalizedKey,
                 Value = entry.Value,
-                CreatedUtc = NormalizeUtc(entry.CreatedUtc),
-                UpdatedUtc = NormalizeUtc(entry.UpdatedUtc),
-                ExpiresAtUtc = NormalizeUtc(entry.ExpiresAtUtc),
-                RemainingTtl = FormatTtl(entry.ExpiresAtUtc - now)
+                CreatedUtc = CachePolicy.NormalizeUtc(entry.CreatedUtc),
+                UpdatedUtc = CachePolicy.NormalizeUtc(entry.UpdatedUtc),
+                ExpiresAtUtc = CachePolicy.NormalizeUtc(entry.ExpiresAtUtc),
+                RemainingTtl = CachePolicy.FormatTtl(entry.ExpiresAtUtc - now)
             });
         }
 
@@ -146,7 +144,7 @@ namespace LiteDb.Distributed.Server.Controllers
         {
             System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            if (!TryNormalizeKey(key, out string? normalizedKey, out string? keyError))
+            if (!CachePolicy.TryNormalizeKey(key, out string normalizedKey, out string keyError))
             {
                 stopwatch.Stop();
                 _logger.LogWarning("Cache delete rejected due to invalid key. Key={Key} DurationMs={DurationMs}", key, stopwatch.Elapsed.TotalMilliseconds);
@@ -177,171 +175,5 @@ namespace LiteDb.Distributed.Server.Controllers
             }
         }
 
-        private static bool IsExpired(CacheEntryDocument document, DateTime utcNow)
-        {
-            return NormalizeUtc(document.ExpiresAtUtc) <= utcNow;
-        }
-
-        private static bool TryNormalizeKey(string key, out string normalizedKey, out string error)
-        {
-            normalizedKey = key?.Trim() ?? string.Empty;
-
-            if (string.IsNullOrWhiteSpace(normalizedKey))
-            {
-                error = "Cache key is required.";
-                return false;
-            }
-
-            if (normalizedKey.Length > 256)
-            {
-                error = "Cache key cannot exceed 256 characters.";
-                return false;
-            }
-
-            error = string.Empty;
-            return true;
-        }
-
-        private static bool TryParseTtl(string? ttl, out TimeSpan ttlValue, out string error)
-        {
-            if (string.IsNullOrWhiteSpace(ttl))
-            {
-                ttlValue = DefaultTtl;
-                error = string.Empty;
-                return true;
-            }
-
-            string input = ttl.Trim();
-            if (!TryParseTtlInternal(input, out ttlValue))
-            {
-                error = "Invalid ttl format. Use values like '30s', '5m', '2h', or '1d'.";
-                return false;
-            }
-
-            if (ttlValue <= TimeSpan.Zero)
-            {
-                error = "ttl must be greater than zero.";
-                return false;
-            }
-
-            if (ttlValue > MaximumTtl)
-            {
-                error = $"ttl cannot exceed {FormatTtl(MaximumTtl)}.";
-                return false;
-            }
-
-            error = string.Empty;
-            return true;
-        }
-
-        private static bool TryParseTtlInternal(string ttl, out TimeSpan ttlValue)
-        {
-            ttlValue = default;
-
-            if (TryParseUnitSuffixedTtl(ttl, out ttlValue))
-            {
-                return true;
-            }
-
-            if (TimeSpan.TryParse(ttl, CultureInfo.InvariantCulture, out TimeSpan parsed))
-            {
-                ttlValue = parsed;
-                return true;
-            }
-
-            if (double.TryParse(ttl, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
-            {
-                ttlValue = TimeSpan.FromSeconds(seconds);
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool TryParseUnitSuffixedTtl(string ttl, out TimeSpan ttlValue)
-        {
-            ttlValue = default;
-            if (ttl.EndsWith("ms", StringComparison.OrdinalIgnoreCase))
-            {
-                return TryParseNumericDuration(ttl[..^2], TimeSpan.FromMilliseconds, out ttlValue);
-            }
-
-            if (ttl.Length < 2)
-            {
-                return false;
-            }
-
-            char suffix = char.ToLowerInvariant(ttl[^1]);
-            string numericPart = ttl[..^1];
-            return suffix switch
-            {
-                's' => TryParseNumericDuration(numericPart, TimeSpan.FromSeconds, out ttlValue),
-                'm' => TryParseNumericDuration(numericPart, TimeSpan.FromMinutes, out ttlValue),
-                'h' => TryParseNumericDuration(numericPart, TimeSpan.FromHours, out ttlValue),
-                'd' => TryParseNumericDuration(numericPart, TimeSpan.FromDays, out ttlValue),
-                _ => false
-            };
-        }
-
-        private static bool TryParseNumericDuration(string value, Func<double, TimeSpan> builder, out TimeSpan ttlValue)
-        {
-            ttlValue = default;
-
-            if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double numericValue))
-            {
-                return false;
-            }
-
-            try
-            {
-                ttlValue = builder(numericValue);
-                return true;
-            }
-            catch (OverflowException)
-            {
-                return false;
-            }
-        }
-
-        private static string FormatTtl(TimeSpan ttl)
-        {
-            TimeSpan safe = ttl <= TimeSpan.Zero ? TimeSpan.Zero : ttl;
-            return $"{Math.Ceiling(safe.TotalMilliseconds)}ms";
-        }
-
-        private static DateTime NormalizeUtc(DateTime value)
-        {
-            return value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
-        }
-
-        private class CacheEntryDocument
-        {
-            public string Id { get; set; } = string.Empty;
-            public string Key { get; set; } = string.Empty;
-            public JsonElement Value { get; set; }
-            public DateTime CreatedUtc { get; set; }
-            public DateTime UpdatedUtc { get; set; }
-            public DateTime ExpiresAtUtc { get; set; }
-        }
-
-        private class CacheSetResponse
-        {
-            public required string Key { get; set; }
-            public required string Version { get; set; }
-            public required DateTime CommittedUtc { get; set; }
-            public required DateTime ExpiresAtUtc { get; set; }
-            public required string Ttl { get; set; }
-        }
-
-        private class CacheGetResponse
-        {
-            public required string Key { get; set; }
-            public required JsonElement Value { get; set; }
-            public required DateTime CreatedUtc { get; set; }
-            public required DateTime UpdatedUtc { get; set; }
-            public required DateTime ExpiresAtUtc { get; set; }
-            public required string RemainingTtl { get; set; }
-        }
     }
-
 }

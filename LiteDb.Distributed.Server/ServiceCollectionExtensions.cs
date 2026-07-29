@@ -1,11 +1,11 @@
-using LiteDb.Distributed.Server.Core.Abstractions;
-using LiteDb.Distributed.Server.Infrastructure.Cache;
 using LiteDb.Distributed.Server.Configuration;
-using LiteDb.Distributed.Server.Infrastructure.Conflict;
+using LiteDb.Distributed.Server.Core.Abstractions;
 using LiteDb.Distributed.Server.Core.Context;
-using LiteDb.Distributed.Server.Infrastructure.Replication;
 using LiteDb.Distributed.Server.Data;
-using Microsoft.Extensions.DependencyInjection;
+using LiteDb.Distributed.Server.Infrastructure.Cache;
+using LiteDb.Distributed.Server.Infrastructure.Conflict;
+using LiteDb.Distributed.Server.Infrastructure.Dashboard;
+using LiteDb.Distributed.Server.Infrastructure.Replication;
 
 namespace LiteDb.Distributed.Server
 {
@@ -40,6 +40,7 @@ namespace LiteDb.Distributed.Server
             services.AddSingleton<IOperationIngestionService, OperationIngestionService>();
             services.AddSingleton<IClusterReplicationService, PeerReplicationService>();
             services.AddSingleton<IReplicationStatusService, ReplicationStatusService>();
+            services.AddSingleton<DashboardPeerProbeService>();
             services.AddSingleton<OperationLogPruningService>();
             services.AddSingleton<IOperationLogPruningService>(sp => sp.GetRequiredService<OperationLogPruningService>());
             services.AddSingleton<IReplicationOrchestrator, ReplicationOrchestrator>();
