@@ -4,214 +4,228 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LiteDb.Distributed Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: dark;
-      --bg-0: #080a0d;
-      --bg-1: #11151b;
-      --card: rgba(19, 23, 30, 0.9);
-      --card-strong: rgba(24, 30, 39, 0.96);
-      --ink: #e8eef8;
-      --muted: #9aa8bc;
-      --line: #2a3444;
-      --line-strong: #3a4658;
-      --brand: #38bdf8;
-      --brand-strong: #22c55e;
-      --good: #22c55e;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --info: #38bdf8;
-      --spark-http: #22d3ee;
-      --spark-ws: #c084fc;
-      --shadow: 0 18px 36px rgba(0, 0, 0, 0.36);
-      --radius: 8px;
+      --canvas: #0d1117;
+      --canvas-subtle: #010409;
+      --surface: #161b22;
+      --surface-muted: #21262d;
+      --surface-raised: #1c2128;
+      --border: #30363d;
+      --border-muted: #21262d;
+      --border-accent: #388bfd;
+      --fg: #f0f6fc;
+      --fg-muted: #8b949e;
+      --fg-subtle: #6e7681;
+      --accent: #58a6ff;
+      --accent-emphasis: #1f6feb;
+      --success: #3fb950;
+      --success-emphasis: #238636;
+      --attention: #d29922;
+      --danger: #f85149;
+      --neutral: #8b949e;
+      --http: #2f81f7;
+      --ws: #a371f7;
+      --shadow: 0 16px 36px rgba(1, 4, 9, 0.34);
+      --radius: 6px;
     }
 
     * { box-sizing: border-box; }
 
     ::selection {
-      background: rgba(56, 189, 248, 0.28);
-      color: #f8fbff;
+      background: rgba(56, 139, 253, 0.32);
+      color: var(--fg);
     }
 
     *:focus-visible {
-      outline: 2px solid rgba(56, 189, 248, 0.72);
-      outline-offset: 3px;
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
 
     html {
-      scrollbar-color: #3a4658 #080a0d;
+      scrollbar-color: #30363d #0d1117;
     }
 
     body {
       margin: 0;
       min-height: 100vh;
-      color: var(--ink);
-      font-family: "Outfit", "Segoe UI", sans-serif;
-      background:
-        linear-gradient(180deg, var(--bg-0), var(--bg-1));
-      background-attachment: fixed;
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--canvas);
       overflow-y: scroll;
     }
 
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-      background-size: 40px 40px;
-      pointer-events: none;
-      z-index: -1;
-    }
-
     .shell {
-      width: min(1320px, 100% - 32px);
-      margin: 24px auto 38px;
+      width: min(1380px, 100% - 32px);
+      margin: 24px auto 34px;
       display: grid;
       gap: 16px;
-      animation: fadeIn 420ms ease-out;
-    }
-
-    .panel {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      padding: 16px;
-      transition: transform 160ms ease, box-shadow 200ms ease, border-color 200ms ease, background 200ms ease;
-    }
-
-    .panel:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 22px 42px rgba(0, 0, 0, 0.44);
-      border-color: var(--line-strong);
-      background: var(--card-strong);
+      animation: fadeIn 240ms ease-out;
     }
 
     .hero {
       display: grid;
-      gap: 14px;
       grid-template-columns: 1fr auto;
-      align-items: center;
-      padding: 20px;
-      overflow: hidden;
-      position: relative;
+      gap: 18px;
+      align-items: stretch;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin: 0 0 8px;
-      padding: 7px 12px;
-      border-radius: 999px;
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      background: rgba(56, 189, 248, 0.1);
-      color: #a5f3fc;
-      font-size: 0.76rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .eyebrow::before {
-      content: "";
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--brand);
-      box-shadow: 0 0 0 5px rgba(56, 189, 248, 0.14);
+    .hero-copy {
+      min-width: 0;
     }
 
     h1 {
       margin: 0;
-      font-size: clamp(1.35rem, 2.2vw, 1.95rem);
-      letter-spacing: 0.015em;
+      color: var(--fg);
+      font-size: clamp(1.32rem, 1.8vw, 1.72rem);
+      font-weight: 600;
+      letter-spacing: 0;
     }
 
     .subtext {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 0.95rem;
+      margin: 9px 0 0;
+      color: var(--fg-muted);
+      font-size: 0.94rem;
     }
 
     .hero-actions {
-      text-align: right;
       display: grid;
-      gap: 9px;
+      align-content: start;
       justify-items: end;
+      gap: 10px;
+      min-width: 245px;
     }
 
     .controls {
       display: grid;
-      gap: 8px;
       justify-items: end;
+      gap: 9px;
     }
 
     .control {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.84rem;
-      color: #b7c4d8;
+      color: var(--fg-muted);
+      font-size: 0.83rem;
       font-weight: 600;
     }
 
     .select {
-      border: 1px solid var(--line-strong);
-      background: #0f141b;
-      color: var(--ink);
-      border-radius: 8px;
-      padding: 5px 9px;
-      font-family: "Outfit", "Segoe UI", sans-serif;
-      font-size: 0.84rem;
+      min-width: 128px;
+      min-height: 32px;
+      color: var(--fg);
+      font: inherit;
+      font-size: 0.83rem;
       font-weight: 600;
-      min-width: 120px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 5px 10px;
     }
 
     .select:hover {
-      border-color: rgba(56, 189, 248, 0.45);
+      border-color: #8b949e;
+      background: var(--surface-muted);
     }
 
     .btn {
       appearance: none;
-      border: none;
-      border-radius: 8px;
-      padding: 11px 16px;
-      color: #041015;
-      font-weight: 700;
-      font-family: "Outfit", "Segoe UI", sans-serif;
-      letter-spacing: 0.02em;
-      background: linear-gradient(135deg, var(--brand), var(--brand-strong));
-      box-shadow: 0 10px 24px rgba(34, 197, 94, 0.22);
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: #ffffff;
+      background: var(--success-emphasis);
+      border: 1px solid rgba(240, 246, 252, 0.1);
+      border-radius: var(--radius);
+      padding: 4px 11px;
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: transform 140ms ease, box-shadow 180ms ease, opacity 150ms ease;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+
+    .btn::before {
+      content: "";
+      width: 11px;
+      height: 11px;
+      border: 1.8px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
     }
 
     .btn:hover {
+      background: #2ea043;
+      border-color: rgba(240, 246, 252, 0.18);
       transform: translateY(-1px);
-      box-shadow: 0 14px 30px rgba(56, 189, 248, 0.22);
     }
 
     .btn:disabled {
-      opacity: 0.6;
+      opacity: 0.62;
       cursor: not-allowed;
       transform: none;
-      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
     }
 
     .meta {
       margin: 0;
-      font-family: "JetBrains Mono", "Consolas", monospace;
-      color: #8ea0b8;
-      font-size: 0.78rem;
+      color: var(--fg-subtle);
+      font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.76rem;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      overflow: hidden;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      color: var(--fg-muted);
+      padding: 0 12px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .tab.active {
+      color: var(--fg);
+    }
+
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      right: 8px;
+      bottom: -1px;
+      left: 8px;
+      height: 2px;
+      border-radius: 999px;
+      background: #f78166;
+    }
+
+    .tab-count {
+      min-width: 18px;
+      height: 18px;
+      display: inline-grid;
+      place-items: center;
+      color: var(--fg);
+      border-radius: 999px;
+      background: var(--surface-muted);
+      padding: 0 6px;
+      font-size: 0.72rem;
     }
 
     .metrics {
@@ -220,43 +234,41 @@
       gap: 12px;
     }
 
-    .metric {
-      position: relative;
-      overflow: hidden;
-      min-height: 100px;
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }
 
-    .metric::before {
-      content: "";
-      position: absolute;
-      inset: 0 0 auto;
-      height: 2px;
-      background: linear-gradient(90deg, var(--brand), transparent 70%);
-      pointer-events: none;
+    .metric {
+      position: relative;
+      min-height: 112px;
+      padding: 15px;
+      overflow: hidden;
     }
 
     .metric-title {
+      margin: 0 0 9px;
+      color: var(--fg-muted);
       font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.09em;
-      color: #a8b5c8;
-      font-weight: 700;
-      margin: 0 0 8px;
+      font-weight: 600;
     }
 
     .metric-value {
-      font-size: clamp(1.05rem, 2.1vw, 1.72rem);
-      line-height: 1.1;
       margin: 0;
-      font-weight: 800;
-      color: #f8fbff;
+      color: var(--fg);
+      font-size: clamp(1.22rem, 2vw, 1.72rem);
+      font-weight: 600;
+      line-height: 1.12;
       word-break: break-word;
     }
 
     .metric-hint {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 0.88rem;
+      margin: 9px 0 0;
+      color: var(--fg-subtle);
+      font-size: 0.84rem;
+      line-height: 1.4;
     }
 
     .section {
@@ -267,169 +279,194 @@
     .section-head {
       display: flex;
       align-items: baseline;
+      justify-content: space-between;
       gap: 12px;
       flex-wrap: wrap;
-      margin-top: 2px;
     }
 
     .section-head h2 {
       margin: 0;
-      font-size: 1.08rem;
-      letter-spacing: 0.01em;
+      color: var(--fg);
+      font-size: 1rem;
+      font-weight: 600;
     }
 
     .section-head p {
       margin: 0;
-      color: var(--muted);
-      font-size: 0.88rem;
+      color: var(--fg-muted);
+      font-size: 0.86rem;
     }
 
     .grid {
       display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 12px;
-      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
     }
 
-    .node-card.current-node {
-      border-color: rgba(56, 189, 248, 0.55);
-      box-shadow: 0 22px 42px rgba(56, 189, 248, 0.12);
+    .card {
+      padding: 14px;
+      transition: border-color 140ms ease, background 140ms ease;
+    }
+
+    .card:hover {
+      background: var(--surface-raised);
+      border-color: #8b949e;
     }
 
     .row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 10px;
       align-items: center;
+      gap: 7px;
+      margin-bottom: 11px;
     }
 
     .title {
-      margin: 0;
-      font-size: 1.04rem;
-      font-weight: 700;
-      letter-spacing: 0.01em;
-      color: #f4f8ff;
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0;
+      word-break: break-word;
     }
 
     .pill {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      font-size: 0.77rem;
-      font-weight: 700;
+      gap: 6px;
+      min-height: 22px;
+      max-width: 100%;
+      padding: 2px 7px;
       border: 1px solid transparent;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      line-height: 1.2;
       white-space: nowrap;
     }
 
     .pill::before {
       content: "";
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
       border-radius: 50%;
-      display: inline-block;
+      background: currentColor;
     }
 
     .pill.ok {
-      color: #bbf7d0;
-      background: rgba(34, 197, 94, 0.12);
-      border-color: rgba(34, 197, 94, 0.34);
+      color: #56d364;
+      background: rgba(35, 134, 54, 0.15);
+      border-color: rgba(63, 185, 80, 0.32);
     }
-
-    .pill.ok::before { background: var(--good); }
 
     .pill.warn {
-      color: #fde68a;
-      background: rgba(245, 158, 11, 0.13);
-      border-color: rgba(245, 158, 11, 0.35);
+      color: #e3b341;
+      background: rgba(187, 128, 9, 0.14);
+      border-color: rgba(210, 153, 34, 0.32);
     }
-
-    .pill.warn::before { background: var(--warn); }
 
     .pill.bad {
-      color: #fecaca;
-      background: rgba(239, 68, 68, 0.13);
-      border-color: rgba(239, 68, 68, 0.35);
+      color: #ff7b72;
+      background: rgba(248, 81, 73, 0.12);
+      border-color: rgba(248, 81, 73, 0.35);
     }
-
-    .pill.bad::before { background: var(--bad); }
 
     .pill.info {
-      color: #bae6fd;
-      background: rgba(56, 189, 248, 0.12);
-      border-color: rgba(56, 189, 248, 0.35);
+      color: #79c0ff;
+      background: rgba(56, 139, 253, 0.13);
+      border-color: rgba(88, 166, 255, 0.34);
     }
-
-    .pill.info::before { background: var(--info); }
 
     .pill.neutral {
-      color: #cbd5e1;
-      background: rgba(148, 163, 184, 0.12);
-      border-color: rgba(148, 163, 184, 0.28);
+      color: #c9d1d9;
+      background: rgba(110, 118, 129, 0.16);
+      border-color: rgba(139, 148, 158, 0.32);
     }
 
-    .pill.neutral::before { background: #94a3b8; }
-
     .kv {
-      margin: 6px 0 0;
-      color: #bcc8d8;
-      font-size: 0.9rem;
+      display: grid;
+      grid-template-columns: minmax(104px, max-content) minmax(0, 1fr);
+      gap: 8px;
+      margin: 7px 0 0;
+      color: var(--fg-muted);
+      font-size: 0.88rem;
+      line-height: 1.42;
       word-break: break-word;
     }
 
+    .kv strong {
+      color: var(--fg-subtle);
+      font-weight: 600;
+    }
+
+    .kv .pill {
+      width: fit-content;
+    }
+
     .note {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 0.87rem;
-      font-style: italic;
+      margin: 0;
+      color: var(--fg-muted);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .empty-state {
+      padding: 18px;
+      color: var(--fg-muted);
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
     }
 
     .error {
       margin-top: 10px;
-      color: #fecaca;
-      background: rgba(239, 68, 68, 0.12);
-      border: 1px solid rgba(239, 68, 68, 0.32);
-      border-radius: 8px;
+      color: #ffb4ab;
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid rgba(248, 81, 73, 0.33);
+      border-radius: var(--radius);
       padding: 8px 10px;
-      font-size: 0.86rem;
+      font-size: 0.84rem;
       white-space: pre-wrap;
       word-break: break-word;
     }
 
+    .hero-actions .error {
+      max-width: 340px;
+      text-align: left;
+    }
+
     .spark-wrap {
-      margin-top: 10px;
-      border: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(12, 16, 22, 0.95), rgba(15, 20, 28, 0.95));
-      border-radius: 8px;
-      padding: 8px;
+      margin-top: 12px;
+      border: 1px solid var(--border-muted);
+      background: var(--canvas-subtle);
+      border-radius: var(--radius);
+      padding: 10px;
     }
 
     .spark-head {
-      margin: 0 0 6px;
-      font-size: 0.79rem;
-      color: #a8b5c8;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
+      margin: 0 0 8px;
+      color: var(--fg-muted);
+      font-size: 0.76rem;
+      font-weight: 600;
     }
 
     .spark-svg {
       width: 100%;
-      height: 58px;
+      height: 64px;
       display: block;
       overflow: visible;
       background: transparent;
     }
 
     .spark-grid {
-      stroke: rgba(148, 163, 184, 0.22);
+      stroke: rgba(139, 148, 158, 0.2);
       stroke-width: 1;
     }
 
     .spark-http {
       fill: none;
-      stroke: var(--spark-http);
+      stroke: var(--http);
       stroke-width: 2.2;
       stroke-linejoin: round;
       stroke-linecap: round;
@@ -437,7 +474,7 @@
 
     .spark-ws {
       fill: none;
-      stroke: var(--spark-ws);
+      stroke: var(--ws);
       stroke-width: 2.2;
       stroke-linejoin: round;
       stroke-linecap: round;
@@ -446,24 +483,21 @@
     .spark-point {
       opacity: 0;
       pointer-events: none;
-      transition: opacity 130ms ease;
+      transition: opacity 120ms ease;
     }
 
     .spark-svg:hover .spark-point {
       opacity: 1;
     }
 
-    .spark-point-http {
-      fill: #081018;
-      stroke: var(--spark-http);
+    .spark-point-http,
+    .spark-point-ws {
+      fill: var(--canvas-subtle);
       stroke-width: 2;
     }
 
-    .spark-point-ws {
-      fill: #081018;
-      stroke: var(--spark-ws);
-      stroke-width: 2;
-    }
+    .spark-point-http { stroke: var(--http); }
+    .spark-point-ws { stroke: var(--ws); }
 
     .spark-hitpoint {
       fill: transparent;
@@ -476,25 +510,25 @@
       z-index: 1200;
       max-width: 240px;
       padding: 8px 10px;
-      border-radius: 10px;
-      background: rgba(6, 10, 16, 0.96);
-      border: 1px solid rgba(148, 163, 184, 0.35);
-      color: #f8fbff;
+      color: var(--fg);
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 16px 32px rgba(1, 4, 9, 0.42);
       font-size: 0.8rem;
       line-height: 1.35;
-      box-shadow: 0 14px 32px rgba(8, 24, 51, 0.35);
       pointer-events: none;
       white-space: normal;
     }
 
     .spark-legend {
-      margin-top: 6px;
       display: flex;
       align-items: center;
-      gap: 14px;
-      color: #a8b5c8;
-      font-size: 0.8rem;
       flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 8px;
+      color: var(--fg-muted);
+      font-size: 0.79rem;
     }
 
     .legend {
@@ -506,44 +540,43 @@
 
     .legend::before {
       content: "";
-      width: 10px;
+      width: 18px;
       height: 3px;
       border-radius: 999px;
       display: inline-block;
     }
 
-    .legend.http::before { background: var(--spark-http); }
-    .legend.ws::before { background: var(--spark-ws); }
+    .legend.http::before { background: var(--http); }
+    .legend.ws::before { background: var(--ws); }
 
     .reveal {
-      animation: rise 320ms ease;
+      animation: fadeIn 180ms ease;
       transform-origin: 50% 90%;
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(4px); }
+      from { opacity: 0; transform: translateY(3px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    @keyframes rise {
-      from { opacity: 0; transform: translateY(8px) scale(0.995); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    @media (max-width: 1024px) {
+    @media (max-width: 980px) {
       .metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
-    @media (max-width: 800px) {
+    @media (max-width: 780px) {
+      .shell {
+        width: min(1380px, 100% - 20px);
+      }
+
       .hero {
         grid-template-columns: 1fr;
       }
 
       .hero-actions {
         justify-items: start;
-        text-align: left;
+        min-width: 0;
       }
 
       .controls {
@@ -554,27 +587,27 @@
         grid-template-columns: 1fr;
       }
 
-      .shell {
-        width: min(1320px, 100% - 20px);
-        margin: 16px auto 30px;
+      .grid {
+        grid-template-columns: 1fr;
       }
 
-      .panel {
-        padding: 14px;
+      .kv {
+        grid-template-columns: 1fr;
+        gap: 2px;
       }
     }
   </style>
 </head>
 <body>
   <main class="shell">
-    <header class="panel hero">
-      <div>
-        <p class="eyebrow">Realtime Cluster View</p>
-        <h1>LiteDb.Distributed Dashboard</h1>
+    <header class="hero">
+      <div class="hero-copy">
+        <h1>Operations dashboard</h1>
         <p class="subtext" id="summary">Loading cluster telemetry...</p>
       </div>
       <div class="hero-actions">
         <div class="controls">
+          <button id="refreshBtn" class="btn" type="button">Refresh Now</button>
           <label class="control" for="refreshIntervalSelect">
             Refresh interval
             <select id="refreshIntervalSelect" class="select">
@@ -585,13 +618,18 @@
             </select>
           </label>
         </div>
-        <button id="refreshBtn" class="btn" type="button">Refresh Now</button>
         <p id="metaLine" class="meta">No data yet.</p>
         <div class="error" id="errorLine" hidden></div>
       </div>
     </header>
 
-    <section class="metrics">
+    <nav class="tabs" aria-label="Dashboard sections">
+      <div class="tab active">Overview <span class="tab-count" id="tabNodeCount">0</span></div>
+      <div class="tab">Peers <span class="tab-count" id="tabPeerCount">0</span></div>
+      <div class="tab">Databases <span class="tab-count" id="tabDbCount">0</span></div>
+    </nav>
+
+    <section class="metrics" aria-label="Cluster summary">
       <article class="panel metric reveal">
         <p class="metric-title">Current Node</p>
         <p class="metric-value" id="kpiCurrentNode">-</p>
@@ -611,8 +649,8 @@
 
     <section class="section">
       <div class="section-head">
-        <h2>Peer Connectivity (Current Node)</h2>
-        <p>HTTP + WebSocket connectivity with rolling latency trend per peer.</p>
+        <h2>Peer Connectivity</h2>
+        <p>HTTP and WebSocket probe health from the current node.</p>
       </div>
       <div id="peerConnectivityGrid" class="grid"></div>
     </section>
@@ -620,7 +658,7 @@
     <section class="section">
       <div class="section-head">
         <h2>Databases</h2>
-        <p>Logical database status and files.</p>
+        <p>Logical database status, log range, files, and replication lag.</p>
       </div>
       <div id="databasesGrid" class="grid"></div>
     </section>
@@ -639,6 +677,9 @@
     const kpiCurrentNode = document.getElementById("kpiCurrentNode");
     const kpiNodeCount = document.getElementById("kpiNodeCount");
     const kpiDbCount = document.getElementById("kpiDbCount");
+    const tabNodeCount = document.getElementById("tabNodeCount");
+    const tabPeerCount = document.getElementById("tabPeerCount");
+    const tabDbCount = document.getElementById("tabDbCount");
 
     let refreshTimer = null;
 
@@ -675,6 +716,9 @@
       kpiCurrentNode.textContent = data.NodeId || "-";
       kpiNodeCount.textContent = String(nodes.length);
       kpiDbCount.textContent = String(databases.length);
+      tabNodeCount.textContent = String(nodes.length);
+      tabPeerCount.textContent = String(peerConnections.length);
+      tabDbCount.textContent = String(databases.length);
 
       renderPeerConnections(peerConnections);
       renderDatabases(databases);
@@ -685,7 +729,7 @@
       peerConnectivityGrid.innerHTML = "";
 
       if (!peers || peers.length === 0) {
-        peerConnectivityGrid.innerHTML = `<article class="panel reveal"><p class="note">No peer connectivity data yet.</p></article>`;
+        peerConnectivityGrid.innerHTML = `<article class="empty-state reveal"><p class="note">No peer connectivity data yet.</p></article>`;
         return;
       }
 
@@ -699,16 +743,16 @@
         const sparkline = renderLatencySparkline(peer.LatencyHistory || []);
 
         peerConnectivityGrid.insertAdjacentHTML("beforeend", `
-          <article class="panel reveal">
+          <article class="panel card reveal">
             <div class="row">
               <span class="pill ${statusClass(overallStatus)}">${escapeHtml(overallStatus)}</span>
               <span class="pill ${peer.IsPeerActive ? "ok" : "warn"}">${escapeHtml(activeStatus)}</span>
             </div>
             <h3 class="title">${escapeHtml(peer.PeerNodeId)}</h3>
-            <p class="kv">Base URL: ${escapeHtml(peer.BaseUrl || "(not set)")}</p>
-            <p class="kv">HTTP: <span class="pill ${statusClass(peer.HttpStatus || "Unknown")}">${escapeHtml(peer.HttpStatus || "Unknown")}</span> (${httpLatency})</p>
-            <p class="kv">WebSocket: <span class="pill ${statusClass(peer.WebSocketStatus || "Unknown")}">${escapeHtml(peer.WebSocketStatus || "Unknown")}</span> (${wsLatency})</p>
-            <p class="kv">Last checked: ${escapeHtml(checked)}</p>
+            <p class="kv"><strong>Base URL</strong><span>${escapeHtml(peer.BaseUrl || "(not set)")}</span></p>
+            <p class="kv"><strong>HTTP</strong><span><span class="pill ${statusClass(peer.HttpStatus || "Unknown")}">${escapeHtml(peer.HttpStatus || "Unknown")}</span> ${httpLatency}</span></p>
+            <p class="kv"><strong>WebSocket</strong><span><span class="pill ${statusClass(peer.WebSocketStatus || "Unknown")}">${escapeHtml(peer.WebSocketStatus || "Unknown")}</span> ${wsLatency}</span></p>
+            <p class="kv"><strong>Last checked</strong><span>${escapeHtml(checked)}</span></p>
             ${sparkline}
             ${error}
           </article>`);
@@ -719,7 +763,7 @@
       databasesGrid.innerHTML = "";
 
       if (databases.length === 0) {
-        databasesGrid.innerHTML = `<article class="panel reveal"><p class="note">No logical databases registered yet.</p></article>`;
+        databasesGrid.innerHTML = `<article class="empty-state reveal"><p class="note">No logical databases registered yet.</p></article>`;
         return;
       }
 
@@ -730,23 +774,23 @@
         const peerLag = replicationPeers.length === 0
           ? `<p class="note">No replication peers registered.</p>`
           : replicationPeers.map(peer => `
-              <p class="kv">${escapeHtml(peer.PeerNodeId)}:
-                ${escapeHtml(peer.CatchUpStatus || "Unknown")},
+              <p class="kv"><strong>${escapeHtml(peer.PeerNodeId)}</strong>
+                <span>${escapeHtml(peer.CatchUpStatus || "Unknown")},
                 pending ~${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)},
                 pushed ${escapeHtml(peer.LastPushedLocalLogSequence ?? 0)},
-                pulled ${escapeHtml(peer.LastPulledPeerLogSequence ?? 0)}
+                pulled ${escapeHtml(peer.LastPulledPeerLogSequence ?? 0)}</span>
               </p>`).join("");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
-          <article class="panel reveal">
+          <article class="panel card reveal">
             <div class="row">
               <span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>
               <span class="pill info">${escapeHtml(db.Name)}</span>
             </div>
-            <p class="kv">Peers registered: ${escapeHtml(db.PeerCount)}</p>
-            <p class="kv">Log range: ${escapeHtml(db.OldestAvailableLogSequence ?? 0)} - ${escapeHtml(db.LocalMaxLogSequence ?? 0)}</p>
-            <p class="kv">Estimated pending push operations: ${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</p>
-            <p class="kv">Database file: ${formatFile(db.DatabaseFile)}</p>
+            <p class="kv"><strong>Peers</strong><span>${escapeHtml(db.PeerCount)}</span></p>
+            <p class="kv"><strong>Log range</strong><span>${escapeHtml(db.OldestAvailableLogSequence ?? 0)} - ${escapeHtml(db.LocalMaxLogSequence ?? 0)}</span></p>
+            <p class="kv"><strong>Pending push</strong><span>${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</span></p>
+            <p class="kv"><strong>Database file</strong><span>${formatFile(db.DatabaseFile)}</span></p>
             ${peerLag}
             ${error}
           </article>`);
@@ -756,7 +800,7 @@
     function renderLatencySparkline(history) {
       const samples = Array.isArray(history) ? history : [];
       const width = 240;
-      const height = 58;
+      const height = 64;
       const httpSeries = buildSparklineSeries(samples.map(x => x.HttpDurationMs), width, height);
       const wsSeries = buildSparklineSeries(samples.map(x => x.WebSocketDurationMs), width, height);
 
@@ -772,7 +816,7 @@
 
       return `
         <div class="spark-wrap">
-          <p class="spark-head">Latency Trend (${sampleCount} server samples)</p>
+          <p class="spark-head">Latency trend (${sampleCount} server samples)</p>
           <svg class="spark-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Latency trend for HTTP and WebSocket probes">
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.2)}" x2="${width}" y2="${Math.round(height * 0.2)}"></line>
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.5)}" x2="${width}" y2="${Math.round(height * 0.5)}"></line>
@@ -799,8 +843,8 @@
         return null;
       }
 
-      const topPad = 4;
-      const bottomPad = 4;
+      const topPad = 5;
+      const bottomPad = 5;
       const usableHeight = height - topPad - bottomPad;
       const step = values.length <= 1 ? width : width / (values.length - 1);
       const points = [];
