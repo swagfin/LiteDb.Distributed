@@ -303,6 +303,11 @@
       gap: 12px;
     }
 
+    .database-grid {
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+    }
+
     .card {
       padding: 14px;
       transition: border-color 140ms ease, background 140ms ease;
@@ -311,6 +316,31 @@
     .card:hover {
       background: var(--surface-raised);
       border-color: #8b949e;
+    }
+
+    .database-card {
+      padding: 10px 12px;
+      box-shadow: none;
+    }
+
+    .database-card .row {
+      margin-bottom: 8px;
+    }
+
+    .database-card .fact-list {
+      margin-top: 6px;
+    }
+
+    .database-card .fact-row {
+      min-height: 22px;
+      grid-template-columns: minmax(92px, max-content) minmax(0, 1fr);
+      font-size: 0.8rem;
+    }
+
+    .database-card .pill {
+      min-height: 20px;
+      font-size: 0.7rem;
+      padding: 2px 7px;
     }
 
     .row {
@@ -662,6 +692,10 @@
         grid-template-columns: 1fr;
       }
 
+      .database-grid {
+        grid-template-columns: 1fr;
+      }
+
       .kv {
         grid-template-columns: 1fr;
         gap: 2px;
@@ -735,9 +769,9 @@
     <section class="section">
       <div class="section-head">
         <h2>Databases</h2>
-        <p>Logical database status, files, and replication lag.</p>
+        <p>Logical database files and replication state.</p>
       </div>
-      <div id="databasesGrid" class="grid"></div>
+      <div id="databasesGrid" class="grid database-grid"></div>
     </section>
   </main>
   <div id="sparkTooltip" class="spark-tooltip" hidden></div>
@@ -858,13 +892,12 @@
               </div>`).join("");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
-          <article class="panel card reveal">
+          <article class="panel card database-card reveal">
             <div class="row">
               <span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>
               <span class="pill info">${escapeHtml(db.Name)}</span>
             </div>
             <div class="fact-list">
-              <div class="fact-row"><span class="fact-label">Peers</span><span class="fact-value">${escapeHtml(db.PeerCount)}</span></div>
               <div class="fact-row"><span class="fact-label">Pending push</span><span class="fact-value">${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</span></div>
               <div class="fact-row"><span class="fact-label">Database file</span><span class="fact-value">${formatFile(db.DatabaseFile)}</span></div>
               ${peerLag}
@@ -1044,9 +1077,7 @@
         return "missing";
       }
 
-      const size = formatBytes(file.SizeBytes || 0);
-      const time = file.LastWriteUtc ? formatLocalDateTime(file.LastWriteUtc) : "n/a";
-      return `${size} | ${escapeHtml(time)}`;
+      return formatBytes(file.SizeBytes || 0);
     }
 
     function formatBytes(bytes) {
@@ -1066,21 +1097,6 @@
 
       const decimals = size >= 10 || unitIndex === 0 ? 0 : 1;
       return `${size.toFixed(decimals)} ${units[unitIndex]}`;
-    }
-
-    function formatLocalDateTime(value) {
-      const d = value ? new Date(value) : null;
-      if (!d || Number.isNaN(d.getTime())) {
-        return "n/a";
-      }
-
-      const year = d.getFullYear();
-      const month = pad2(d.getMonth() + 1);
-      const day = pad2(d.getDate());
-      const hour = pad2(d.getHours());
-      const minute = pad2(d.getMinutes());
-      const second = pad2(d.getSeconds());
-      return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
     }
 
     function formatLatency(value) {
@@ -1108,10 +1124,6 @@
 
     function round2(value) {
       return Math.round(value * 100) / 100;
-    }
-
-    function pad2(value) {
-      return String(value).padStart(2, "0");
     }
 
     function escapeHtml(value) {
