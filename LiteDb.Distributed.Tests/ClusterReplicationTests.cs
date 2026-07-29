@@ -1,5 +1,6 @@
 using LiteDb.Distributed.Server.Controllers;
 using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Core.Queries;
 using LiteDb.Distributed.Tests.TestSupport;
 
 namespace LiteDb.Distributed.Tests
@@ -109,7 +110,7 @@ namespace LiteDb.Distributed.Tests
             await nodeA.UpsertCustomerAsync("cust-bulk-upd-003", "Bulk Three");
             await cluster.ReplicateAllAsync(rounds: 3);
 
-            QueryController.QueryResponse response = await nodeA.ExecuteQueryAsync("UPDATE customers SET {\"Tier\":\"vip\"} WHERE $_id = 'cust-bulk-upd-001' OR $_id = 'cust-bulk-upd-002'");
+            QueryResponse response = await nodeA.ExecuteQueryAsync("UPDATE customers SET {\"Tier\":\"vip\"} WHERE $_id = 'cust-bulk-upd-001' OR $_id = 'cust-bulk-upd-002'");
             await cluster.ReplicateAllAsync(rounds: 3);
 
             // Safe query mode reports matched rows and applied writes separately.
@@ -146,7 +147,7 @@ namespace LiteDb.Distributed.Tests
             await nodeA.UpsertCustomerAsync("cust-bulk-del-003", "Delete Three");
             await cluster.ReplicateAllAsync(rounds: 3);
 
-            QueryController.QueryResponse response = await nodeA.ExecuteQueryAsync("DELETE FROM customers WHERE $_id = 'cust-bulk-del-001' OR $_id = 'cust-bulk-del-002'");
+            QueryResponse response = await nodeA.ExecuteQueryAsync("DELETE FROM customers WHERE $_id = 'cust-bulk-del-001' OR $_id = 'cust-bulk-del-002'");
             await cluster.ReplicateAllAsync(rounds: 3);
 
             // Two targeted documents should be removed everywhere, while unrelated rows remain.
@@ -166,6 +167,35 @@ namespace LiteDb.Distributed.Tests
             Assert.Null(c2);
             Assert.NotNull(b3);
             Assert.NotNull(c3);
+        }
+
+        [Fact]
+        public async Task SelectTop_ReturnsLiveRowsAfterBulkDeleteTombstones()
+        {
+            await using TestCluster cluster = new TestCluster();
+            TestNode nodeA = cluster.AddNode("node-a");
+
+            for (int i = 0; i < 200; i++)
+            {
+                await nodeA.UpsertCustomerAsync($"cust-window-old-{i:D3}", $"Old Customer {i:D3}");
+            }
+
+            QueryResponse deleteResponse = await nodeA.ExecuteQueryAsync("DELETE FROM customers", 500);
+            Assert.Equal(200, deleteResponse.AppliedCount);
+
+            for (int i = 0; i < 10; i++)
+            {
+                await nodeA.UpsertCustomerAsync($"cust-window-new-{i:D3}", $"New Customer {i:D3}");
+            }
+
+            QueryResponse selectResponse = await nodeA.ExecuteQueryAsync("SELECT TOP 100 $ FROM customers", 100);
+
+            Assert.Equal(10, selectResponse.ReturnedRows);
+            Assert.All(selectResponse.Rows, row =>
+            {
+                Assert.True(row.TryGetValue("Id", out object? id) || row.TryGetValue("_id", out id));
+                Assert.StartsWith("cust-window-new-", id?.ToString());
+            });
         }
 
         [Fact]

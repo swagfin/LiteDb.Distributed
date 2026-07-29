@@ -3,6 +3,7 @@ using LiteDb.Distributed.Server.Infrastructure.Conflict;
 using LiteDb.Distributed.Server.Controllers;
 using LiteDb.Distributed.Server.Core.Abstractions;
 using LiteDb.Distributed.Server.Core.Models;
+using LiteDb.Distributed.Server.Core.Queries;
 using LiteDb.Distributed.Server.Infrastructure.Replication;
 using LiteDb.Distributed.Server.Data;
 using LiteDb.Distributed.Tests.TestEntities;
@@ -210,23 +211,24 @@ namespace LiteDb.Distributed.Tests.TestSupport
             return Store.GetByIdAsync<Dictionary<string, object?>>(TestCollections.Customer, customerId);
         }
 
-        public async Task<QueryController.QueryResponse> ExecuteQueryAsync(string query, int take = 200)
+        public async Task<QueryResponse> ExecuteQueryAsync(string query, int take = 200)
         {
             // Tests assert on controller-level responses to exercise query safety behavior.
-            IActionResult result = await _queryController.ExecuteAsync(new QueryController.QueryRequest
+            IActionResult result = await _queryController.ExecuteAsync(new QueryRequest
             {
                 Query = query,
                 Take = take
             }, false, CancellationToken.None);
 
-            if (result is OkObjectResult okResult && okResult.Value is QueryController.QueryResponse response)
+            if (result is OkObjectResult okResult && okResult.Value is QueryResponse response)
             {
                 return response;
             }
 
             if (result is ObjectResult objectResult)
             {
-                throw new InvalidOperationException($"Query failed with status code {objectResult.StatusCode}.");
+                string responseJson = JsonSerializer.Serialize(objectResult.Value);
+                throw new InvalidOperationException($"Query failed with status code {objectResult.StatusCode}. Response={responseJson}");
             }
 
             throw new InvalidOperationException("Query failed with unexpected result type.");
