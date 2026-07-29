@@ -52,7 +52,10 @@
       min-height: 100vh;
       color: var(--fg);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-      background: var(--canvas);
+      background:
+        linear-gradient(180deg, rgba(88, 166, 255, 0.075), transparent 260px),
+        linear-gradient(135deg, #10161f 0%, var(--canvas) 42%, var(--canvas-subtle) 100%);
+      background-attachment: fixed;
       overflow-y: scroll;
     }
 

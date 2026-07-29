@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<ItemGroup>
-	  <None Remove="Data\README.txt" />
+		<None Remove="Data\README.txt" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Content Include="Data\README.txt">
-	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-	  </Content>
+		<Content Include="Data\README.txt">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -17,7 +17,7 @@
 
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
-		<Version>1.0.0.0</Version>
+		<Version>2.0.0.0</Version>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>b59c1594-36b4-4bc1-a7b7-1f3d72950b70</UserSecretsId>
