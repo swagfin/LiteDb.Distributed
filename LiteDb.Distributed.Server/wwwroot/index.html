@@ -435,25 +435,44 @@
       word-break: break-word;
     }
 
-    .range-value {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-    }
-
-    .range-rail {
-      width: 44px;
-      height: 4px;
-      flex: 0 0 auto;
-      border-radius: 999px;
-      background: linear-gradient(90deg, var(--accent), rgba(88, 166, 255, 0.16));
-    }
-
     .peer-fact .fact-label {
       color: var(--accent);
       font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 0.8rem;
+    }
+
+    .status-label {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      width: fit-content;
+      border: 1px solid rgba(139, 148, 158, 0.32);
+      border-radius: 999px;
+      padding: 2px 7px;
+      color: #c9d1d9;
+      background: rgba(110, 118, 129, 0.14);
+      font-size: 0.72rem;
+      font-weight: 600;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .status-label.ready {
+      color: #56d364;
+      background: rgba(35, 134, 54, 0.15);
+      border-color: rgba(63, 185, 80, 0.32);
+    }
+
+    .status-label.syncing {
+      color: #e3b341;
+      background: rgba(187, 128, 9, 0.14);
+      border-color: rgba(210, 153, 34, 0.32);
+    }
+
+    .status-label.needs-action {
+      color: #ff7b72;
+      background: rgba(248, 81, 73, 0.12);
+      border-color: rgba(248, 81, 73, 0.35);
     }
 
     .note {
@@ -716,7 +735,7 @@
     <section class="section">
       <div class="section-head">
         <h2>Databases</h2>
-        <p>Logical database status, log range, files, and replication lag.</p>
+        <p>Logical database status, files, and replication lag.</p>
       </div>
       <div id="databasesGrid" class="grid"></div>
     </section>
@@ -834,10 +853,8 @@
           : replicationPeers.map(peer => `
               <div class="fact-row peer-fact">
                 <span class="fact-label">${escapeHtml(peer.PeerNodeId)}</span>
-                <span class="fact-value">${escapeHtml(peer.CatchUpStatus || "Unknown")},
-                pending ~${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)},
-                pushed ${escapeHtml(peer.LastPushedLocalLogSequence ?? 0)},
-                pulled ${escapeHtml(peer.LastPulledPeerLogSequence ?? 0)}</span>
+                <span class="fact-value"><span class="status-label ${replicationStatusClass(peer.CatchUpStatus)}">${escapeHtml(formatReplicationStatus(peer.CatchUpStatus))}</span>
+                pending ~${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)}</span>
               </div>`).join("");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
@@ -848,7 +865,6 @@
             </div>
             <div class="fact-list">
               <div class="fact-row"><span class="fact-label">Peers</span><span class="fact-value">${escapeHtml(db.PeerCount)}</span></div>
-              <div class="fact-row"><span class="fact-label">Log range</span><span class="fact-value range-value"><span class="range-rail"></span><span>${escapeHtml(db.OldestAvailableLogSequence ?? 0)} - ${escapeHtml(db.LocalMaxLogSequence ?? 0)}</span></span></div>
               <div class="fact-row"><span class="fact-label">Pending push</span><span class="fact-value">${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</span></div>
               <div class="fact-row"><span class="fact-label">Database file</span><span class="fact-value">${formatFile(db.DatabaseFile)}</span></div>
               ${peerLag}
@@ -869,7 +885,6 @@
         return `<p class="note">Latency trend will appear after a few server-side probes.</p>`;
       }
 
-      const sampleCount = Math.max(httpSeries?.count ?? 0, wsSeries?.count ?? 0);
       const markers = [
         ...(httpSeries ? buildSparkMarkers(httpSeries, "http") : []),
         ...(wsSeries ? buildSparkMarkers(wsSeries, "ws") : [])
@@ -877,7 +892,7 @@
 
       return `
         <div class="spark-wrap">
-          <p class="spark-head">Latency trend (${sampleCount} server samples)</p>
+          <p class="spark-head">Latency trend</p>
           <svg class="spark-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Latency trend for HTTP and WebSocket probes">
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.2)}" x2="${width}" y2="${Math.round(height * 0.2)}"></line>
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.5)}" x2="${width}" y2="${Math.round(height * 0.5)}"></line>
@@ -1106,6 +1121,36 @@
         .replaceAll(">", "&gt;")
         .replaceAll("\"", "&quot;")
         .replaceAll("'", "&#39;");
+    }
+
+    function replicationStatusClass(status) {
+      const normalized = String(status || "").toLowerCase();
+      if (normalized === "ready") {
+        return "ready";
+      }
+
+      if (normalized === "catchingup") {
+        return "syncing";
+      }
+
+      if (normalized === "toooldneedssnapshot") {
+        return "needs-action";
+      }
+
+      return "neutral";
+    }
+
+    function formatReplicationStatus(status) {
+      const normalized = String(status || "");
+      if (normalized === "CatchingUp") {
+        return "Catching Up";
+      }
+
+      if (normalized === "TooOldNeedsSnapshot") {
+        return "Needs Snapshot";
+      }
+
+      return normalized || "Unknown";
     }
 
     function statusClass(status) {

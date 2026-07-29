@@ -137,11 +137,23 @@ namespace LiteDb.Distributed.Server.Controllers
                 Error = error,
                 DatabaseFile = databaseFile,
                 PeerCount = peerCount,
-                OldestAvailableLogSequence = replicationStatus?.OldestAvailableLogSequence ?? 0,
-                LocalMaxLogSequence = replicationStatus?.LocalMaxLogSequence ?? 0,
                 TotalEstimatedPendingPushOperations = replicationStatus?.TotalEstimatedPendingPushOperations ?? 0,
-                ReplicationPeers = replicationStatus?.Peers ?? Array.Empty<ReplicationPeerStatus>()
+                ReplicationPeers = BuildDashboardPeerStatuses(replicationStatus)
             };
+        }
+
+        private static List<DashboardReplicationPeerStatusDto> BuildDashboardPeerStatuses(ReplicationDatabaseStatus? replicationStatus)
+        {
+            IReadOnlyList<ReplicationPeerStatus> peers = replicationStatus?.Peers ?? Array.Empty<ReplicationPeerStatus>();
+            return peers
+                .OrderBy(x => x.PeerNodeId, StringComparer.Ordinal)
+                .Select(x => new DashboardReplicationPeerStatusDto
+                {
+                    PeerNodeId = x.PeerNodeId,
+                    CatchUpStatus = x.CatchUpStatus,
+                    EstimatedPendingPushOperations = x.EstimatedPendingPushOperations
+                })
+                .ToList();
         }
 
         private static void RegisterPeer(IDictionary<string, DashboardPeerTarget> peersByNodeId, ClusterPeer peer)

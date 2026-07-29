@@ -1,5 +1,3 @@
-using LiteDb.Distributed.Server.Infrastructure.Replication;
-
 namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
 {
     public class DashboardOverviewDto
@@ -56,10 +54,15 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
         public required string? Error { get; set; }
         public required DashboardFileStatusDto DatabaseFile { get; set; }
         public required int PeerCount { get; set; }
-        public required long OldestAvailableLogSequence { get; set; }
-        public required long LocalMaxLogSequence { get; set; }
         public required long TotalEstimatedPendingPushOperations { get; set; }
-        public IReadOnlyList<ReplicationPeerStatus> ReplicationPeers { get; set; } = Array.Empty<ReplicationPeerStatus>();
+        public IReadOnlyList<DashboardReplicationPeerStatusDto> ReplicationPeers { get; set; } = Array.Empty<DashboardReplicationPeerStatusDto>();
+    }
+
+    public class DashboardReplicationPeerStatusDto
+    {
+        public required string PeerNodeId { get; set; }
+        public required string CatchUpStatus { get; set; }
+        public required long EstimatedPendingPushOperations { get; set; }
     }
 
     public class DashboardFileStatusDto
