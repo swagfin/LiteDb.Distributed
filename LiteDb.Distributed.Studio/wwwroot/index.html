@@ -6,8 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LiteDb.Distributed.Studio</title>
     <base href="/" />
+    <meta name="theme-color" content="#0d1117" />
+    <meta name="application-name" content="LiteDb.Distributed Studio" />
+    <meta name="apple-mobile-web-app-title" content="LiteDB Studio" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <link href="LiteDb.Distributed.Studio.styles.css" rel="stylesheet" />
 </head>
 
@@ -450,6 +457,12 @@
                 }
             };
         })();
+
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", function () {
+                navigator.serviceWorker.register("service-worker.js");
+            });
+        }
     </script>
     <script src="_framework/blazor.webassembly.js"></script>
 </body>
