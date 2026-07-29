@@ -229,12 +229,12 @@
                         </div>
 
                         <div class="query-editor-row">
-                            <label>
+                            <label class="query-editor-label">
                                 <span>LiteQL Query</span>
-                                <textarea class="query-textarea" @bind="_queryText" @bind:event="onchange" spellcheck="false"></textarea>
+                                <div id="liteql-query-editor" class="liteql-query-editor" aria-label="LiteQL query editor"></div>
                             </label>
                             <div class="query-editor-actions">
-                                <button type="button" class="btn btn-ghost" @onclick="UseCollectionTemplate">Reset</button>
+                                <button type="button" class="btn btn-ghost" @onclick="ResetQueryTemplateAsync">Reset</button>
                                 <button type="button" class="btn btn-primary" @onclick="RunLiteQueryAsync" disabled="@(ActiveProfile is null)">Run Query</button>
                             </div>
                         </div>

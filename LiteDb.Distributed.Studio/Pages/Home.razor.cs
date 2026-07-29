@@ -60,6 +60,8 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _savingProfile;
         private bool _connectingProfile;
         private bool _showProfileManagement = true;
+        private bool _queryEditorInitialized;
+        private bool _queryEditorNeedsRefresh;
         private bool _showProfileModal;
         private bool _showProfileDeleteConfirmModal;
         private bool _editingProfile;
@@ -81,6 +83,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private string? _errorMessage;
         private string? _infoMessage;
         private DotNetObjectReference<Home>? _jsonEditorDotNetRef;
+        private DotNetObjectReference<Home>? _queryEditorDotNetRef;
 
         private ConnectionProfile? ActiveProfile => _activeProfileId is null ? null : _profiles.FirstOrDefault(x => x.Id == _activeProfileId.Value);
 
@@ -108,6 +111,30 @@ namespace LiteDb.Distributed.Studio.Pages
 
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
+            if (!ShowProfileManagement && HasSelectedCollection)
+            {
+                if (!_queryEditorInitialized)
+                {
+                    _queryEditorDotNetRef ??= DotNetObjectReference.Create(this);
+                    await JSRuntime.InvokeVoidAsync("studioQueryEditor.init", "liteql-query-editor", _queryText, BuildLiteQlCompletionData(), _queryEditorDotNetRef);
+                    _queryEditorInitialized = true;
+                    _queryEditorNeedsRefresh = false;
+                }
+                else if (_queryEditorNeedsRefresh)
+                {
+                    await JSRuntime.InvokeVoidAsync("studioQueryEditor.setValue", _queryText);
+                    await JSRuntime.InvokeVoidAsync("studioQueryEditor.setCompletionData", BuildLiteQlCompletionData());
+                    await JSRuntime.InvokeVoidAsync("studioQueryEditor.layout");
+                    _queryEditorNeedsRefresh = false;
+                }
+            }
+            else if (_queryEditorInitialized)
+            {
+                await JSRuntime.InvokeVoidAsync("studioQueryEditor.dispose");
+                _queryEditorInitialized = false;
+                _queryEditorNeedsRefresh = false;
+            }
+
             if (!_showDocumentEditorModal)
             {
                 return;
@@ -773,7 +800,24 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private async Task RunLiteQueryAsync()
         {
+            await SyncQueryTextFromEditorAsync().ConfigureAwait(false);
             await RunLiteQueryInternalAsync(_queryText, requireConfirmation: true).ConfigureAwait(false);
+        }
+
+        [JSInvokable]
+        public async Task RunLiteQlFromEditor()
+        {
+            await RunLiteQueryAsync().ConfigureAwait(false);
+        }
+
+        private async Task ResetQueryTemplateAsync()
+        {
+            UseCollectionTemplate();
+
+            if (_queryEditorInitialized)
+            {
+                await JSRuntime.InvokeVoidAsync("studioQueryEditor.setValue", _queryText).ConfigureAwait(false);
+            }
         }
 
         private async Task RunLiteQueryInternalAsync(string queryText, bool requireConfirmation)
@@ -891,10 +935,12 @@ namespace LiteDb.Distributed.Studio.Pages
             if (string.IsNullOrWhiteSpace(_selectedCollection))
             {
                 _queryText = string.Empty;
+                _queryEditorNeedsRefresh = true;
                 return;
             }
 
             _queryText = $"SELECT $ FROM {_selectedCollection} LIMIT {DefaultBrowseTake}";
+            _queryEditorNeedsRefresh = true;
         }
 
         private void SetDocuments(List<Dictionary<string, JsonElement>> documents)
@@ -942,6 +988,7 @@ namespace LiteDb.Distributed.Studio.Pages
             }
 
             _displayColumns = columns.Count == 0 ? ["Result"] : columns;
+            _queryEditorNeedsRefresh = true;
         }
 
         private void SelectDocument(Dictionary<string, JsonElement> document)
@@ -1245,6 +1292,13 @@ namespace LiteDb.Distributed.Studio.Pages
             return InvokeAsync(StateHasChanged);
         }
 
+        [JSInvokable]
+        public Task OnLiteQlEditorChanged(string value)
+        {
+            _queryText = value ?? string.Empty;
+            return Task.CompletedTask;
+        }
+
         private async Task CopyDocumentJsonAsync()
         {
             try
@@ -1325,6 +1379,33 @@ namespace LiteDb.Distributed.Studio.Pages
 
             string? editorValue = await JSRuntime.InvokeAsync<string>("studioJsonEditor.getValue").ConfigureAwait(false);
             _documentJson = editorValue ?? string.Empty;
+        }
+
+        private async Task SyncQueryTextFromEditorAsync()
+        {
+            if (!_queryEditorInitialized)
+            {
+                return;
+            }
+
+            string? editorValue = await JSRuntime.InvokeAsync<string>("studioQueryEditor.getValue").ConfigureAwait(false);
+            _queryText = editorValue ?? string.Empty;
+        }
+
+        private object BuildLiteQlCompletionData()
+        {
+            List<string> columns = DisplayColumns
+                .Where(x => !string.IsNullOrWhiteSpace(x) && !string.Equals(x, "Result", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return new
+            {
+                tables = _collections.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList(),
+                columns,
+                selectedTable = _selectedCollection ?? string.Empty
+            };
         }
 
         private string GetDocumentRowClass(Dictionary<string, JsonElement> document)
@@ -1756,6 +1837,7 @@ namespace LiteDb.Distributed.Studio.Pages
             try
             {
                 await JSRuntime.InvokeVoidAsync("studioJsonEditor.dispose").ConfigureAwait(false);
+                await JSRuntime.InvokeVoidAsync("studioQueryEditor.dispose").ConfigureAwait(false);
             }
             catch (JSException)
             {
@@ -1763,6 +1845,7 @@ namespace LiteDb.Distributed.Studio.Pages
             }
 
             _jsonEditorDotNetRef?.Dispose();
+            _queryEditorDotNetRef?.Dispose();
         }
     }
 

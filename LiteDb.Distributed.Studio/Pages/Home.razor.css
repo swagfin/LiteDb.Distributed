@@ -697,9 +697,22 @@ tbody tr.selected {
     padding: 0.7rem;
     display: grid;
     gap: 0.65rem;
+    background: #0d1117;
 }
 
-.query-textarea,
+.query-editor-label {
+    min-width: 0;
+}
+
+.liteql-query-editor {
+    height: 190px;
+    min-height: 190px;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius);
+    background: #0d1117;
+    overflow: hidden;
+}
+
 textarea {
     min-height: 220px;
     font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
