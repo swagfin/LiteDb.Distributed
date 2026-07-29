@@ -404,6 +404,58 @@
       width: fit-content;
     }
 
+    .fact-list {
+      margin-top: 8px;
+      border-top: 1px solid var(--border-muted);
+    }
+
+    .fact-row {
+      min-height: 25px;
+      display: grid;
+      grid-template-columns: minmax(104px, max-content) minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid var(--border-muted);
+      color: var(--fg-muted);
+      font-size: 0.86rem;
+      line-height: 1.35;
+    }
+
+    .fact-row:last-child {
+      border-bottom: none;
+    }
+
+    .fact-label {
+      color: var(--fg-subtle);
+      font-weight: 600;
+    }
+
+    .fact-value {
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    .range-value {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .range-rail {
+      width: 44px;
+      height: 4px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), rgba(88, 166, 255, 0.16));
+    }
+
+    .peer-fact .fact-label {
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.8rem;
+    }
+
     .note {
       margin: 0;
       color: var(--fg-muted);
@@ -595,6 +647,12 @@
         grid-template-columns: 1fr;
         gap: 2px;
       }
+
+      .fact-row {
+        grid-template-columns: 1fr;
+        gap: 2px;
+        padding: 4px 0;
+      }
     }
   </style>
 </head>
@@ -772,14 +830,15 @@
         const error = db.Error ? `<div class="error">${escapeHtml(db.Error)}</div>` : "";
         const replicationPeers = Array.isArray(db.ReplicationPeers) ? db.ReplicationPeers : [];
         const peerLag = replicationPeers.length === 0
-          ? `<p class="note">No replication peers registered.</p>`
+          ? `<div class="fact-row"><span class="fact-label">Replication</span><span class="fact-value">No replication peers registered.</span></div>`
           : replicationPeers.map(peer => `
-              <p class="kv"><strong>${escapeHtml(peer.PeerNodeId)}</strong>
-                <span>${escapeHtml(peer.CatchUpStatus || "Unknown")},
+              <div class="fact-row peer-fact">
+                <span class="fact-label">${escapeHtml(peer.PeerNodeId)}</span>
+                <span class="fact-value">${escapeHtml(peer.CatchUpStatus || "Unknown")},
                 pending ~${escapeHtml(peer.EstimatedPendingPushOperations ?? 0)},
                 pushed ${escapeHtml(peer.LastPushedLocalLogSequence ?? 0)},
                 pulled ${escapeHtml(peer.LastPulledPeerLogSequence ?? 0)}</span>
-              </p>`).join("");
+              </div>`).join("");
 
         databasesGrid.insertAdjacentHTML("beforeend", `
           <article class="panel card reveal">
@@ -787,11 +846,13 @@
               <span class="pill ${statusClass(status)}">${escapeHtml(status)}</span>
               <span class="pill info">${escapeHtml(db.Name)}</span>
             </div>
-            <p class="kv"><strong>Peers</strong><span>${escapeHtml(db.PeerCount)}</span></p>
-            <p class="kv"><strong>Log range</strong><span>${escapeHtml(db.OldestAvailableLogSequence ?? 0)} - ${escapeHtml(db.LocalMaxLogSequence ?? 0)}</span></p>
-            <p class="kv"><strong>Pending push</strong><span>${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</span></p>
-            <p class="kv"><strong>Database file</strong><span>${formatFile(db.DatabaseFile)}</span></p>
-            ${peerLag}
+            <div class="fact-list">
+              <div class="fact-row"><span class="fact-label">Peers</span><span class="fact-value">${escapeHtml(db.PeerCount)}</span></div>
+              <div class="fact-row"><span class="fact-label">Log range</span><span class="fact-value range-value"><span class="range-rail"></span><span>${escapeHtml(db.OldestAvailableLogSequence ?? 0)} - ${escapeHtml(db.LocalMaxLogSequence ?? 0)}</span></span></div>
+              <div class="fact-row"><span class="fact-label">Pending push</span><span class="fact-value">${escapeHtml(db.TotalEstimatedPendingPushOperations ?? 0)}</span></div>
+              <div class="fact-row"><span class="fact-label">Database file</span><span class="fact-value">${formatFile(db.DatabaseFile)}</span></div>
+              ${peerLag}
+            </div>
             ${error}
           </article>`);
       }
@@ -968,9 +1029,43 @@
         return "missing";
       }
 
-      const kb = Math.max(1, Math.round((file.SizeBytes || 0) / 1024));
-      const time = file.LastWriteUtc ? toUtcText(file.LastWriteUtc) : "n/a";
-      return `${kb} KB | ${escapeHtml(time)}`;
+      const size = formatBytes(file.SizeBytes || 0);
+      const time = file.LastWriteUtc ? formatLocalDateTime(file.LastWriteUtc) : "n/a";
+      return `${size} | ${escapeHtml(time)}`;
+    }
+
+    function formatBytes(bytes) {
+      const value = Number(bytes);
+      if (!Number.isFinite(value) || value <= 0) {
+        return "0 B";
+      }
+
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let size = value;
+      let unitIndex = 0;
+
+      while (size >= 1024 && unitIndex < units.length - 1) {
+        size = size / 1024;
+        unitIndex++;
+      }
+
+      const decimals = size >= 10 || unitIndex === 0 ? 0 : 1;
+      return `${size.toFixed(decimals)} ${units[unitIndex]}`;
+    }
+
+    function formatLocalDateTime(value) {
+      const d = value ? new Date(value) : null;
+      if (!d || Number.isNaN(d.getTime())) {
+        return "n/a";
+      }
+
+      const year = d.getFullYear();
+      const month = pad2(d.getMonth() + 1);
+      const day = pad2(d.getDate());
+      const hour = pad2(d.getHours());
+      const minute = pad2(d.getMinutes());
+      const second = pad2(d.getSeconds());
+      return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
     }
 
     function formatLatency(value) {
@@ -998,6 +1093,10 @@
 
     function round2(value) {
       return Math.round(value * 100) / 100;
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, "0");
     }
 
     function escapeHtml(value) {
