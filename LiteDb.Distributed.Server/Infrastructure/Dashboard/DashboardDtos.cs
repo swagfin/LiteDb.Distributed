@@ -27,6 +27,13 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
         public required DateTime LastCheckedUtc { get; set; }
     }
 
+    public class DashboardLatencySampleDto
+    {
+        public required DateTime TimestampUtc { get; set; }
+        public required double? HttpDurationMs { get; set; }
+        public required double? WebSocketDurationMs { get; set; }
+    }
+
     public class DashboardPeerConnectivityDto
     {
         public required string PeerNodeId { get; set; }
@@ -39,6 +46,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
         public required double? WebSocketProbeDurationMs { get; set; }
         public required string? Error { get; set; }
         public required DateTime LastCheckedUtc { get; set; }
+        public IReadOnlyList<DashboardLatencySampleDto> LatencyHistory { get; set; } = Array.Empty<DashboardLatencySampleDto>();
     }
 
     public class DashboardDatabaseStatusDto

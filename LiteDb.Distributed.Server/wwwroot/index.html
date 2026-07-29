@@ -640,8 +640,6 @@
     const kpiNodeCount = document.getElementById("kpiNodeCount");
     const kpiDbCount = document.getElementById("kpiDbCount");
 
-    const maxPeerLatencySamples = 32;
-    const peerLatencyHistory = new Map();
     let refreshTimer = null;
 
     async function refreshDashboard() {
@@ -656,7 +654,6 @@
         }
 
         const data = await response.json();
-        capturePeerLatencySamples(data.PeerConnections || []);
         renderDashboard(data);
       } catch (error) {
         errorLine.hidden = false;
@@ -699,7 +696,7 @@
         const error = peer.Error ? `<div class="error">${escapeHtml(peer.Error)}</div>` : "";
         const httpLatency = formatLatency(peer.HttpProbeDurationMs);
         const wsLatency = formatLatency(peer.WebSocketProbeDurationMs);
-        const sparkline = renderLatencySparkline(peer.PeerNodeId);
+        const sparkline = renderLatencySparkline(peer.LatencyHistory || []);
 
         peerConnectivityGrid.insertAdjacentHTML("beforeend", `
           <article class="panel reveal">
@@ -756,46 +753,15 @@
       }
     }
 
-    function capturePeerLatencySamples(peers) {
-      for (const peer of peers) {
-        const key = String(peer.PeerNodeId || "").trim();
-        if (!key) {
-          continue;
-        }
-
-        let history = peerLatencyHistory.get(key);
-        if (!history) {
-          history = { http: [], ws: [] };
-          peerLatencyHistory.set(key, history);
-        }
-
-        appendLatencySample(history.http, peer.HttpProbeDurationMs);
-        appendLatencySample(history.ws, peer.WebSocketProbeDurationMs);
-      }
-    }
-
-    function appendLatencySample(samples, value) {
-      const normalized = normalizeLatency(value);
-      samples.push(normalized);
-
-      if (samples.length > maxPeerLatencySamples) {
-        samples.shift();
-      }
-    }
-
-    function renderLatencySparkline(peerNodeId) {
-      const history = peerLatencyHistory.get(peerNodeId);
-      if (!history) {
-        return `<p class="note">Latency trend will appear after the next refresh.</p>`;
-      }
-
+    function renderLatencySparkline(history) {
+      const samples = Array.isArray(history) ? history : [];
       const width = 240;
       const height = 58;
-      const httpSeries = buildSparklineSeries(history.http, width, height);
-      const wsSeries = buildSparklineSeries(history.ws, width, height);
+      const httpSeries = buildSparklineSeries(samples.map(x => x.HttpDurationMs), width, height);
+      const wsSeries = buildSparklineSeries(samples.map(x => x.WebSocketDurationMs), width, height);
 
       if (!httpSeries && !wsSeries) {
-        return `<p class="note">Latency trend has no samples yet.</p>`;
+        return `<p class="note">Latency trend will appear after a few server-side probes.</p>`;
       }
 
       const sampleCount = Math.max(httpSeries?.count ?? 0, wsSeries?.count ?? 0);
@@ -806,7 +772,7 @@
 
       return `
         <div class="spark-wrap">
-          <p class="spark-head">Latency Trend (latest ${sampleCount} probes)</p>
+          <p class="spark-head">Latency Trend (${sampleCount} server samples)</p>
           <svg class="spark-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Latency trend for HTTP and WebSocket probes">
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.2)}" x2="${width}" y2="${Math.round(height * 0.2)}"></line>
             <line class="spark-grid" x1="0" y1="${Math.round(height * 0.5)}" x2="${width}" y2="${Math.round(height * 0.5)}"></line>

@@ -12,11 +12,13 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
 
         private readonly ClusterNodeOptions _nodeOptions;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly DashboardLatencyHistoryStore _latencyHistoryStore;
 
-        public DashboardPeerProbeService(ClusterNodeOptions nodeOptions, IHttpClientFactory httpClientFactory)
+        public DashboardPeerProbeService(ClusterNodeOptions nodeOptions, IHttpClientFactory httpClientFactory, DashboardLatencyHistoryStore latencyHistoryStore)
         {
             _nodeOptions = nodeOptions ?? throw new ArgumentNullException(nameof(nodeOptions));
             _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+            _latencyHistoryStore = latencyHistoryStore ?? throw new ArgumentNullException(nameof(latencyHistoryStore));
         }
 
         public async Task<DashboardPeerProbeResult> ProbePeerAsync(DashboardPeerTarget target, CancellationToken cancellationToken)
@@ -34,6 +36,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
             string overall = DetermineOverallStatus(httpProbe.IsOnline, wsProbe.IsOnline);
             string nodeStatus = MapNodeStatus(overall);
             string? combinedError = CombineErrors(httpProbe.Error, wsProbe.Error);
+            IReadOnlyList<DashboardLatencySampleDto> latencyHistory = _latencyHistoryStore.RecordAndGetHistory(httpProbe.ResolvedNodeId, checkedAt, httpProbe.DurationMs, wsProbe.DurationMs);
 
             return new DashboardPeerProbeResult(
                 new DashboardNodeStatusDto
@@ -60,7 +63,8 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
                     HttpProbeDurationMs = httpProbe.DurationMs,
                     WebSocketProbeDurationMs = wsProbe.DurationMs,
                     Error = combinedError,
-                    LastCheckedUtc = checkedAt
+                    LastCheckedUtc = checkedAt,
+                    LatencyHistory = latencyHistory
                 });
         }
 
@@ -72,6 +76,7 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
         private static DashboardPeerProbeResult BuildMissingPeerResult(DashboardPeerTarget target, DateTime checkedAt)
         {
             string error = "No base URL configured for peer.";
+            IReadOnlyList<DashboardLatencySampleDto> emptyHistory = Array.Empty<DashboardLatencySampleDto>();
 
             return new DashboardPeerProbeResult(
                 new DashboardNodeStatusDto
@@ -98,7 +103,8 @@ namespace LiteDb.Distributed.Server.Infrastructure.Dashboard
                     HttpProbeDurationMs = null,
                     WebSocketProbeDurationMs = null,
                     Error = error,
-                    LastCheckedUtc = checkedAt
+                    LastCheckedUtc = checkedAt,
+                    LatencyHistory = emptyHistory
                 });
         }
 

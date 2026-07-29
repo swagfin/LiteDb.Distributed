@@ -40,6 +40,7 @@ namespace LiteDb.Distributed.Server
             services.AddSingleton<IOperationIngestionService, OperationIngestionService>();
             services.AddSingleton<IClusterReplicationService, PeerReplicationService>();
             services.AddSingleton<IReplicationStatusService, ReplicationStatusService>();
+            services.AddSingleton<DashboardLatencyHistoryStore>();
             services.AddSingleton<DashboardPeerProbeService>();
             services.AddSingleton<OperationLogPruningService>();
             services.AddSingleton<IOperationLogPruningService>(sp => sp.GetRequiredService<OperationLogPruningService>());
