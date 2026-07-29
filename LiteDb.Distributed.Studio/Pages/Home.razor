@@ -372,23 +372,58 @@
 @if (_showDocumentEditorModal)
 {
     <div class="profile-modal-backdrop" @onclick="CloseDocumentEditorModal">
-        <section class="profile-modal document-editor-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+        <section class="profile-modal document-editor-modal @(_documentEditorMaximized ? "maximized" : string.Empty)" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
             <div class="profile-modal-head">
                 <div class="h2">Document Editor</div>
-                <button type="button" class="btn btn-ghost" @onclick="CloseDocumentEditorModal">Close</button>
+                <div class="modal-head-actions">
+                    <button type="button" class="btn btn-ghost btn-icon" title="@(_documentEditorMaximized ? "Restore" : "Maximize")" aria-label="@(_documentEditorMaximized ? "Restore" : "Maximize")" @onclick="ToggleDocumentEditorMaximized">
+                        @if (_documentEditorMaximized)
+                        {
+                            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                                <path fill="currentColor" d="M8 3h2v6H4V7h4V3zm6 0h2v4h4v2h-6V3zM4 15h6v6H8v-4H4v-2zm14 2v4h-2v-6h6v2h-4z" />
+                            </svg>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                                <path fill="currentColor" d="M4 4h7v2H7.41l4.3 4.29-1.42 1.42L6 7.41V11H4V4zm9 0h7v7h-2V7.41l-4.29 4.3-1.42-1.42L16.59 6H13V4zM4 13h2v3.59l4.29-4.3 1.42 1.42L7.41 18H11v2H4v-7zm15 0h1v7h-7v-2h3.59l-4.3-4.29 1.42-1.42 4.29 4.3V13h1z" />
+                            </svg>
+                        }
+                    </button>
+                    <button type="button" class="btn btn-ghost" @onclick="CloseDocumentEditorModal">Close</button>
+                </div>
             </div>
 
-            <p class="profile-modal-help">Edit JSON payload and save changes.</p>
+            <p class="profile-modal-help">Edit JSON payload, validate it, and save changes.</p>
 
             <label class="id-field">
                 <span>Document Id</span>
                 <input @bind="_selectedDocumentId" placeholder="Id used for PUT/DELETE" readonly="@SelectedCollectionIsSystem" />
             </label>
 
-            <textarea class="document-editor-textarea" @bind="_documentJson" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
+            <div class="json-editor-shell">
+                <div class="json-editor-toolbar">
+                    <div class="json-editor-status">
+                        <span class="json-validation-badge @GetJsonValidationBadgeClass()">@JsonValidationLabel</span>
+                    </div>
+                    <div class="json-editor-actions">
+                        <button type="button" class="btn btn-ghost btn-icon" title="Copy JSON" aria-label="Copy JSON" @onclick="CopyDocumentJsonAsync">
+                            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                                <path fill="currentColor" d="M8 7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V7zm2 0v10h8V7h-8zM4 3h10v2H6v10H4V3z" />
+                            </svg>
+                        </button>
+                        <button type="button" class="btn btn-ghost" @onclick="FormatDocumentJson" disabled="@SelectedCollectionIsSystem">Format JSON</button>
+                    </div>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_documentEditorMessage))
+                {
+                    <div class="json-editor-message @(_documentJsonIsValid ? "valid" : "invalid")">@_documentEditorMessage</div>
+                }
+                <textarea class="document-editor-textarea" value="@_documentJson" @oninput="OnDocumentJsonChanged" spellcheck="false" readonly="@SelectedCollectionIsSystem"></textarea>
+            </div>
 
             <div class="action-row">
-                <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem)">Save</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveDocumentAsync" disabled="@(ActiveProfile is null || SelectedCollectionIsSystem || !_documentJsonIsValid)">Save</button>
                 <button type="button" class="btn btn-danger" @onclick="DeleteDocumentAsync" disabled="@(string.IsNullOrWhiteSpace(_selectedDocumentId) || ActiveProfile is null || SelectedCollectionIsSystem)">Delete</button>
             </div>
         </section>

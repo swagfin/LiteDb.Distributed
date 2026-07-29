@@ -9,7 +9,7 @@
     }
   },
   "profiles": {
-    "http": {
+    "LiteDb.Distributed.Studio": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,

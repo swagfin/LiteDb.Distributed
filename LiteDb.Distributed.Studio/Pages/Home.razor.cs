@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using LiteDb.Distributed.Studio.Models;
 using LiteDb.Distributed.Studio.Services;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using Microsoft.AspNetCore.Components.Web;
 
 namespace LiteDb.Distributed.Studio.Pages
@@ -16,6 +17,9 @@ namespace LiteDb.Distributed.Studio.Pages
 
         [Inject]
         public required DistributedApiClient ApiClient { get; set; }
+
+        [Inject]
+        public required IJSRuntime JSRuntime { get; set; }
 
         private static readonly Regex DatabaseNamePattern = new("^[a-z0-9][a-z0-9_-]{0,62}$", RegexOptions.Compiled);
         private static readonly HashSet<string> ReservedCollections = new(StringComparer.OrdinalIgnoreCase) { "cache" };
@@ -49,6 +53,8 @@ namespace LiteDb.Distributed.Studio.Pages
 
         private string _selectedDocumentId = string.Empty;
         private string _documentJson = "{\n  \"Id\": \"\"\n}";
+        private bool _documentJsonIsValid = true;
+        private string _documentEditorMessage = "Valid JSON object.";
 
         private bool _busy;
         private bool _savingProfile;
@@ -58,6 +64,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool _showProfileDeleteConfirmModal;
         private bool _editingProfile;
         private bool _showDocumentEditorModal;
+        private bool _documentEditorMaximized;
         private bool _showDeleteConfirmModal;
         private bool _showQueryConfirmModal;
         private bool _showRowContextMenu;
@@ -84,6 +91,7 @@ namespace LiteDb.Distributed.Studio.Pages
         private bool HasSelectedCollection => !string.IsNullOrWhiteSpace(_selectedCollection);
         private bool SelectedCollectionIsSystem => IsReservedCollection(_selectedCollection);
         private string ProfileModalTitle => _editingProfile ? "Edit Profile" : "Add Profile";
+        private string JsonValidationLabel => _documentJsonIsValid ? "Valid JSON" : "Invalid JSON";
 
         private string ActiveProfileSummary => ActiveProfile is null ? "Not connected. Open profile management to connect." : $"Connected to {ActiveProfile.Database} at {GetProfileDisplayName(ActiveProfile)}";
 
@@ -914,6 +922,7 @@ namespace LiteDb.Distributed.Studio.Pages
         {
             _selectedDocument = document;
             _documentJson = JsonSerializer.Serialize(BuildEditorDocument(document), PrettyJsonOptions);
+            ValidateDocumentJson(requireId: false, out _, out _);
 
             _selectedDocumentId = ExtractId(document) ?? string.Empty;
         }
@@ -978,6 +987,12 @@ namespace LiteDb.Distributed.Studio.Pages
         private void CloseDocumentEditorModal()
         {
             _showDocumentEditorModal = false;
+            _documentEditorMaximized = false;
+        }
+
+        private void ToggleDocumentEditorMaximized()
+        {
+            _documentEditorMaximized = !_documentEditorMaximized;
         }
 
         private void ShowRowContextMenu(MouseEventArgs args, Dictionary<string, JsonElement> document)
@@ -1082,34 +1097,16 @@ namespace LiteDb.Distributed.Studio.Pages
             }
 
             string documentId;
+            string normalizedJson;
 
-            try
+            if (!ValidateDocumentJson(requireId: true, out documentId, out normalizedJson))
             {
-                using JsonDocument parsed = JsonDocument.Parse(_documentJson);
-
-                if (parsed.RootElement.ValueKind != JsonValueKind.Object)
-                {
-                    _errorMessage = "Document payload must be a JSON object.";
-                    _infoMessage = null;
-                    return;
-                }
-
-                documentId = string.IsNullOrWhiteSpace(_selectedDocumentId) ? ExtractId(parsed.RootElement) ?? string.Empty : _selectedDocumentId.Trim();
-
-                if (string.IsNullOrWhiteSpace(documentId))
-                {
-                    _errorMessage = "Document Id is required. Set the Id field or provide it in the Id input.";
-                    _infoMessage = null;
-                    return;
-                }
-            }
-            catch (JsonException ex)
-            {
-                _errorMessage = $"JSON parse error: {ex.Message}";
+                _errorMessage = _documentEditorMessage;
                 _infoMessage = null;
                 return;
             }
 
+            _documentJson = normalizedJson;
             _busy = true;
             ClearMessages();
 
@@ -1201,6 +1198,80 @@ namespace LiteDb.Distributed.Studio.Pages
             _selectedDocument = null;
             _selectedDocumentId = string.Empty;
             _documentJson = "{\n  \"Id\": \"\",\n  \"CreatedUtc\": \"" + DateTime.UtcNow.ToString("O") + "\"\n}";
+            ValidateDocumentJson(requireId: false, out _, out _);
+        }
+
+        private void OnDocumentJsonChanged(ChangeEventArgs args)
+        {
+            _documentJson = args.Value?.ToString() ?? string.Empty;
+            ValidateDocumentJson(requireId: false, out _, out _);
+        }
+
+        private async Task CopyDocumentJsonAsync()
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("studioClipboard.copyText", _documentJson);
+                _documentEditorMessage = "JSON copied to clipboard.";
+            }
+            catch (JSException ex)
+            {
+                _documentEditorMessage = $"Copy failed: {ex.Message}";
+            }
+        }
+
+        private void FormatDocumentJson()
+        {
+            if (!ValidateDocumentJson(requireId: false, out _, out string normalizedJson))
+            {
+                return;
+            }
+
+            _documentJson = normalizedJson;
+            _documentEditorMessage = "JSON formatted.";
+        }
+
+        private string GetJsonValidationBadgeClass()
+        {
+            return _documentJsonIsValid ? "valid" : "invalid";
+        }
+
+        private bool ValidateDocumentJson(bool requireId, out string documentId, out string normalizedJson)
+        {
+            documentId = string.Empty;
+            normalizedJson = _documentJson;
+
+            try
+            {
+                using JsonDocument parsed = JsonDocument.Parse(_documentJson);
+
+                if (parsed.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    _documentJsonIsValid = false;
+                    _documentEditorMessage = "Document payload must be a JSON object.";
+                    return false;
+                }
+
+                documentId = string.IsNullOrWhiteSpace(_selectedDocumentId) ? ExtractId(parsed.RootElement) ?? string.Empty : _selectedDocumentId.Trim();
+                normalizedJson = JsonSerializer.Serialize(parsed.RootElement, PrettyJsonOptions);
+
+                if (requireId && string.IsNullOrWhiteSpace(documentId))
+                {
+                    _documentJsonIsValid = false;
+                    _documentEditorMessage = "Document Id is required. Set the Id field or provide it in the Id input.";
+                    return false;
+                }
+
+                _documentJsonIsValid = true;
+                _documentEditorMessage = "Valid JSON object.";
+                return true;
+            }
+            catch (JsonException ex)
+            {
+                _documentJsonIsValid = false;
+                _documentEditorMessage = $"JSON parse error: {ex.Message}";
+                return false;
+            }
         }
 
         private string GetDocumentRowClass(Dictionary<string, JsonElement> document)

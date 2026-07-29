@@ -184,16 +184,14 @@
     width: min(860px, 100%);
 }
 
-.tiny-modal {
-    width: min(380px, 100%);
+.document-editor-modal.maximized {
+    width: min(1320px, calc(100vw - 2rem));
+    min-height: calc(100vh - 2rem);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
 }
 
-.document-editor-textarea {
-    min-height: 420px;
-    font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: 0.8rem;
-    line-height: 1.45;
-    resize: vertical;
+.tiny-modal {
+    width: min(380px, 100%);
 }
 
 .profile-modal-head {
@@ -201,6 +199,12 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.7rem;
+}
+
+.modal-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
 }
 
 .profile-modal-help {
@@ -311,6 +315,108 @@ textarea:focus {
     min-width: 2rem;
     height: 2rem;
     padding: 0;
+}
+
+.json-editor-shell {
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius);
+    background: #0d1117;
+    overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(240, 246, 252, 0.035), 0 10px 24px rgba(1, 4, 9, 0.18);
+}
+
+.document-editor-modal.maximized .json-editor-shell {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.json-editor-toolbar {
+    min-height: 42px;
+    border-bottom: 1px solid var(--surface-border-muted);
+    background: linear-gradient(180deg, #161b22 0%, #111720 100%);
+    padding: 0.45rem 0.55rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    width: 100%;
+}
+
+.json-editor-status {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+.json-editor-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+}
+
+.json-validation-badge {
+    border: 1px solid var(--surface-border);
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.json-validation-badge.valid {
+    color: #56d364;
+    border-color: rgba(63, 185, 80, 0.4);
+    background: rgba(35, 134, 54, 0.14);
+}
+
+.json-validation-badge.invalid {
+    color: #ffb4ab;
+    border-color: rgba(248, 81, 73, 0.4);
+    background: rgba(248, 81, 73, 0.12);
+}
+
+.json-editor-message {
+    border-bottom: 1px solid var(--surface-border-muted);
+    padding: 0.42rem 0.6rem;
+    font-size: 0.76rem;
+}
+
+.json-editor-message.valid {
+    color: #56d364;
+    background: rgba(35, 134, 54, 0.08);
+}
+
+.json-editor-message.invalid {
+    color: #ffb4ab;
+    background: rgba(248, 81, 73, 0.08);
+}
+
+.document-editor-textarea {
+    min-height: 420px;
+    border: 0;
+    border-radius: 0;
+    background: linear-gradient(180deg, #0b1017 0%, #0d1117 100%);
+    color: #e6edf3;
+    font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    padding: 0.85rem 0.95rem;
+    resize: vertical;
+    tab-size: 4;
+    caret-color: var(--accent-cyan);
+}
+
+.document-editor-modal.maximized .document-editor-textarea {
+    min-height: 0;
+    height: 100%;
+    resize: none;
+}
+
+.document-editor-textarea:focus {
+    box-shadow: none;
 }
 
 .workspace-panel {
