@@ -62,22 +62,10 @@ namespace LiteDb.Distributed.Server.Data
             return await store.GetStateAsync(collection, entityId, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task AppendOperationAsync(OperationRecord operation, CancellationToken cancellationToken = default)
-        {
-            LiteDbNodeStore store = await _storeProvider.GetCurrentStoreAsync(cancellationToken).ConfigureAwait(false);
-            await store.AppendOperationAsync(operation, cancellationToken).ConfigureAwait(false);
-        }
-
         public async Task<IReadOnlyList<OperationRecord>> GetOperationsAfterLogSequenceAsync(long afterLogSequence, int batchSize, CancellationToken cancellationToken = default)
         {
             LiteDbNodeStore store = await _storeProvider.GetCurrentStoreAsync(cancellationToken).ConfigureAwait(false);
             return await store.GetOperationsAfterLogSequenceAsync(afterLogSequence, batchSize, cancellationToken).ConfigureAwait(false);
-        }
-
-        public async Task<IReadOnlyList<OperationRecord>> GetLocalOperationsAfterSequenceAsync(string nodeId, long afterSequence, int batchSize, CancellationToken cancellationToken = default)
-        {
-            LiteDbNodeStore store = await _storeProvider.GetCurrentStoreAsync(cancellationToken).ConfigureAwait(false);
-            return await store.GetLocalOperationsAfterSequenceAsync(nodeId, afterSequence, batchSize, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<bool> ContainsOperationAsync(string operationId, CancellationToken cancellationToken = default)

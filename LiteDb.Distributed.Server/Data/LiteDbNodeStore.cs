@@ -1,10 +1,9 @@
-using System.Text.Json;
 using LiteDb.Distributed.Server.Core.Abstractions;
 using LiteDb.Distributed.Server.Core.Models;
-using LiteDb.Distributed.Server.Data.Internal;
 using LiteDb.Distributed.Server.Data.Internal.Entities;
 using LiteDb.Distributed.Server.Data.Internal.Schema;
 using LiteDB;
+using System.Text.Json;
 using static LiteDb.Distributed.Server.Data.Internal.LiteDbStoreGuards;
 using static LiteDb.Distributed.Server.Data.Internal.Mapping.LiteDbDocumentMapper;
 using static LiteDb.Distributed.Server.Data.Internal.Mapping.LiteDbSystemMapper;
@@ -378,53 +377,6 @@ namespace LiteDb.Distributed.Server.Data
             }
         }
 
-        public Task AppendOperationAsync(OperationRecord operation, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            ValidateOperation(operation);
-
-            lock (_gate)
-            {
-                if (ContainsOperationInternal(operation.Id))
-                {
-                    return Task.CompletedTask;
-                }
-
-                BeginTransaction();
-
-                try
-                {
-                    long logSequence = operation.LogSequence > 0 ? operation.LogSequence : ReserveNextLocalSequence(DateTime.UtcNow);
-
-                    OperationRecord operationWithLogSequence = new OperationRecord
-                    {
-                        Id = operation.Id,
-                        NodeId = operation.NodeId,
-                        TimestampUtc = operation.TimestampUtc,
-                        Collection = operation.Collection,
-                        EntityId = operation.EntityId,
-                        OperationType = operation.OperationType,
-                        Payload = operation.Payload,
-                        Sequence = operation.Sequence,
-                        LogSequence = logSequence,
-                        ParentVersion = operation.ParentVersion,
-                        GlobalSequence = operation.GlobalSequence,
-                        IsSynced = operation.IsSynced,
-                        IsTombstone = operation.IsTombstone
-                    };
-
-                    InsertOperationInternal(operationWithLogSequence);
-                    CommitTransaction();
-                    return Task.CompletedTask;
-                }
-                catch
-                {
-                    RollbackTransaction();
-                    throw;
-                }
-            }
-        }
-
         public Task<IReadOnlyList<OperationRecord>> GetOperationsAfterLogSequenceAsync(long afterLogSequence, int batchSize, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -441,32 +393,6 @@ namespace LiteDb.Distributed.Server.Data
                 List<OperationRecord> operations = OperationsCollection()
                     .Query()
                     .Where(x => x.LogSequence > afterLogSequence).OrderBy(x => x.LogSequence).Limit(cappedBatchSize).ToList().Select(MapToOperationRecord).ToList();
-
-                return Task.FromResult<IReadOnlyList<OperationRecord>>(operations);
-            }
-        }
-
-        public Task<IReadOnlyList<OperationRecord>> GetLocalOperationsAfterSequenceAsync(string nodeId, long afterSequence, int batchSize, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (string.IsNullOrWhiteSpace(nodeId))
-            {
-                throw new ArgumentException("NodeId is required.", nameof(nodeId));
-            }
-
-            if (batchSize <= 0)
-            {
-                return Task.FromResult<IReadOnlyList<OperationRecord>>(Array.Empty<OperationRecord>());
-            }
-
-            int cappedBatchSize = Math.Clamp(batchSize, 1, 10_000);
-
-            lock (_gate)
-            {
-                List<OperationRecord> operations = OperationsCollection()
-                    .Query()
-                    .Where(x => x.NodeId == nodeId && x.Sequence > afterSequence).OrderBy(x => x.Sequence).Limit(cappedBatchSize).ToList().Select(MapToOperationRecord).ToList();
 
                 return Task.FromResult<IReadOnlyList<OperationRecord>>(operations);
             }
@@ -977,22 +903,6 @@ namespace LiteDb.Distributed.Server.Data
             nodeMetadata.Upsert(existing);
 
             return existing.LastLocalSequence;
-        }
-
-        private void UpdateNodeMetadataForRemoteOperation(OperationRecord operation)
-        {
-            ILiteCollection<NodeMetadataEntity> nodeMetadata = NodeMetadataCollection();
-            NodeMetadataEntity existing = nodeMetadata.FindById(operation.NodeId) ?? new NodeMetadataEntity
-            {
-                NodeId = operation.NodeId,
-                LastLocalSequence = 0,
-                LastWriteUtc = operation.TimestampUtc
-            };
-
-            existing.LastLocalSequence = Math.Max(existing.LastLocalSequence, operation.Sequence);
-            existing.LastWriteUtc = existing.LastWriteUtc < operation.TimestampUtc ? operation.TimestampUtc : existing.LastWriteUtc;
-
-            nodeMetadata.Upsert(existing);
         }
 
         private void InsertOperationInternal(OperationRecord operation)
